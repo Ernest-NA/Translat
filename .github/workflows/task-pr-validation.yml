@@ -1,0 +1,35 @@
+name: Task PR validation
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+    branches:
+      - develop
+
+jobs:
+  validate-task-pr:
+    if: ${{ github.base_ref == 'develop' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run scaffold validation
+        run: |
+          npm install
+          npm run check:scaffold
+
+      - name: Write summary
+        run: |
+          {
+            echo "## Task PR validation"
+            echo "- Head branch: ${{ github.head_ref }}"
+            echo "- Base branch: ${{ github.base_ref }}"
+            echo "- PR title: ${{ github.event.pull_request.title }}"
+            echo "- Validation: scaffold checks completed"
+          } >> "$GITHUB_STEP_SUMMARY"
