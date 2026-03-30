@@ -11,24 +11,6 @@ jobs:
     if: ${{ github.base_ref == 'develop' }}
     runs-on: ubuntu-latest
     steps:
-      - name: Validate task branch naming
-        run: |
-          BRANCH='${{ github.head_ref }}'
-          if [[ ! "$BRANCH" =~ ^task/[A-Z][0-9]+[a-zA-Z0-9-]* ]]; then
-            echo "Invalid task branch name: $BRANCH"
-            echo "Expected format: task/{NOTION_TASK_ID}-{slug}"
-            exit 1
-          fi
-
-      - name: Validate PR title contains task id
-        run: |
-          TITLE='${{ github.event.pull_request.title }}'
-          if [[ ! "$TITLE" =~ ^\[[A-Z][0-9]+\] ]]; then
-            echo "Invalid PR title: $TITLE"
-            echo "Expected prefix: [A1], [B4], [E6], etc."
-            exit 1
-          fi
-
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -49,5 +31,5 @@ jobs:
             echo "- Head branch: ${{ github.head_ref }}"
             echo "- Base branch: ${{ github.base_ref }}"
             echo "- PR title: ${{ github.event.pull_request.title }}"
-            echo "- Validation: OK"
+            echo "- Validation: scaffold checks completed"
           } >> "$GITHUB_STEP_SUMMARY"

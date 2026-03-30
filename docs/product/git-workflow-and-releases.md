@@ -5,7 +5,7 @@ Define the official branching, pull request, release, and naming strategy for Tr
 
 ## Main branches
 - `develop`: integration branch for approved task work
-- `pro`: stable production/release branch
+- `main`: stable release branch
 
 ## Task workflow
 1. Create a task branch from `develop`.
@@ -16,9 +16,9 @@ Define the official branching, pull request, release, and naming strategy for Tr
 
 ## Release workflow
 1. When the planned set of tasks for a release is complete in `develop`, create a release branch.
-2. Open a pull request from the release branch into `pro`.
+2. Open a pull request from the release branch into `main`.
 3. Human review.
-4. Merge into `pro` when approved.
+4. Merge into `main` when approved.
 
 ## Branch naming
 ### Task branches
@@ -110,3 +110,4 @@ Recommended prefix:
 - Notion remains the canonical source for backlog items.
 - Git branch and PR naming should reference Notion task identifiers.
 - The repository official URL is `https://github.com/Ernest-NA/Translat`.
+- The `docs-governance` branch is an explicit bootstrap exception used to establish repository governance before regular `task/*` branches are enforced.

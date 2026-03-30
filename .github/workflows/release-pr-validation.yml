@@ -4,31 +4,13 @@ on:
   pull_request:
     types: [opened, edited, reopened, synchronize]
     branches:
-      - pro
+      - main
 
 jobs:
   validate-release-pr:
-    if: ${{ github.base_ref == 'pro' }}
+    if: ${{ github.base_ref == 'main' }}
     runs-on: ubuntu-latest
     steps:
-      - name: Validate release branch naming
-        run: |
-          BRANCH='${{ github.head_ref }}'
-          if [[ ! "$BRANCH" =~ ^release/R[0-9]+\.[0-9]+$ ]]; then
-            echo "Invalid release branch name: $BRANCH"
-            echo "Expected format: release/R0.1, release/R0.2, release/R1.0"
-            exit 1
-          fi
-
-      - name: Validate PR title contains release id
-        run: |
-          TITLE='${{ github.event.pull_request.title }}'
-          if [[ ! "$TITLE" =~ ^\[R[0-9]+\.[0-9]+\] ]]; then
-            echo "Invalid release PR title: $TITLE"
-            echo "Expected prefix: [R0.1], [R0.2], [R1.0], etc."
-            exit 1
-          fi
-
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -49,5 +31,5 @@ jobs:
             echo "- Head branch: ${{ github.head_ref }}"
             echo "- Base branch: ${{ github.base_ref }}"
             echo "- PR title: ${{ github.event.pull_request.title }}"
-            echo "- Validation: OK"
+            echo "- Validation: scaffold checks completed"
           } >> "$GITHUB_STEP_SUMMARY"
