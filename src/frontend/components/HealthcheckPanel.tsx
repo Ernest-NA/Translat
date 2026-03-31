@@ -66,6 +66,20 @@ export function HealthcheckPanel({
           <dd>{healthcheck?.version ?? "pending"}</dd>
         </div>
         <div>
+          <dt>Database</dt>
+          <dd>{healthcheck?.database.encryption ?? "pending"}</dd>
+        </div>
+        <div>
+          <dt>Migrations</dt>
+          <dd>
+            {healthcheck?.database.appliedMigrations.join(", ") ?? "pending"}
+          </dd>
+        </div>
+        <div>
+          <dt>Schema ready</dt>
+          <dd>{healthcheck?.database.schemaReady ? "yes" : "pending"}</dd>
+        </div>
+        <div>
           <dt>Error details</dt>
           <dd>{error?.details ?? "No desktop error reported."}</dd>
         </div>

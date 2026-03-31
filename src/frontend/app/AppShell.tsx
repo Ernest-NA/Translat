@@ -33,7 +33,7 @@ export function AppShell() {
         <div className="app-shell__header-meta">
           <span>{runtimeLabel}</span>
           <span>Windows desktop</span>
-          <span>Ready for B4</span>
+          <span>Encrypted SQLite bootstrap</span>
         </div>
       </header>
 
@@ -65,6 +65,10 @@ export function AppShell() {
                 Command failures surface a normalized error with code and
                 details.
               </li>
+              <li>
+                The backend now bootstraps encrypted SQLite with versioned
+                migrations before exposing repository access points.
+              </li>
             </ul>
           </section>
         </div>
@@ -87,6 +91,10 @@ export function AppShell() {
                 <dt>Error mode</dt>
                 <dd>{error ? error.code : "No error"}</dd>
               </div>
+              <div>
+                <dt>DB path</dt>
+                <dd>{healthcheck?.database.path ?? "Pending bootstrap"}</dd>
+              </div>
             </dl>
           </section>
 
@@ -94,15 +102,16 @@ export function AppShell() {
             <p className="surface-card__eyebrow">Readiness notes</p>
             <ul className="readiness-list">
               <li>
-                B2 keeps persistence, login, and business workflows out of
-                scope.
+                B4 adds encrypted SQLite bootstrap and versioned migrations, but
+                still keeps domain repositories out of scope.
               </li>
               <li>
-                The shell now exposes clearer extension points for future
-                commands.
+                The persistence bootstrap is reusable from Rust without wiring
+                the frontend into storage decisions.
               </li>
               <li>
-                B4 can build on this foundation without revisiting shell wiring.
+                Future repository modules can open the encrypted database
+                without revisiting shell setup.
               </li>
             </ul>
           </section>

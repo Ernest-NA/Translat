@@ -11,9 +11,19 @@ export interface DesktopCommandErrorPayload {
   message: string;
 }
 
+export interface DatabaseStatus {
+  appliedMigrations: string[];
+  encryption: string;
+  keyStorage: string;
+  migrationCount: number;
+  path: string;
+  schemaReady: boolean;
+}
+
 export interface HealthcheckResponse {
   appName: string;
   checkedAt: number;
+  database: DatabaseStatus;
   environment: "development" | "production";
   message: string;
   status: "ok";
