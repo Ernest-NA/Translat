@@ -16,6 +16,9 @@ concurrency:
   group: codeql-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  CODEQL_ACTION_FILE_COVERAGE_ON_PRS: true
+
 jobs:
   analyze-javascript-typescript:
     name: Analyze javascript-typescript

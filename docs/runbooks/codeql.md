@@ -27,6 +27,10 @@ The workflow runs on:
 - pull requests targeting `main`
 - weekly schedule
 
+## Pull request coverage behavior
+- The workflow explicitly sets `CODEQL_ACTION_FILE_COVERAGE_ON_PRS=true`.
+- This keeps file coverage computation enabled on pull request analyses instead of accepting the newer default warning-only behavior from the CodeQL action.
+
 ## Intentional limits
 - CodeQL only analyzes the languages that are present and stable in the repository today: JavaScript / TypeScript and Rust.
 - The workflow does not try to detect future Cargo manifests or future application layouts.
