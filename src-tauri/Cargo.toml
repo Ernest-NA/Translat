@@ -1,0 +1,20 @@
+[package]
+name = "translat-desktop"
+version = "0.1.0"
+description = "Desktop shell foundation for Translat."
+authors = ["Ernesto"]
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2.5.6", features = [] }
+
+[dependencies]
+base64 = "0.22.1"
+rand = "0.8.5"
+rusqlite = { version = "0.39.0", features = ["bundled-sqlcipher-vendored-openssl"] }
+serde = { version = "1.0", features = ["derive"] }
+tauri = { version = "2.10.3", features = [] }
+windows-sys = { version = "0.61.2", features = ["Win32_Security_Cryptography", "Win32_System_Memory"] }
+
+[dev-dependencies]
+tempfile = "3.23.0"

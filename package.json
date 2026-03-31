@@ -1,0 +1,34 @@
+{
+  "name": "translat",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Desktop shell foundation for the Translat application.",
+  "scripts": {
+    "dev": "tauri dev",
+    "dev:web": "vite",
+    "check:scaffold": "node -e \"const fs=require('fs'); const paths=['AGENTS.md','docs/architecture/system-overview.md','docs/runbooks/local-setup.md','src/README.md','src/frontend/App.tsx','src/frontend/app/AppShell.tsx','src/frontend/hooks/useHealthcheck.ts','src/shared/desktop.ts','src-tauri/Cargo.toml','src-tauri/src/main.rs','src-tauri/src/commands/healthcheck.rs','src-tauri/src/error.rs','src-tauri/src/persistence/bootstrap.rs','src-tauri/src/persistence/migrations.rs','src-tauri/migrations/0001_initial_schema.sql','tests/README.md','.agents/skills/README.md','notion/README.md']; const missing=paths.filter(p=>!fs.existsSync(p)); if(missing.length){console.error('Missing required paths: '+missing.join(', ')); process.exit(1)} console.log('Foundation shell OK');\"",
+    "lint": "biome ci src/frontend",
+    "typecheck": "tsc --noEmit",
+    "check:desktop": "cargo check --manifest-path src-tauri/Cargo.toml",
+    "test:desktop": "cargo test --manifest-path src-tauri/Cargo.toml",
+    "check": "npm run check:scaffold && npm run lint && npm run typecheck && npm run check:desktop",
+    "test": "npm run check && npm run test:desktop",
+    "build:web": "vite build",
+    "build": "tauri build"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.10.1",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.10",
+    "@tauri-apps/cli": "^2.10.1",
+    "@types/node": "^25.5.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "typescript": "^6.0.2",
+    "vite": "^8.0.3"
+  }
+}

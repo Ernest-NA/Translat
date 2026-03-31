@@ -1,0 +1,36 @@
+name: Rust cargo-audit validation
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+    branches:
+      - develop
+      - main
+  schedule:
+    - cron: '0 6 * * 1'
+
+concurrency:
+  group: rust-audit-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust-audit:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-audit
+        shell: bash
+        run: cargo install cargo-audit --locked
+
+      - name: Run cargo-audit
+        shell: bash
+        run: cargo audit --file src-tauri/Cargo.lock
