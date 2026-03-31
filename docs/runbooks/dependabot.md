@@ -4,18 +4,20 @@
 Define how Dependabot is used in Translat to keep repository dependencies reviewed and updated with low operational noise.
 
 ## Scope
-At this stage, Dependabot is configured for:
+Dependabot is configured for:
 - GitHub Actions workflows
 - npm dependencies at the repository root
-- Cargo dependencies when Rust manifests are present
+- Cargo dependencies in `src-tauri/`
 
 ## Update strategy
 - Weekly cadence
 - Conservative limit on open pull requests
 - Grouped updates where that helps reduce review noise
 
-## Why this exists now
-The repository is still in scaffold stage, but enabling Dependabot early helps establish the maintenance pattern before the stack grows.
+## Current repository alignment
+- npm updates target the root `package.json`
+- Cargo updates target `src-tauri/Cargo.toml`
+- GitHub Actions updates target workflow actions declared in `.github/workflows/`
 
 ## Expected review flow
 1. Dependabot opens a PR.
@@ -26,3 +28,4 @@ The repository is still in scaffold stage, but enabling Dependabot early helps e
 ## Notes
 - Dependabot alerts and security updates are already enabled in repository settings.
 - This file only documents the repository-level behavior and PR generation policy.
+- Repository-owner alert preferences and security update settings remain part of B3.1 because they are configured in GitHub UI.
