@@ -3,7 +3,7 @@
 This directory contains the application source code for Translat.
 
 Current high-level structure:
-- frontend React application in `src/frontend/`
+- frontend React application shell in `src/frontend/`
 - shared TypeScript contracts in `src/shared/`
 - domain-oriented backend modules reserved in `src/backend/`
 - Tauri runtime shell and Rust entrypoint in `src-tauri/`

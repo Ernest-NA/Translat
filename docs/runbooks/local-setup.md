@@ -22,6 +22,12 @@ npm install
 
 The Tauri CLI is installed as a local npm dependency, so no global Tauri installation is required.
 
+If `cargo` or `rustc` are not available in the current PowerShell session after installing Rust, prepend the rustup bin directory before running the Translat scripts:
+
+```powershell
+$env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
+```
+
 ## Development commands
 
 Run the desktop shell in development mode:
@@ -46,5 +52,6 @@ npm run build
 ## What to expect
 
 - `npm run dev` opens the main Translat desktop window.
-- The placeholder screen renders inside the Tauri shell.
-- The frontend invokes the Rust `healthcheck` command and shows the result on screen.
+- The base app shell renders inside the Tauri window instead of the B1 placeholder view.
+- The frontend invokes the Rust `healthcheck` command through a shared desktop wrapper.
+- Command failures surface a normalized frontend error with code and message.

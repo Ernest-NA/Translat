@@ -1,44 +1,28 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use serde::Serialize;
-
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-struct HealthcheckResponse {
-  app: String,
-  message: String,
-  status: String,
-}
-
-#[tauri::command]
-fn healthcheck() -> HealthcheckResponse {
-  HealthcheckResponse {
-    app: "Translat".to_owned(),
-    message: "Translat desktop shell is connected and ready to grow.".to_owned(),
-    status: "ok".to_owned(),
-  }
-}
+mod commands;
+mod error;
 
 fn main() {
-  tauri::Builder::default()
-    .invoke_handler(tauri::generate_handler![healthcheck])
-    .run(tauri::generate_context!())
-    .expect("error while running the Translat desktop shell");
+    tauri::Builder::default()
+        .invoke_handler(tauri::generate_handler![commands::healthcheck::healthcheck])
+        .run(tauri::generate_context!())
+        .expect("error while running the Translat desktop shell");
 }
 
 #[cfg(test)]
 mod tests {
-  use super::{healthcheck, HealthcheckResponse};
+    use super::commands::healthcheck::healthcheck;
 
-  #[test]
-  fn healthcheck_returns_expected_shell_status() {
-    assert_eq!(
-      healthcheck(),
-      HealthcheckResponse {
-        app: "Translat".to_owned(),
-        message: "Translat desktop shell is connected and ready to grow.".to_owned(),
-        status: "ok".to_owned(),
-      }
-    );
-  }
+    #[test]
+    fn healthcheck_returns_expected_shell_status() {
+        let response = healthcheck().expect("healthcheck should succeed");
+
+        assert_eq!(response.app_name, "Translat");
+        assert_eq!(response.environment, "development");
+        assert_eq!(response.status, "ok");
+        assert!(!response.message.is_empty());
+        assert!(!response.version.is_empty());
+        assert!(response.checked_at > 0);
+    }
 }
