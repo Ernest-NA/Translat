@@ -3,19 +3,20 @@
 ## Objective
 Provide the repository-level guidance for GitHub CodeQL and code scanning in Translat.
 
-## Why this exists now
-The repository already has code scanning / CodeQL enabled in GitHub settings. This change adds the repository workflow so analysis runs automatically in CI.
-
 ## Current scope
-At this stage, the workflow analyzes:
-- JavaScript / TypeScript
-- Rust, when a Rust manifest exists in the repository
+The repository workflow analyzes:
+- JavaScript / TypeScript from the current frontend workspace
+- Rust from the desktop shell that lives in `src-tauri/`
 
 ## Rust-specific behavior
-- Rust analysis is enabled from the start, but only runs when the repository contains `Cargo.toml` in one of the expected locations.
-- This avoids failing CodeQL runs before B1 introduces the real Rust shell.
-- When Rust is present, the workflow uses `build-mode: none`.
-- GitHub documents that Rust analysis requires `rustup` and `cargo` on the runner and that `Cargo.toml` or `rust-project.json` must be present.
+- Rust analysis now runs unconditionally because the repository already contains the real desktop shell in `src-tauri/`.
+- The workflow uses `build-mode: none` for Rust.
+- This is an intentional stability choice: the current repository does not need generated Rust code or a manual CodeQL build step to analyze the checked-in shell source.
+- GitHub documentation states that Rust supports `build-mode: none` and still requires `rustup` and `cargo` on the runner.
+
+## JavaScript / TypeScript behavior
+- The workflow analyzes JavaScript / TypeScript without a CodeQL autobuild step.
+- This is intentional because the current frontend does not need a build step to make the source analyzable by CodeQL, and removing `autobuild` reduces one moving part in CI.
 
 ## Trigger strategy
 The workflow runs on:
@@ -25,8 +26,17 @@ The workflow runs on:
 - pull requests targeting `main`
 - weekly schedule
 
-## Important setup note
-If the repository still has CodeQL default setup enabled in GitHub settings, advanced workflow uploads will fail. In that case, switch the repository from default setup to advanced setup so the workflow file becomes the active CodeQL configuration.
+## Intentional limits
+- CodeQL only analyzes the languages that are present and stable in the repository today: JavaScript / TypeScript and Rust.
+- The workflow does not try to detect future Cargo manifests or future application layouts.
+- The workflow does not use manual build steps for Rust at this stage.
+- If the repository later introduces generated Rust code, extra Cargo workspaces, or build-time code that materially affects analysis accuracy, revisit the Rust job and consider a manual build mode.
+
+## B3.1 manual GitHub UI follow-up
+The following items are intentionally outside B3 because they require repository-owner actions in GitHub UI:
+1. Ensure CodeQL default setup is disabled so this advanced workflow remains the active configuration.
+2. Configure repository rulesets or branch protection with the exact status checks that should become required after this workflow set is considered stable.
+3. Review code scanning alert notification preferences and owner-facing security settings.
 
 ## Expected review flow
 1. CodeQL runs automatically.

@@ -7,6 +7,10 @@ on:
       - develop
       - main
 
+concurrency:
+  group: biome-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   biome-frontend:
     runs-on: ubuntu-latest
@@ -18,10 +22,14 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Setup Biome
-        uses: biomejs/setup-biome@v2
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
-          version: latest
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
 
       - name: Run Biome frontend checks
-        run: biome ci src/frontend
+        run: npm run lint
