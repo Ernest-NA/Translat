@@ -9,14 +9,13 @@ The repository already has code scanning / CodeQL enabled in GitHub settings. Th
 ## Current scope
 At this stage, the workflow analyzes:
 - JavaScript / TypeScript
-- Rust
+- Rust, when a Rust manifest exists in the repository
 
-This broader scope is viable now because GitHub CodeQL supports Rust and documents `build-mode: none` for Rust analysis. In that mode, CodeQL does not invoke a full build, but it does require a `Cargo.toml` or `rust-project.json` to be present when Rust code exists.
-
-## Rust-specific notes
-- Rust is included from the start so the repository does not need a second CodeQL redesign once B1 begins.
-- The workflow uses a matrix and explicitly sets `build-mode: none` for Rust.
-- GitHub documents that Rust analysis requires `rustup` and `cargo` to be installed on the runner.
+## Rust-specific behavior
+- Rust analysis is enabled from the start, but only runs when the repository contains `Cargo.toml` in one of the expected locations.
+- This avoids failing CodeQL runs before B1 introduces the real Rust shell.
+- When Rust is present, the workflow uses `build-mode: none`.
+- GitHub documents that Rust analysis requires `rustup` and `cargo` on the runner and that `Cargo.toml` or `rust-project.json` must be present.
 
 ## Trigger strategy
 The workflow runs on:
@@ -25,6 +24,9 @@ The workflow runs on:
 - pull requests targeting `develop`
 - pull requests targeting `main`
 - weekly schedule
+
+## Important setup note
+If the repository still has CodeQL default setup enabled in GitHub settings, advanced workflow uploads will fail. In that case, switch the repository from default setup to advanced setup so the workflow file becomes the active CodeQL configuration.
 
 ## Expected review flow
 1. CodeQL runs automatically.
