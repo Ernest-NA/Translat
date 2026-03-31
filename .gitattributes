@@ -1,0 +1,6 @@
+src/frontend/*.ts text eol=lf
+src/frontend/*.tsx text eol=lf
+src/frontend/*.css text eol=lf
+src/frontend/**/*.ts text eol=lf
+src/frontend/**/*.tsx text eol=lf
+src/frontend/**/*.css text eol=lf
