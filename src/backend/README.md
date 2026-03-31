@@ -1,6 +1,8 @@
 # Backend
 
-This area is reserved for the Rust-side backend concerns of Translat.
+This area is reserved for Translat backend modules and services that will grow beyond the initial shell.
+
+For B1, the executable Rust entrypoint that powers the desktop shell lives in `src-tauri/`.
 
 Planned responsibility areas:
 - command handling and desktop integration

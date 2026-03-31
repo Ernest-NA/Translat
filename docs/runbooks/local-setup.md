@@ -1,29 +1,50 @@
 # Local setup
 
 ## Current stage
-This repository is in scaffold stage. The full Tauri + React + Rust application is not initialized yet.
+
+This repository already includes the minimum Translat desktop shell with Tauri, React, TypeScript, and Rust.
 
 ## Minimum prerequisites
+
 - Git
 - Node.js 20+
 - npm 10+
-- Rust toolchain
+- Rust toolchain via `rustup`
 - Windows 11 development environment
+- Microsoft C++ Build Tools / Visual Studio Build Tools 2022
+- Microsoft Edge WebView2 Runtime
 
-## Repository validation commands
-Use these commands while the repository is still in scaffold stage:
+## Install dependencies
 
 ```bash
 npm install
-npm run check:scaffold
+```
+
+The Tauri CLI is installed as a local npm dependency, so no global Tauri installation is required.
+
+## Development commands
+
+Run the desktop shell in development mode:
+
+```bash
+npm run dev
+```
+
+Validate the frontend and backend foundations:
+
+```bash
+npm run check
 npm run test
+```
+
+Create a desktop production build:
+
+```bash
 npm run build
 ```
 
-## Notes
-- `check:scaffold` validates the initial repository structure.
-- `test` currently aliases the scaffold validation step.
-- `build` is a placeholder command until the application shell is initialized.
+## What to expect
 
-## Next implementation step
-Bootstrap the desktop shell and runtime foundation during the technical foundation phase.
+- `npm run dev` opens the main Translat desktop window.
+- The placeholder screen renders inside the Tauri shell.
+- The frontend invokes the Rust `healthcheck` command and shows the result on screen.
