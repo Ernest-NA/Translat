@@ -7,7 +7,8 @@ Translat es una aplicación de escritorio para Windows 11 que orquesta traduccio
 La base desktop ya está inicializada con:
 - shell nativo en Tauri + Rust,
 - frontend React + TypeScript cargado dentro del contenedor desktop,
-- y un comando de prueba `healthcheck` para validar el wiring frontend-backend.
+- un patrón reutilizable para comandos frontend-backend,
+- y manejo básico de errores del shell para seguir creciendo sin rehacer la base.
 
 ## Arranque rápido
 

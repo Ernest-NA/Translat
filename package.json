@@ -6,11 +6,13 @@
   "scripts": {
     "dev": "tauri dev",
     "dev:web": "vite",
-    "check:scaffold": "node -e \"const fs=require('fs'); const paths=['AGENTS.md','docs/architecture/system-overview.md','docs/runbooks/local-setup.md','src/README.md','src/frontend/App.tsx','src/shared/desktop.ts','src-tauri/Cargo.toml','src-tauri/src/main.rs','tests/README.md','.agents/skills/README.md','notion/README.md']; const missing=paths.filter(p=>!fs.existsSync(p)); if(missing.length){console.error('Missing required paths: '+missing.join(', ')); process.exit(1)} console.log('Foundation shell OK');\"",
+    "check:scaffold": "node -e \"const fs=require('fs'); const paths=['AGENTS.md','docs/architecture/system-overview.md','docs/runbooks/local-setup.md','src/README.md','src/frontend/App.tsx','src/frontend/app/AppShell.tsx','src/frontend/hooks/useHealthcheck.ts','src/shared/desktop.ts','src-tauri/Cargo.toml','src-tauri/src/main.rs','src-tauri/src/commands/healthcheck.rs','src-tauri/src/error.rs','tests/README.md','.agents/skills/README.md','notion/README.md']; const missing=paths.filter(p=>!fs.existsSync(p)); if(missing.length){console.error('Missing required paths: '+missing.join(', ')); process.exit(1)} console.log('Foundation shell OK');\"",
     "lint": "biome ci src/frontend",
     "typecheck": "tsc --noEmit",
-    "check": "npm run check:scaffold && npm run lint && npm run typecheck && cargo check --manifest-path src-tauri/Cargo.toml",
-    "test": "npm run check && cargo test --manifest-path src-tauri/Cargo.toml",
+    "check:desktop": "cargo check --manifest-path src-tauri/Cargo.toml",
+    "test:desktop": "cargo test --manifest-path src-tauri/Cargo.toml",
+    "check": "npm run check:scaffold && npm run lint && npm run typecheck && npm run check:desktop",
+    "test": "npm run check && npm run test:desktop",
     "build:web": "vite build",
     "build": "tauri build"
   },
