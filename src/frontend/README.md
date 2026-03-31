@@ -1,6 +1,11 @@
 # Frontend
 
-This area is reserved for the React + TypeScript user interface of Translat.
+This area contains the React + TypeScript user interface that runs inside the Tauri desktop shell.
+
+Current scope:
+- placeholder desktop screen for the foundation stage,
+- frontend invocation of the native `healthcheck` command,
+- base styling and shell wiring validation.
 
 Planned responsibility areas:
 - project workspace UI
