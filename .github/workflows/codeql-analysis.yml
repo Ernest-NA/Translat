@@ -14,25 +14,40 @@ on:
 
 jobs:
   analyze:
-    name: Analyze JavaScript/TypeScript
+    name: Analyze ${{ matrix.language }}
     runs-on: ubuntu-latest
     permissions:
       actions: read
       contents: read
       security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: javascript-typescript
+          - language: rust
+            build-mode: none
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
         with:
           persist-credentials: false
 
+      - name: Setup Rust toolchain
+        if: ${{ matrix.language == 'rust' }}
+        uses: dtolnay/rust-toolchain@stable
+
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
         with:
-          languages: javascript-typescript
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode || '' }}
 
       - name: Autobuild
+        if: ${{ matrix.language != 'rust' }}
         uses: github/codeql-action/autobuild@v3
 
       - name: Perform CodeQL analysis
         uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"

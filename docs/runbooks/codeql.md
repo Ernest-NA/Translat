@@ -9,11 +9,14 @@ The repository already has code scanning / CodeQL enabled in GitHub settings. Th
 ## Current scope
 At this stage, the workflow analyzes:
 - JavaScript / TypeScript
+- Rust
 
-This is the safest initial scope because the frontend and repository automation already include JavaScript/TypeScript files, while the full Rust application shell is still planned for B1.
+This broader scope is viable now because GitHub CodeQL supports Rust and documents `build-mode: none` for Rust analysis. In that mode, CodeQL does not invoke a full build, but it does require a `Cargo.toml` or `rust-project.json` to be present when Rust code exists.
 
-## Planned extension
-Once B1 introduces the real Rust project structure, the CodeQL workflow can be expanded to include Rust analysis as well.
+## Rust-specific notes
+- Rust is included from the start so the repository does not need a second CodeQL redesign once B1 begins.
+- The workflow uses a matrix and explicitly sets `build-mode: none` for Rust.
+- GitHub documents that Rust analysis requires `rustup` and `cargo` to be installed on the runner.
 
 ## Trigger strategy
 The workflow runs on:
