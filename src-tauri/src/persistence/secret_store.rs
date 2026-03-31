@@ -102,13 +102,13 @@ mod windows_dpapi {
     use crate::persistence::error::PersistenceError;
 
     pub fn protect(plaintext: &[u8]) -> Result<Vec<u8>, PersistenceError> {
-        let mut input_blob = blob_from_bytes(plaintext);
+        let input_blob = blob_from_bytes(plaintext);
         let mut output_blob = empty_blob();
         let description = wide_description("Translat encrypted database key");
 
         let protected_ok = unsafe {
             CryptProtectData(
-                &mut input_blob,
+                &input_blob,
                 description.as_ptr(),
                 null(),
                 null(),
@@ -132,12 +132,12 @@ mod windows_dpapi {
     }
 
     pub fn unprotect(ciphertext: &[u8]) -> Result<Vec<u8>, PersistenceError> {
-        let mut input_blob = blob_from_bytes(ciphertext);
+        let input_blob = blob_from_bytes(ciphertext);
         let mut output_blob = empty_blob();
 
         let unprotected_ok = unsafe {
             CryptUnprotectData(
-                &mut input_blob,
+                &input_blob,
                 null_mut(),
                 null(),
                 null(),

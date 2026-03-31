@@ -33,5 +33,4 @@ jobs:
           perl-version: '5.38'
 
       - name: Run cargo clippy
-        shell: bash
         run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
