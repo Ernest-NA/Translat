@@ -1,0 +1,92 @@
+name: CodeQL analysis
+
+on:
+  push:
+    branches:
+      - develop
+      - main
+  pull_request:
+    branches:
+      - develop
+      - main
+  schedule:
+    - cron: '0 5 * * 1'
+
+jobs:
+  detect-rust:
+    name: Detect Rust manifest
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      has_rust: ${{ steps.detect.outputs.has_rust }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Detect Cargo manifest
+        id: detect
+        shell: bash
+        run: |
+          if [ -f Cargo.toml ] || [ -f src-tauri/Cargo.toml ] || [ -f src/backend/Cargo.toml ]; then
+            echo "has_rust=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_rust=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  analyze-javascript-typescript:
+    name: Analyze javascript-typescript
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:javascript-typescript"
+
+  analyze-rust:
+    name: Analyze rust
+    needs: detect-rust
+    if: ${{ needs.detect-rust.outputs.has_rust == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: rust
+          build-mode: none
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:rust"
