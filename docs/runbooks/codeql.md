@@ -7,6 +7,7 @@ Provide the repository-level guidance for GitHub CodeQL and code scanning in Tra
 The repository workflow analyzes:
 - JavaScript / TypeScript from the current frontend workspace
 - Rust from the desktop shell that lives in `src-tauri/`
+- The workflow uses `github/codeql-action@v4`
 
 ## Rust-specific behavior
 - Rust analysis now runs unconditionally because the repository already contains the real desktop shell in `src-tauri/`.
@@ -37,6 +38,10 @@ The following items are intentionally outside B3 because they require repository
 1. Ensure CodeQL default setup is disabled so this advanced workflow remains the active configuration.
 2. Configure repository rulesets or branch protection with the exact status checks that should become required after this workflow set is considered stable.
 3. Review code scanning alert notification preferences and owner-facing security settings.
+
+## Known conflict signal
+- If a CodeQL run finishes analysis locally but GitHub rejects the SARIF upload with `CodeQL analyses from advanced configurations cannot be processed when the default setup is enabled`, the remaining issue is in GitHub UI, not in this workflow file.
+- The required fix is to disable CodeQL default setup in GitHub so the advanced workflow in `.github/workflows/codeql.yml` is the only active CodeQL configuration.
 
 ## Expected review flow
 1. CodeQL runs automatically.
