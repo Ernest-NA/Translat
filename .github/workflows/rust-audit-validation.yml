@@ -1,0 +1,62 @@
+name: Rust cargo-audit validation
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+    branches:
+      - develop
+      - main
+  schedule:
+    - cron: '0 6 * * 1'
+
+jobs:
+  rust-audit:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Detect Cargo lockfile
+        id: detect-lock
+        shell: bash
+        run: |
+          if [ -f Cargo.lock ]; then
+            echo "lockfile=Cargo.lock" >> "$GITHUB_OUTPUT"
+          elif [ -f src-tauri/Cargo.lock ]; then
+            echo "lockfile=src-tauri/Cargo.lock" >> "$GITHUB_OUTPUT"
+          elif [ -f src/backend/Cargo.lock ]; then
+            echo "lockfile=src/backend/Cargo.lock" >> "$GITHUB_OUTPUT"
+          else
+            echo "lockfile=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup Rust toolchain
+        if: ${{ steps.detect-lock.outputs.lockfile != '' }}
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-audit
+        if: ${{ steps.detect-lock.outputs.lockfile != '' }}
+        shell: bash
+        run: cargo install cargo-audit --locked
+
+      - name: Run cargo-audit
+        if: ${{ steps.detect-lock.outputs.lockfile != '' }}
+        shell: bash
+        run: |
+          LOCKFILE='${{ steps.detect-lock.outputs.lockfile }}'
+          cargo audit --file "$LOCKFILE"
+
+      - name: Write summary for scaffold stage
+        if: ${{ steps.detect-lock.outputs.lockfile == '' }}
+        run: |
+          {
+            echo "## Rust cargo-audit validation"
+            echo "- Status: skipped"
+            echo "- Reason: no Cargo.lock found yet in scaffold stage"
+            echo "- Expected future locations: Cargo.lock, src-tauri/Cargo.lock, or src/backend/Cargo.lock"
+          } >> "$GITHUB_STEP_SUMMARY"
