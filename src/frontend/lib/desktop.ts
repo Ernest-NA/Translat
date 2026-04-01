@@ -1,9 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
 import {
+  type CreateProjectInput,
   DESKTOP_COMMANDS,
   type DesktopCommandErrorPayload,
   type DesktopCommandName,
   type HealthcheckResponse,
+  type OpenProjectInput,
+  type ProjectSummary,
+  type ProjectsOverview,
 } from "../../shared/desktop";
 
 export class DesktopCommandError extends Error {
@@ -80,4 +84,20 @@ export function runHealthcheck() {
   return invokeDesktopCommand<HealthcheckResponse>(
     DESKTOP_COMMANDS.healthcheck,
   );
+}
+
+export function listProjects() {
+  return invokeDesktopCommand<ProjectsOverview>(DESKTOP_COMMANDS.listProjects);
+}
+
+export function createProject(input: CreateProjectInput) {
+  return invokeDesktopCommand<ProjectSummary>(DESKTOP_COMMANDS.createProject, {
+    input,
+  });
+}
+
+export function openProject(input: OpenProjectInput) {
+  return invokeDesktopCommand<ProjectSummary>(DESKTOP_COMMANDS.openProject, {
+    input,
+  });
 }

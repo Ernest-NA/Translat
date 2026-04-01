@@ -29,10 +29,16 @@ impl DatabaseRuntime {
         }
     }
 
-    pub fn inspect(&self) -> Result<DatabaseStatus, PersistenceError> {
+    pub fn open_connection(&self) -> Result<Connection, PersistenceError> {
         let encryption_key = secret_store::load_existing_encryption_key(&self.encryption_key_path)?;
 
-        inspect_database(&self.database_path, &encryption_key)
+        open_database_with_key(&self.database_path, &encryption_key)
+    }
+
+    pub fn inspect(&self) -> Result<DatabaseStatus, PersistenceError> {
+        let connection = self.open_connection()?;
+
+        inspect_connection(&self.database_path, &connection)
     }
 }
 
@@ -123,6 +129,7 @@ pub fn bootstrap_database(
     })
 }
 
+#[cfg(test)]
 pub fn inspect_database(
     database_path: &Path,
     encryption_key: &str,
@@ -241,11 +248,11 @@ mod tests {
         assert!(database_path.exists());
         assert_eq!(
             bootstrap_report.newly_applied_migrations,
-            vec!["0001_initial_schema".to_owned()]
+            vec!["0001_initial_schema".to_owned(), "0002_projects".to_owned()]
         );
         assert_eq!(
             bootstrap_report.applied_migrations,
-            vec!["0001_initial_schema".to_owned()]
+            vec!["0001_initial_schema".to_owned(), "0002_projects".to_owned()]
         );
         assert!(bootstrap_report.schema_ready);
     }
@@ -264,7 +271,7 @@ mod tests {
         assert!(second_report.newly_applied_migrations.is_empty());
         assert_eq!(
             second_report.applied_migrations,
-            vec!["0001_initial_schema".to_owned()]
+            vec!["0001_initial_schema".to_owned(), "0002_projects".to_owned()]
         );
         assert!(second_report.schema_ready);
     }
@@ -291,16 +298,24 @@ mod tests {
                 |row| row.get::<_, i64>(0),
             )
             .expect("initial schema table should be queryable");
+        let projects_table_count = connection
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'projects'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("projects table should be queryable");
 
         let database_status = inspect_database(&database_path, TEST_DATABASE_KEY)
             .expect("database inspection should succeed");
 
-        assert_eq!(migration_count, 1);
+        assert_eq!(migration_count, 2);
         assert_eq!(app_metadata_table_count, 1);
-        assert_eq!(database_status.migration_count, 1);
+        assert_eq!(projects_table_count, 1);
+        assert_eq!(database_status.migration_count, 2);
         assert_eq!(
             database_status.applied_migrations,
-            vec!["0001_initial_schema".to_owned()]
+            vec!["0001_initial_schema".to_owned(), "0002_projects".to_owned()]
         );
         assert!(database_status.schema_ready);
     }

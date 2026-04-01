@@ -1,5 +1,8 @@
 export const DESKTOP_COMMANDS = {
+  createProject: "create_project",
   healthcheck: "healthcheck",
+  listProjects: "list_projects",
+  openProject: "open_project",
 } as const;
 
 export type DesktopCommandName =
@@ -28,4 +31,27 @@ export interface HealthcheckResponse {
   message: string;
   status: "ok";
   version: string;
+}
+
+export interface ProjectSummary {
+  id: string;
+  name: string;
+  description: string | null;
+  createdAt: number;
+  updatedAt: number;
+  lastOpenedAt: number;
+}
+
+export interface ProjectsOverview {
+  activeProjectId: string | null;
+  projects: ProjectSummary[];
+}
+
+export interface CreateProjectInput {
+  name: string;
+  description?: string;
+}
+
+export interface OpenProjectInput {
+  projectId: string;
 }
