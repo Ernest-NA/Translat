@@ -3,8 +3,8 @@ use std::path::Path;
 
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
-use rand::rngs::OsRng;
-use rand::RngCore;
+use rand::rngs::SysRng;
+use rand::TryRng;
 
 use crate::persistence::error::PersistenceError;
 
@@ -25,10 +25,7 @@ pub fn load_or_create_encryption_key(key_path: &Path) -> Result<String, Persiste
         })?;
     }
 
-    let mut secret_bytes = [0_u8; 32];
-    OsRng.fill_bytes(&mut secret_bytes);
-
-    let encryption_key = URL_SAFE_NO_PAD.encode(secret_bytes);
+    let encryption_key = generate_encryption_key()?;
     let protected_key_bytes = protect_key(encryption_key.as_bytes())?;
 
     fs::write(key_path, protected_key_bytes).map_err(|error| {
@@ -42,6 +39,18 @@ pub fn load_or_create_encryption_key(key_path: &Path) -> Result<String, Persiste
     })?;
 
     Ok(encryption_key)
+}
+
+fn generate_encryption_key() -> Result<String, PersistenceError> {
+    let mut secret_bytes = [0_u8; 32];
+    SysRng.try_fill_bytes(&mut secret_bytes).map_err(|error| {
+        PersistenceError::with_details(
+            "The persistence bootstrap could not generate an encryption key from the system RNG.",
+            error,
+        )
+    })?;
+
+    Ok(URL_SAFE_NO_PAD.encode(secret_bytes))
 }
 
 pub fn load_existing_encryption_key(key_path: &Path) -> Result<String, PersistenceError> {
@@ -194,5 +203,20 @@ mod windows_dpapi {
 
     fn wide_description(value: &str) -> Vec<u16> {
         value.encode_utf16().chain(std::iter::once(0)).collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::generate_encryption_key;
+
+    #[test]
+    fn generated_encryption_key_has_expected_length_and_charset() {
+        let encryption_key = generate_encryption_key().expect("encryption key generation");
+
+        assert_eq!(encryption_key.len(), 43);
+        assert!(encryption_key
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || character == '-' || character == '_'));
     }
 }
