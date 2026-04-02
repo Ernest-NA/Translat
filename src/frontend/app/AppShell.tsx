@@ -1,9 +1,11 @@
+import { useCallback } from "react";
 import { DESKTOP_COMMANDS } from "../../shared/desktop";
 import { HealthcheckPanel } from "../components/HealthcheckPanel";
 import { ProjectComposer } from "../components/ProjectComposer";
 import { ProjectList } from "../components/ProjectList";
 import { ProjectWorkspace } from "../components/ProjectWorkspace";
 import { useHealthcheck } from "../hooks/useHealthcheck";
+import { useProjectDocuments } from "../hooks/useProjectDocuments";
 import { useProjectsWorkspace } from "../hooks/useProjectsWorkspace";
 
 function formatCheckedAt(value?: number) {
@@ -17,6 +19,7 @@ function formatCheckedAt(value?: number) {
 export function AppShell() {
   const {
     activeProject,
+    reload: reloadProjects,
     error: projectError,
     isCreating,
     isLoading: isLoadingProjects,
@@ -25,7 +28,28 @@ export function AppShell() {
     selectProject,
     submitProject,
   } = useProjectsWorkspace();
+  const {
+    documents,
+    importError,
+    importDocuments,
+    isImporting,
+    isLoading: isLoadingDocuments,
+    loadError,
+  } = useProjectDocuments(activeProject?.id ?? null);
   const { error, healthcheck, isLoading, retry } = useHealthcheck();
+
+  const handleImportDocuments = useCallback(
+    async (files: FileList): Promise<number> => {
+      const importedCount = await importDocuments(files);
+
+      if (importedCount > 0) {
+        await reloadProjects();
+      }
+
+      return importedCount;
+    },
+    [importDocuments, reloadProjects],
+  );
 
   const runtimeLabel = healthcheck
     ? `${healthcheck.environment} | v${healthcheck.version}`
@@ -36,44 +60,58 @@ export function AppShell() {
       <header className="app-shell__header">
         <div>
           <p className="app-shell__eyebrow">Translat</p>
-          <h1>Project workspace foundation</h1>
+          <h1>Project document intake</h1>
           <p className="app-shell__lead">
-            C1 turns the shell into a real project container: persisted
-            workspaces, explicit selection, and a clean landing point for C2
-            document import.
+            C2 turns the open project into a real document workspace: imported
+            files are copied into Translat storage, registered in persistence,
+            and left in a clean imported state for C3.
           </p>
         </div>
 
         <div className="app-shell__header-meta">
           <span>{runtimeLabel}</span>
           <span>{projects.length} persisted projects</span>
-          <span>{activeProject ? "Workspace open" : "No active project"}</span>
+          <span>
+            {activeProject
+              ? `${documents.length} documents in workspace`
+              : "No active project"}
+          </span>
         </div>
       </header>
 
       <section className="app-shell__grid">
         <div className="app-shell__primary">
-          <ProjectWorkspace project={activeProject} />
+          <ProjectWorkspace
+            documents={documents}
+            importError={importError}
+            isImportingDocuments={isImporting}
+            isLoadingDocuments={isLoadingDocuments}
+            loadError={loadError}
+            onImportDocuments={handleImportDocuments}
+            project={activeProject}
+          />
 
           <section className="surface-card surface-card--split">
             <div>
-              <p className="surface-card__eyebrow">C1 scope</p>
-              <h2>Projects only, by design.</h2>
+              <p className="surface-card__eyebrow">C2 scope</p>
+              <h2>Import and register documents only.</h2>
               <p className="surface-card__copy">
-                This slice establishes the persisted project container and keeps
-                documents, segmentation, glossary work, and AI orchestration out
-                of scope.
+                This slice formalizes document intake inside a project and keeps
+                normalization, segmentation, glossary work, and AI orchestration
+                out of scope.
               </p>
             </div>
 
             <ul className="capability-list">
               <li>
-                Projects are stored in encrypted SQLite and survive restart.
+                Imported documents are stored against the active project id.
               </li>
-              <li>The currently open project is persisted explicitly.</li>
-              <li>The frontend can create, list, and reopen projects.</li>
               <li>
-                C2 can now attach imported documents to a real project id.
+                The backend keeps a metadata record plus internal file copy.
+              </li>
+              <li>The workspace reloads imported documents after restart.</li>
+              <li>
+                C3 can take this imported state as its real input boundary.
               </li>
             </ul>
           </section>
@@ -96,7 +134,7 @@ export function AppShell() {
 
           <section className="surface-card">
             <p className="surface-card__eyebrow">Command pattern</p>
-            <h2>{DESKTOP_COMMANDS.listProjects}</h2>
+            <h2>{DESKTOP_COMMANDS.importProjectDocument}</h2>
 
             <dl className="detail-list">
               <div>
@@ -112,8 +150,8 @@ export function AppShell() {
                 <dd>{activeProject?.name ?? "None"}</dd>
               </div>
               <div>
-                <dt>DB path</dt>
-                <dd>{healthcheck?.database.path ?? "Pending bootstrap"}</dd>
+                <dt>Imported docs</dt>
+                <dd>{activeProject ? documents.length : 0}</dd>
               </div>
             </dl>
           </section>

@@ -14,12 +14,13 @@ impl Migration {
         match (self.version, self.name) {
             ("0001", "initial_schema") => "0001_initial_schema",
             ("0002", "projects") => "0002_projects",
+            ("0003", "documents") => "0003_documents",
             _ => self.version,
         }
     }
 }
 
-const MIGRATIONS: [Migration; 2] = [
+const MIGRATIONS: [Migration; 3] = [
     Migration {
         version: "0001",
         name: "initial_schema",
@@ -29,6 +30,11 @@ const MIGRATIONS: [Migration; 2] = [
         version: "0002",
         name: "projects",
         sql: include_str!("../../migrations/0002_projects.sql"),
+    },
+    Migration {
+        version: "0003",
+        name: "documents",
+        sql: include_str!("../../migrations/0003_documents.sql"),
     },
 ];
 

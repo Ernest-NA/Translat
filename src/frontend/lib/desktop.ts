@@ -4,8 +4,12 @@ import {
   DESKTOP_COMMANDS,
   type DesktopCommandErrorPayload,
   type DesktopCommandName,
+  type DocumentSummary,
   type HealthcheckResponse,
+  type ImportDocumentInput,
+  type ListProjectDocumentsInput,
   type OpenProjectInput,
+  type ProjectDocumentsOverview,
   type ProjectSummary,
   type ProjectsOverview,
 } from "../../shared/desktop";
@@ -94,6 +98,24 @@ export function createProject(input: CreateProjectInput) {
   return invokeDesktopCommand<ProjectSummary>(DESKTOP_COMMANDS.createProject, {
     input,
   });
+}
+
+export function listProjectDocuments(input: ListProjectDocumentsInput) {
+  return invokeDesktopCommand<ProjectDocumentsOverview>(
+    DESKTOP_COMMANDS.listProjectDocuments,
+    {
+      input,
+    },
+  );
+}
+
+export function importProjectDocument(input: ImportDocumentInput) {
+  return invokeDesktopCommand<DocumentSummary>(
+    DESKTOP_COMMANDS.importProjectDocument,
+    {
+      input,
+    },
+  );
 }
 
 export function openProject(input: OpenProjectInput) {

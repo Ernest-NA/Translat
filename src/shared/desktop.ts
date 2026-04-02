@@ -1,7 +1,9 @@
 export const DESKTOP_COMMANDS = {
   createProject: "create_project",
   healthcheck: "healthcheck",
+  importProjectDocument: "import_project_document",
   listProjects: "list_projects",
+  listProjectDocuments: "list_project_documents",
   openProject: "open_project",
 } as const;
 
@@ -47,6 +49,25 @@ export interface ProjectsOverview {
   projects: ProjectSummary[];
 }
 
+export interface DocumentSummary {
+  id: string;
+  projectId: string;
+  name: string;
+  sourceKind: string;
+  format: string;
+  mimeType: string | null;
+  storedPath: string;
+  fileSizeBytes: number;
+  status: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ProjectDocumentsOverview {
+  projectId: string;
+  documents: DocumentSummary[];
+}
+
 export interface CreateProjectInput {
   name: string;
   description?: string;
@@ -54,4 +75,15 @@ export interface CreateProjectInput {
 
 export interface OpenProjectInput {
   projectId: string;
+}
+
+export interface ListProjectDocumentsInput {
+  projectId: string;
+}
+
+export interface ImportDocumentInput {
+  projectId: string;
+  fileName: string;
+  mimeType?: string;
+  base64Content: string;
 }
