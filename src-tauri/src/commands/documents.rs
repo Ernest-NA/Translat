@@ -15,7 +15,7 @@ use crate::documents::{
 };
 use crate::error::DesktopCommandError;
 use crate::persistence::bootstrap::DatabaseRuntime;
-use crate::persistence::documents::DocumentRepository;
+use crate::persistence::documents::{DocumentRepository, StoredDocumentRecord};
 use crate::persistence::projects::ProjectRepository;
 use crate::persistence::secret_store;
 
@@ -117,7 +117,7 @@ fn import_project_document_with_runtime(
         source_kind: DOCUMENT_SOURCE_LOCAL_FILE.to_owned(),
         format: validated_import.format,
         mime_type: validated_import.mime_type,
-        stored_path: stored_document_paths.final_path.display().to_string(),
+        stored_path: stored_document_paths.pending_path.display().to_string(),
         file_size_bytes: i64::try_from(validated_import.bytes.len()).map_err(|error| {
             DesktopCommandError::internal(
                 "The desktop shell produced an invalid imported document size.",
@@ -129,21 +129,33 @@ fn import_project_document_with_runtime(
         updated_at: imported_at,
     };
 
-    if let Err(error) = finalize_stored_document(&stored_document_paths) {
-        best_effort_remove_file(&stored_document_paths.pending_path);
-        return Err(error);
-    }
-
     let mut repository = DocumentRepository::new(&mut connection);
-
-    repository.create(&new_document).map_err(|error| {
-        let _ = fs::remove_file(&stored_document_paths.final_path);
+    let created_document = repository.create(&new_document).map_err(|error| {
+        best_effort_remove_file(&stored_document_paths.pending_path);
 
         DesktopCommandError::internal(
             "The desktop shell could not register the imported document.",
             Some(error.to_string()),
         )
-    })
+    })?;
+
+    if let Err(error) = finalize_stored_document(&stored_document_paths) {
+        let _ = repository.delete_by_id(&new_document.id);
+        best_effort_remove_file(&stored_document_paths.pending_path);
+        return Err(error);
+    }
+
+    if let Err(error) = repository.update_stored_path(
+        &new_document.id,
+        &stored_document_paths.final_path.display().to_string(),
+    ) {
+        return Err(DesktopCommandError::internal(
+            "The desktop shell could not finalize the imported document registration.",
+            Some(error.to_string()),
+        ));
+    }
+
+    Ok(created_document)
 }
 
 fn validate_project_id(project_id: &str) -> Result<String, DesktopCommandError> {
@@ -442,16 +454,16 @@ fn reconcile_project_document_storage(
     let now = current_timestamp()?;
 
     let mut repository = DocumentRepository::new(connection);
-    let referenced_paths = repository
-        .list_stored_paths_by_project(project_id)
+    let storage_records = repository
+        .list_storage_records_by_project(project_id)
         .map_err(|error| {
             DesktopCommandError::internal(
-                "The desktop shell could not inspect stored document paths for cleanup.",
+                "The desktop shell could not inspect stored document records for cleanup.",
                 Some(error.to_string()),
             )
-        })?
+        })?;
+    let referenced_paths = repair_project_document_storage(&mut repository, storage_records)?
         .into_iter()
-        .map(PathBuf::from)
         .collect::<HashSet<_>>();
 
     let directory_entries = fs::read_dir(&project_directory).map_err(|error| {
@@ -497,6 +509,49 @@ fn reconcile_project_document_storage(
     Ok(())
 }
 
+fn repair_project_document_storage(
+    repository: &mut DocumentRepository<'_>,
+    storage_records: Vec<StoredDocumentRecord>,
+) -> Result<Vec<PathBuf>, DesktopCommandError> {
+    let mut referenced_paths = Vec::new();
+
+    for storage_record in storage_records {
+        let stored_path = PathBuf::from(&storage_record.stored_path);
+
+        if !is_pending_document_payload(&stored_path) {
+            referenced_paths.push(stored_path);
+            continue;
+        }
+
+        let final_path = final_path_from_pending(&stored_path)?;
+
+        if stored_path.exists() {
+            let stored_document_paths = StoredDocumentPaths {
+                final_path: final_path.clone(),
+                pending_path: stored_path.clone(),
+            };
+
+            finalize_stored_document(&stored_document_paths)?;
+        }
+
+        if final_path.exists() {
+            repository
+                .update_stored_path(&storage_record.document_id, &final_path.display().to_string())
+                .map_err(|error| {
+                    DesktopCommandError::internal(
+                        "The desktop shell could not repair a pending imported document payload.",
+                        Some(error.to_string()),
+                    )
+                })?;
+            referenced_paths.push(final_path);
+        } else {
+            referenced_paths.push(stored_path);
+        }
+    }
+
+    Ok(referenced_paths)
+}
+
 fn is_pending_document_payload(path: &Path) -> bool {
     path.file_name()
         .and_then(|value| value.to_str())
@@ -505,6 +560,21 @@ fn is_pending_document_payload(path: &Path) -> bool {
 
 fn best_effort_remove_file(path: &Path) {
     let _ = fs::remove_file(path);
+}
+
+fn final_path_from_pending(pending_path: &Path) -> Result<PathBuf, DesktopCommandError> {
+    let file_name = pending_path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .and_then(|value| value.strip_prefix(PENDING_DOCUMENT_PREFIX))
+        .ok_or_else(|| {
+            DesktopCommandError::internal(
+                "The desktop shell found a pending document payload with an invalid file name.",
+                None,
+            )
+        })?;
+
+    Ok(pending_path.with_file_name(file_name))
 }
 
 fn is_stale_unreferenced_document_payload(path: &Path, now: i64) -> bool {
@@ -675,7 +745,7 @@ fn current_timestamp() -> Result<i64, DesktopCommandError> {
 mod tests {
     use super::{
         current_timestamp, derive_document_format, ensure_project_is_active,
-        import_project_document_with_runtime,
+        import_project_document_with_runtime, list_project_documents_with_runtime,
         reconcile_project_document_storage, sanitize_storage_file_name,
         validate_base64_payload_size, validate_document_format, validate_project_id,
         ORPHAN_PENDING_GRACE_PERIOD_SECS, PENDING_DOCUMENT_PREFIX,
@@ -683,8 +753,8 @@ mod tests {
     use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
     use base64::Engine;
     use crate::documents::{
-        ImportDocumentInput, NewDocument, DOCUMENT_SOURCE_LOCAL_FILE, DOCUMENT_STATUS_IMPORTED,
-        MAX_IMPORTED_DOCUMENT_BYTES,
+        ImportDocumentInput, ListProjectDocumentsInput, NewDocument,
+        DOCUMENT_SOURCE_LOCAL_FILE, DOCUMENT_STATUS_IMPORTED, MAX_IMPORTED_DOCUMENT_BYTES,
     };
     use crate::persistence::bootstrap::{
         bootstrap_database, open_database_with_key, DatabaseRuntime,
@@ -1110,6 +1180,89 @@ mod tests {
         assert_eq!(overview.documents[0], imported_document);
         assert_eq!(stored_entries.len(), 1);
         assert!(stored_entries[0].path().is_file());
+    }
+
+    #[test]
+    fn list_project_documents_repairs_pending_payload_references() {
+        let temporary_directory = tempdir().expect("temp dir should be created");
+        let database_path = temporary_directory.path().join("translat.sqlite3");
+        let encryption_key_path = temporary_directory.path().join("translat.sqlite3.key");
+        let runtime = DatabaseRuntime::new(database_path.clone(), encryption_key_path.clone());
+        let now = current_timestamp().expect("timestamp should be available");
+        let encryption_key = load_or_create_encryption_key(&encryption_key_path)
+            .expect("encryption key should be created");
+
+        bootstrap_database(&database_path, &encryption_key)
+            .expect("database bootstrap should succeed");
+
+        let documents_directory = runtime
+            .documents_directory()
+            .expect("documents directory should resolve");
+        let project_directory = documents_directory.join("prj_active_001");
+        fs::create_dir_all(&project_directory).expect("project directory should exist");
+        let pending_payload_path = project_directory.join(format!(
+            "{}doc_{now}_repair__source.txt",
+            PENDING_DOCUMENT_PREFIX
+        ));
+        let final_payload_path = project_directory.join(format!("doc_{now}_repair__source.txt"));
+        fs::write(&pending_payload_path, b"pending").expect("pending payload should write");
+
+        let mut connection = open_database_with_key(&database_path, &encryption_key)
+            .expect("database connection should open");
+        {
+            let mut project_repository = ProjectRepository::new(&mut connection);
+            project_repository
+                .create(&NewProject {
+                    id: "prj_active_001".to_owned(),
+                    name: "Active project".to_owned(),
+                    description: None,
+                    created_at: now,
+                    updated_at: now,
+                    last_opened_at: now,
+                })
+                .expect("active project should be created");
+            project_repository
+                .open_project("prj_active_001", now + 1)
+                .expect("project should become active");
+        }
+        {
+            let mut document_repository = DocumentRepository::new(&mut connection);
+            document_repository
+                .create(&NewDocument {
+                    id: format!("doc_{now}_repair"),
+                    project_id: "prj_active_001".to_owned(),
+                    name: "source.txt".to_owned(),
+                    source_kind: DOCUMENT_SOURCE_LOCAL_FILE.to_owned(),
+                    format: "txt".to_owned(),
+                    mime_type: Some("text/plain".to_owned()),
+                    stored_path: pending_payload_path.display().to_string(),
+                    file_size_bytes: 7,
+                    status: DOCUMENT_STATUS_IMPORTED.to_owned(),
+                    created_at: now,
+                    updated_at: now,
+                })
+                .expect("document should be created");
+        }
+        drop(connection);
+
+        let overview = list_project_documents_with_runtime(
+            ListProjectDocumentsInput {
+                project_id: "prj_active_001".to_owned(),
+            },
+            &runtime,
+        )
+        .expect("listing should repair pending storage");
+
+        let mut reopened_connection = open_database_with_key(&database_path, &encryption_key)
+            .expect("database connection should reopen");
+        let repaired_paths = DocumentRepository::new(&mut reopened_connection)
+            .list_stored_paths_by_project("prj_active_001")
+            .expect("stored paths should load");
+
+        assert_eq!(overview.documents.len(), 1);
+        assert!(!pending_payload_path.exists());
+        assert!(final_payload_path.exists());
+        assert_eq!(repaired_paths, vec![final_payload_path.display().to_string()]);
     }
 
     #[test]

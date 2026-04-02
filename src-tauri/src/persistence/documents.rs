@@ -3,6 +3,12 @@ use rusqlite::{params, Connection, Row};
 use crate::documents::{DocumentSummary, NewDocument, ProjectDocumentsOverview};
 use crate::persistence::error::PersistenceError;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StoredDocumentRecord {
+    pub document_id: String,
+    pub stored_path: String,
+}
+
 pub struct DocumentRepository<'connection> {
     connection: &'connection mut Connection,
 }
@@ -158,6 +164,7 @@ impl<'connection> DocumentRepository<'connection> {
         Ok(documents)
     }
 
+    #[cfg(test)]
     pub fn list_stored_paths_by_project(
         &mut self,
         project_id: &str,
@@ -199,6 +206,91 @@ impl<'connection> DocumentRepository<'connection> {
         }
 
         Ok(stored_paths)
+    }
+
+    pub fn list_storage_records_by_project(
+        &mut self,
+        project_id: &str,
+    ) -> Result<Vec<StoredDocumentRecord>, PersistenceError> {
+        let mut statement = self
+            .connection
+            .prepare("SELECT id, stored_path FROM documents WHERE project_id = ?1")
+            .map_err(|error| {
+                PersistenceError::with_details(
+                    format!(
+                        "The document repository could not prepare the storage-record query for project {project_id}."
+                    ),
+                    error,
+                )
+            })?;
+
+        let rows = statement
+            .query_map([project_id], |row| {
+                Ok(StoredDocumentRecord {
+                    document_id: row.get(0)?,
+                    stored_path: row.get(1)?,
+                })
+            })
+            .map_err(|error| {
+                PersistenceError::with_details(
+                    format!(
+                        "The document repository could not read storage records for project {project_id}."
+                    ),
+                    error,
+                )
+            })?;
+
+        let mut storage_records = Vec::new();
+
+        for row in rows {
+            storage_records.push(row.map_err(|error| {
+                PersistenceError::with_details(
+                    format!(
+                        "The document repository could not decode a storage record for project {project_id}."
+                    ),
+                    error,
+                )
+            })?);
+        }
+
+        Ok(storage_records)
+    }
+
+    pub fn update_stored_path(
+        &mut self,
+        document_id: &str,
+        stored_path: &str,
+    ) -> Result<(), PersistenceError> {
+        self.connection
+            .execute(
+                "UPDATE documents SET stored_path = ?2 WHERE id = ?1",
+                params![document_id, stored_path],
+            )
+            .map_err(|error| {
+                PersistenceError::with_details(
+                    format!(
+                        "The document repository could not update the stored path for document {document_id}."
+                    ),
+                    error,
+                )
+            })?;
+
+        Ok(())
+    }
+
+    pub fn delete_by_id(&mut self, document_id: &str) -> Result<(), PersistenceError> {
+        self.connection
+            .execute("DELETE FROM documents WHERE id = ?1", [document_id])
+            .map_err(|error| {
+                PersistenceError::with_details(
+                    format!(
+                        "The document repository could not delete document {document_id}."
+                    ),
+                    error,
+                )
+            })?;
+
+        Ok(())
     }
 
     pub fn load_overview(
