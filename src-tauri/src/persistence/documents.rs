@@ -1,4 +1,4 @@
-use rusqlite::{params, Connection, Row};
+use rusqlite::{params, Connection, OptionalExtension, Row};
 
 use crate::documents::{DocumentSummary, NewDocument, ProjectDocumentsOverview};
 use crate::persistence::error::PersistenceError;
@@ -6,6 +6,14 @@ use crate::persistence::error::PersistenceError;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StoredDocumentRecord {
     pub document_id: String,
+    pub stored_path: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DocumentProcessingRecord {
+    pub id: String,
+    pub project_id: String,
+    pub status: String,
     pub stored_path: String,
 }
 
@@ -84,6 +92,7 @@ impl<'connection> DocumentRepository<'connection> {
             mime_type: new_document.mime_type.clone(),
             file_size_bytes: new_document.file_size_bytes,
             status: new_document.status.clone(),
+            segment_count: 0,
             created_at: new_document.created_at,
             updated_at: new_document.updated_at,
         })
@@ -106,6 +115,11 @@ impl<'connection> DocumentRepository<'connection> {
                   mime_type,
                   file_size_bytes,
                   status,
+                  (
+                    SELECT COUNT(*)
+                    FROM segments
+                    WHERE document_id = documents.id
+                  ) AS segment_count,
                   created_at,
                   updated_at
                 FROM documents
@@ -191,6 +205,43 @@ impl<'connection> DocumentRepository<'connection> {
         }
 
         Ok(stored_paths)
+    }
+
+    pub fn load_processing_record(
+        &mut self,
+        project_id: &str,
+        document_id: &str,
+    ) -> Result<Option<DocumentProcessingRecord>, PersistenceError> {
+        self.connection
+            .query_row(
+                r#"
+                SELECT
+                  id,
+                  project_id,
+                  status,
+                  stored_path
+                FROM documents
+                WHERE project_id = ?1 AND id = ?2
+                "#,
+                params![project_id, document_id],
+                |row| {
+                    Ok(DocumentProcessingRecord {
+                        id: row.get(0)?,
+                        project_id: row.get(1)?,
+                        status: row.get(2)?,
+                        stored_path: row.get(3)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(|error| {
+                PersistenceError::with_details(
+                    format!(
+                        "The document repository could not load processing state for document {document_id}."
+                    ),
+                    error,
+                )
+            })
     }
 
     pub fn list_storage_records_by_project(
@@ -321,6 +372,47 @@ impl<'connection> DocumentRepository<'connection> {
             documents: self.list_by_project(project_id)?,
         })
     }
+
+    pub fn load_summary(
+        &mut self,
+        project_id: &str,
+        document_id: &str,
+    ) -> Result<Option<DocumentSummary>, PersistenceError> {
+        self.connection
+            .query_row(
+                r#"
+                SELECT
+                  id,
+                  project_id,
+                  name,
+                  source_kind,
+                  format,
+                  mime_type,
+                  file_size_bytes,
+                  status,
+                  (
+                    SELECT COUNT(*)
+                    FROM segments
+                    WHERE document_id = documents.id
+                  ) AS segment_count,
+                  created_at,
+                  updated_at
+                FROM documents
+                WHERE project_id = ?1 AND id = ?2
+                "#,
+                params![project_id, document_id],
+                map_document_summary,
+            )
+            .optional()
+            .map_err(|error| {
+                PersistenceError::with_details(
+                    format!(
+                        "The document repository could not reload document {document_id} for project {project_id}."
+                    ),
+                    error,
+                )
+            })
+    }
 }
 
 fn map_document_summary(row: &Row<'_>) -> rusqlite::Result<DocumentSummary> {
@@ -333,8 +425,9 @@ fn map_document_summary(row: &Row<'_>) -> rusqlite::Result<DocumentSummary> {
         mime_type: row.get(5)?,
         file_size_bytes: row.get(6)?,
         status: row.get(7)?,
-        created_at: row.get(8)?,
-        updated_at: row.get(9)?,
+        segment_count: row.get(8)?,
+        created_at: row.get(9)?,
+        updated_at: row.get(10)?,
     })
 }
 

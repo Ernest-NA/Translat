@@ -35,6 +35,9 @@ export function AppShell() {
     isImporting,
     isLoading: isLoadingDocuments,
     loadError,
+    processDocument,
+    processError,
+    processingDocumentId,
   } = useProjectDocuments(activeProject?.id ?? null);
   const { error, healthcheck, isLoading, retry } = useHealthcheck();
 
@@ -55,6 +58,21 @@ export function AppShell() {
     [importDocuments, reloadProjects],
   );
 
+  const handleProcessDocument = useCallback(
+    async (documentId: string): Promise<void> => {
+      const processedDocument = await processDocument(documentId);
+
+      if (processedDocument) {
+        try {
+          await reloadProjects();
+        } catch {
+          // Keep the segmentation result visible even if the sidebar refresh fails.
+        }
+      }
+    },
+    [processDocument, reloadProjects],
+  );
+
   const runtimeLabel = healthcheck
     ? `${healthcheck.environment} | v${healthcheck.version}`
     : "desktop runtime";
@@ -64,11 +82,11 @@ export function AppShell() {
       <header className="app-shell__header">
         <div>
           <p className="app-shell__eyebrow">Translat</p>
-          <h1>Project document intake</h1>
+          <h1>Project document processing</h1>
           <p className="app-shell__lead">
-            C2 turns the open project into a real document workspace: imported
-            files are copied into Translat storage, registered in persistence,
-            and left in a clean imported state for C3.
+            C3 takes imported documents, normalizes their text, and persists
+            ordered source segments so C4 can navigate a real document
+            structure.
           </p>
         </div>
 
@@ -92,30 +110,36 @@ export function AppShell() {
             isLoadingDocuments={isLoadingDocuments}
             loadError={loadError}
             onImportDocuments={handleImportDocuments}
+            onProcessDocument={handleProcessDocument}
+            processError={processError}
+            processingDocumentId={processingDocumentId}
             project={activeProject}
           />
 
           <section className="surface-card surface-card--split">
             <div>
-              <p className="surface-card__eyebrow">C2 scope</p>
-              <h2>Import and register documents only.</h2>
+              <p className="surface-card__eyebrow">C3 scope</p>
+              <h2>Normalize and persist source segments.</h2>
               <p className="surface-card__copy">
-                This slice formalizes document intake inside a project and keeps
-                normalization, segmentation, glossary work, and AI orchestration
-                out of scope.
+                This slice turns imported documents into ordered persisted
+                segments and keeps segment navigation, translation, glossary
+                work, and AI orchestration out of scope.
               </p>
             </div>
 
             <ul className="capability-list">
               <li>
-                Imported documents are stored against the active project id.
+                Imported UTF-8 documents can be processed inside the active
+                project.
               </li>
               <li>
-                The backend keeps a metadata record plus internal file copy.
+                Normalization is deterministic and intentionally minimal for the
+                MVP.
               </li>
-              <li>The workspace reloads imported documents after restart.</li>
+              <li>Segments are persisted with stable sequence per document.</li>
               <li>
-                C3 can take this imported state as its real input boundary.
+                C4 can list and navigate the resulting segments without
+                reprocessing.
               </li>
             </ul>
           </section>
@@ -138,7 +162,7 @@ export function AppShell() {
 
           <section className="surface-card">
             <p className="surface-card__eyebrow">Command pattern</p>
-            <h2>{DESKTOP_COMMANDS.importProjectDocument}</h2>
+            <h2>{DESKTOP_COMMANDS.processProjectDocument}</h2>
 
             <dl className="detail-list">
               <div>
@@ -156,6 +180,16 @@ export function AppShell() {
               <div>
                 <dt>Imported docs</dt>
                 <dd>{activeProject ? documents.length : 0}</dd>
+              </div>
+              <div>
+                <dt>Segmented docs</dt>
+                <dd>
+                  {activeProject
+                    ? documents.filter(
+                        (document) => document.status === "segmented",
+                      ).length
+                    : 0}
+                </dd>
               </div>
             </dl>
           </section>

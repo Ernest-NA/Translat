@@ -7,6 +7,7 @@ import {
   DesktopCommandError,
   importProjectDocument,
   listProjectDocuments,
+  processProjectDocument,
 } from "../lib/desktop";
 
 const MAX_IMPORTABLE_DOCUMENT_BYTES = 20 * 1024 * 1024;
@@ -70,11 +71,18 @@ export function useProjectDocuments(activeProjectId: string | null) {
   const [importError, setImportError] = useState<DesktopCommandError | null>(
     null,
   );
+  const [processError, setProcessError] = useState<DesktopCommandError | null>(
+    null,
+  );
   const [isImporting, setIsImporting] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState<DesktopCommandError | null>(null);
+  const [processingDocumentId, setProcessingDocumentId] = useState<
+    string | null
+  >(null);
   const importRequestIdRef = useRef(0);
   const loadRequestIdRef = useRef(0);
+  const processRequestIdRef = useRef(0);
   const previousProjectIdRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -85,8 +93,11 @@ export function useProjectDocuments(activeProjectId: string | null) {
     previousProjectIdRef.current = activeProjectId;
     importRequestIdRef.current += 1;
     loadRequestIdRef.current += 1;
+    processRequestIdRef.current += 1;
     setImportError(null);
+    setProcessError(null);
     setIsImporting(false);
+    setProcessingDocumentId(null);
     setLoadError(null);
     setOverview(
       activeProjectId
@@ -278,6 +289,68 @@ export function useProjectDocuments(activeProjectId: string | null) {
     [activeProjectId, reload],
   );
 
+  const processDocument = useCallback(
+    async (documentId: string): Promise<DocumentSummary | null> => {
+      if (!activeProjectId) {
+        return null;
+      }
+
+      const requestId = processRequestIdRef.current + 1;
+      processRequestIdRef.current = requestId;
+
+      setProcessError(null);
+      setProcessingDocumentId(documentId);
+
+      try {
+        const processedDocument = await processProjectDocument({
+          documentId,
+          projectId: activeProjectId,
+        });
+
+        if (processRequestIdRef.current !== requestId) {
+          return null;
+        }
+
+        setOverview((currentOverview) =>
+          currentOverview
+            ? normalizeOverview({
+                ...currentOverview,
+                documents: currentOverview.documents.map((document) =>
+                  document.id === processedDocument.id
+                    ? processedDocument
+                    : document,
+                ),
+              })
+            : currentOverview,
+        );
+        await reload();
+
+        return processedDocument;
+      } catch (caughtError) {
+        if (processRequestIdRef.current !== requestId) {
+          return null;
+        }
+
+        setProcessError(
+          caughtError instanceof DesktopCommandError
+            ? caughtError
+            : new DesktopCommandError("process_project_document", {
+                code: "UNEXPECTED_DESKTOP_ERROR",
+                message:
+                  "The desktop shell could not segment the selected document.",
+              }),
+        );
+
+        return null;
+      } finally {
+        if (processRequestIdRef.current === requestId) {
+          setProcessingDocumentId(null);
+        }
+      }
+    },
+    [activeProjectId, reload],
+  );
+
   return {
     documents: overview?.documents ?? [],
     importError,
@@ -285,6 +358,9 @@ export function useProjectDocuments(activeProjectId: string | null) {
     isImporting,
     isLoading,
     loadError,
+    processDocument,
+    processError,
+    processingDocumentId,
     reload,
   };
 }

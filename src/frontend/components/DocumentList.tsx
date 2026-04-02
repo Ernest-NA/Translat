@@ -5,6 +5,9 @@ interface DocumentListProps {
   documents: DocumentSummary[];
   error: DesktopCommandError | null;
   isLoading: boolean;
+  onProcessDocument: (documentId: string) => Promise<void>;
+  processError: DesktopCommandError | null;
+  processingDocumentId: string | null;
 }
 
 function formatBytes(value: number) {
@@ -31,6 +34,9 @@ export function DocumentList({
   documents,
   error,
   isLoading,
+  onProcessDocument,
+  processError,
+  processingDocumentId,
 }: DocumentListProps) {
   return (
     <section className="workspace-panel">
@@ -45,7 +51,7 @@ export function DocumentList({
 
       {isLoading ? (
         <p className="surface-card__copy">
-          Loading persisted documents for this workspace…
+          Loading persisted documents for this workspace...
         </p>
       ) : null}
 
@@ -69,7 +75,23 @@ export function DocumentList({
                   </p>
                 </div>
 
-                <span className="document-status-pill">{document.status}</span>
+                <div className="document-list__actions">
+                  <span className="document-status-pill">
+                    {document.status}
+                  </span>
+                  <button
+                    className="document-action-button"
+                    disabled={processingDocumentId !== null}
+                    onClick={() => void onProcessDocument(document.id)}
+                    type="button"
+                  >
+                    {processingDocumentId === document.id
+                      ? "Processing..."
+                      : document.status === "segmented"
+                        ? "Re-segment"
+                        : "Segment"}
+                  </button>
+                </div>
               </div>
 
               <dl className="document-list__meta">
@@ -85,10 +107,20 @@ export function DocumentList({
                   <dt>Document ID</dt>
                   <dd>{document.id}</dd>
                 </div>
+                <div>
+                  <dt>Segments</dt>
+                  <dd>{document.segmentCount}</dd>
+                </div>
               </dl>
             </li>
           ))}
         </ul>
+      ) : null}
+
+      {processError ? (
+        <p className="form-error" role="alert">
+          {processError.message}
+        </p>
       ) : null}
 
       {error ? (
