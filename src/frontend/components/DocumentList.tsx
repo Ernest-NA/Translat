@@ -49,7 +49,7 @@ export function DocumentList({
         </p>
       ) : null}
 
-      {!isLoading && documents.length === 0 ? (
+      {!isLoading && !error && documents.length === 0 ? (
         <p className="surface-card__copy">
           No document is registered yet. Import the first file to leave a real
           input ready for C3.

@@ -41,6 +41,7 @@ pub fn list_project_documents(
     })?;
 
     ensure_project_exists(&mut connection, &project_id)?;
+    ensure_project_is_active(&mut connection, &project_id)?;
 
     let mut repository = DocumentRepository::new(&mut connection);
 
@@ -69,6 +70,7 @@ pub fn import_project_document(
     })?;
 
     ensure_project_exists(&mut connection, &validated_import.project_id)?;
+    ensure_project_is_active(&mut connection, &validated_import.project_id)?;
 
     let stored_document_path = persist_document_bytes(
         &database_runtime,
@@ -343,6 +345,28 @@ fn ensure_project_exists(
     Ok(())
 }
 
+fn ensure_project_is_active(
+    connection: &mut rusqlite::Connection,
+    project_id: &str,
+) -> Result<(), DesktopCommandError> {
+    let mut repository = ProjectRepository::new(connection);
+    let active_project_id = repository.active_project_id().map_err(|error| {
+        DesktopCommandError::internal(
+            "The desktop shell could not load the active project selection for the document workflow.",
+            Some(error.to_string()),
+        )
+    })?;
+
+    if active_project_id.as_deref() != Some(project_id) {
+        return Err(DesktopCommandError::validation(
+            "Documents can only be listed or imported for the currently open project.",
+            None,
+        ));
+    }
+
+    Ok(())
+}
+
 fn generate_document_id(timestamp: i64) -> String {
     let random_part = rand::random::<u64>();
 
@@ -377,9 +401,13 @@ fn current_timestamp() -> Result<i64, DesktopCommandError> {
 mod tests {
     use super::{
         derive_document_format, sanitize_storage_file_name, validate_document_format,
-        validate_project_id,
+        validate_project_id, ensure_project_is_active,
     };
+    use crate::persistence::bootstrap::{bootstrap_database, open_database_with_key};
+    use crate::persistence::projects::ProjectRepository;
     use crate::persistence::secret_store::{protect_local_payload, unprotect_local_payload};
+    use crate::projects::NewProject;
+    use tempfile::tempdir;
 
     #[test]
     fn derive_document_format_uses_extension_when_available() {
@@ -407,6 +435,52 @@ mod tests {
         assert!(validate_project_id("../escape").is_err());
         assert!(validate_project_id(r"..\escape").is_err());
         assert!(validate_project_id("C:/absolute").is_err());
+    }
+
+    #[test]
+    fn ensure_project_is_active_rejects_non_active_project_ids() {
+        let temporary_directory = tempdir().expect("temp dir should be created");
+        let database_path = temporary_directory.path().join("translat.sqlite3");
+        let now = 1_743_517_200_i64;
+
+        bootstrap_database(&database_path, "translat-test-key-for-c2")
+            .expect("database bootstrap should succeed");
+
+        let mut connection = open_database_with_key(&database_path, "translat-test-key-for-c2")
+            .expect("database connection should open");
+        {
+            let mut repository = ProjectRepository::new(&mut connection);
+            repository
+                .create(&NewProject {
+                    id: "prj_active_001".to_owned(),
+                    name: "Active project".to_owned(),
+                    description: None,
+                    created_at: now,
+                    updated_at: now,
+                    last_opened_at: now,
+                })
+                .expect("active project should be created");
+            repository
+                .create(&NewProject {
+                    id: "prj_other_001".to_owned(),
+                    name: "Other project".to_owned(),
+                    description: None,
+                    created_at: now + 1,
+                    updated_at: now + 1,
+                    last_opened_at: now + 1,
+                })
+                .expect("other project should be created");
+        }
+
+        assert!(ensure_project_is_active(&mut connection, "prj_other_001").is_ok());
+        {
+            let mut repository = ProjectRepository::new(&mut connection);
+            repository
+                .open_project("prj_active_001", now + 2)
+                .expect("active project should be reopened");
+        }
+        assert!(ensure_project_is_active(&mut connection, "prj_active_001").is_ok());
+        assert!(ensure_project_is_active(&mut connection, "prj_other_001").is_err());
     }
 
     #[test]

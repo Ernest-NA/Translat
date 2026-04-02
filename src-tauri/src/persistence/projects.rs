@@ -188,6 +188,22 @@ impl<'connection> ProjectRepository<'connection> {
         })
     }
 
+    pub fn active_project_id(&mut self) -> Result<Option<String>, PersistenceError> {
+        self.connection
+            .query_row(
+                "SELECT value FROM app_metadata WHERE key = ?1",
+                [ACTIVE_PROJECT_METADATA_KEY],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(|error| {
+                PersistenceError::with_details(
+                    "The project repository could not load the active project id.",
+                    error,
+                )
+            })
+    }
+
     pub fn exists(&mut self, project_id: &str) -> Result<bool, PersistenceError> {
         let project_count = self
             .connection
@@ -204,22 +220,6 @@ impl<'connection> ProjectRepository<'connection> {
             })?;
 
         Ok(project_count == 1)
-    }
-
-    fn active_project_id(&mut self) -> Result<Option<String>, PersistenceError> {
-        self.connection
-            .query_row(
-                "SELECT value FROM app_metadata WHERE key = ?1",
-                [ACTIVE_PROJECT_METADATA_KEY],
-                |row| row.get::<_, String>(0),
-            )
-            .optional()
-            .map_err(|error| {
-                PersistenceError::with_details(
-                    "The project repository could not load the active project id.",
-                    error,
-                )
-            })
     }
 }
 
