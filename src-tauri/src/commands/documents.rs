@@ -60,7 +60,7 @@ fn list_project_documents_with_runtime(
 
     ensure_project_exists(&mut connection, &project_id)?;
     ensure_project_is_active(&mut connection, &project_id)?;
-    reconcile_project_document_storage(&database_runtime, &mut connection, &project_id)?;
+    reconcile_project_document_storage(database_runtime, &mut connection, &project_id)?;
 
     let mut repository = DocumentRepository::new(&mut connection);
 
@@ -97,14 +97,10 @@ fn import_project_document_with_runtime(
 
     ensure_project_exists(&mut connection, &validated_import.project_id)?;
     ensure_project_is_active(&mut connection, &validated_import.project_id)?;
-    reconcile_project_document_storage(
-        &database_runtime,
-        &mut connection,
-        &validated_import.project_id,
-    )?;
+    reconcile_project_document_storage(database_runtime, &mut connection, &validated_import.project_id)?;
 
     let stored_document_paths = persist_document_bytes(
-        &database_runtime,
+        database_runtime,
         &validated_import.project_id,
         &document_id,
         &validated_import.file_name,
