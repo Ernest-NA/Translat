@@ -25,8 +25,11 @@ export function DocumentImporter({
       return;
     }
 
-    await onImport(nextFiles);
-    event.target.value = "";
+    try {
+      await onImport(nextFiles);
+    } finally {
+      event.target.value = "";
+    }
   }
 
   return (

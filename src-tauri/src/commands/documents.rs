@@ -145,10 +145,15 @@ fn import_project_document_with_runtime(
         return Err(error);
     }
 
-    let _ = repository.update_stored_path(
-        &new_document.id,
-        &stored_document_paths.final_path.display().to_string(),
-    );
+    if repository
+        .update_stored_path(
+            &new_document.id,
+            &stored_document_paths.final_path.display().to_string(),
+        )
+        .is_err()
+    {
+        restore_pending_document_payload(&stored_document_paths);
+    }
 
     Ok(created_document)
 }
@@ -557,6 +562,13 @@ fn best_effort_remove_file(path: &Path) {
     let _ = fs::remove_file(path);
 }
 
+fn restore_pending_document_payload(stored_document_paths: &StoredDocumentPaths) {
+    let _ = fs::rename(
+        &stored_document_paths.final_path,
+        &stored_document_paths.pending_path,
+    );
+}
+
 fn final_path_from_pending(pending_path: &Path) -> Result<PathBuf, DesktopCommandError> {
     let file_name = pending_path
         .file_name()
@@ -583,61 +595,16 @@ fn is_stale_pending_document_payload(path: &Path, now: i64) -> bool {
 }
 
 fn storage_payload_timestamp(path: &Path) -> Option<i64> {
-    let document_id = storage_document_id(path).ok()?;
-
-    parse_document_timestamp(&document_id).ok()
-}
-
-fn storage_document_id(path: &Path) -> Result<String, DesktopCommandError> {
     let file_name = path
         .file_name()
-        .and_then(|value| value.to_str())
-        .ok_or_else(|| {
-            DesktopCommandError::internal(
-                "The desktop shell found a stored document payload with an invalid file name.",
-                None,
-            )
-        })?;
+        .and_then(|value| value.to_str())?;
     let without_prefix = file_name
         .strip_prefix(PENDING_DOCUMENT_PREFIX)
         .unwrap_or(file_name);
+    let without_doc_prefix = without_prefix.strip_prefix("doc_")?;
+    let timestamp = without_doc_prefix.split('_').next()?;
 
-    without_prefix
-        .split_once("__")
-        .map(|(id, _)| id.to_owned())
-        .ok_or_else(|| {
-            DesktopCommandError::internal(
-                "The desktop shell found a stored document payload with an invalid storage id.",
-                None,
-            )
-        })
-}
-
-fn parse_document_timestamp(document_id: &str) -> Result<i64, DesktopCommandError> {
-    let mut parts = document_id.splitn(3, '_');
-    let prefix = parts.next();
-    let timestamp = parts.next();
-
-    if prefix != Some("doc") {
-        return Err(DesktopCommandError::internal(
-            "The desktop shell found a document payload with an invalid id prefix.",
-            None,
-        ));
-    }
-
-    let timestamp = timestamp.ok_or_else(|| {
-        DesktopCommandError::internal(
-            "The desktop shell found a document payload with an invalid timestamp segment.",
-            None,
-        )
-    })?;
-
-    timestamp.parse::<i64>().map_err(|error| {
-        DesktopCommandError::internal(
-            "The desktop shell found a document payload with an unreadable timestamp segment.",
-            Some(error.to_string()),
-        )
-    })
+    timestamp.parse::<i64>().ok()
 }
 
 fn sanitize_storage_file_name(file_name: &str) -> String {
