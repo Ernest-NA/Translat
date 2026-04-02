@@ -1,6 +1,10 @@
 import { DESKTOP_COMMANDS } from "../../shared/desktop";
 import { HealthcheckPanel } from "../components/HealthcheckPanel";
+import { ProjectComposer } from "../components/ProjectComposer";
+import { ProjectList } from "../components/ProjectList";
+import { ProjectWorkspace } from "../components/ProjectWorkspace";
 import { useHealthcheck } from "../hooks/useHealthcheck";
+import { useProjectsWorkspace } from "../hooks/useProjectsWorkspace";
 
 function formatCheckedAt(value?: number) {
   if (!value) {
@@ -11,6 +15,16 @@ function formatCheckedAt(value?: number) {
 }
 
 export function AppShell() {
+  const {
+    activeProject,
+    error: projectError,
+    isCreating,
+    isLoading: isLoadingProjects,
+    openingProjectId,
+    projects,
+    selectProject,
+    submitProject,
+  } = useProjectsWorkspace();
   const { error, healthcheck, isLoading, retry } = useHealthcheck();
 
   const runtimeLabel = healthcheck
@@ -22,61 +36,67 @@ export function AppShell() {
       <header className="app-shell__header">
         <div>
           <p className="app-shell__eyebrow">Translat</p>
-          <h1>Desktop shell foundation</h1>
+          <h1>Project workspace foundation</h1>
           <p className="app-shell__lead">
-            A cleaner base application shell for the next modules, with a
-            reusable desktop command pattern, explicit runtime feedback, and a
-            layout that can grow without rewriting the entry point.
+            C1 turns the shell into a real project container: persisted
+            workspaces, explicit selection, and a clean landing point for C2
+            document import.
           </p>
         </div>
 
         <div className="app-shell__header-meta">
           <span>{runtimeLabel}</span>
-          <span>Windows desktop</span>
-          <span>Encrypted SQLite bootstrap</span>
+          <span>{projects.length} persisted projects</span>
+          <span>{activeProject ? "Workspace open" : "No active project"}</span>
         </div>
       </header>
 
       <section className="app-shell__grid">
         <div className="app-shell__primary">
-          <HealthcheckPanel
-            error={error}
-            healthcheck={healthcheck}
-            isLoading={isLoading}
-            onRetry={retry}
-          />
+          <ProjectWorkspace project={activeProject} />
 
           <section className="surface-card surface-card--split">
             <div>
-              <p className="surface-card__eyebrow">Current capabilities</p>
-              <h2>
-                Stable shell, explicit runtime handshake, no business logic.
-              </h2>
+              <p className="surface-card__eyebrow">C1 scope</p>
+              <h2>Projects only, by design.</h2>
+              <p className="surface-card__copy">
+                This slice establishes the persisted project container and keeps
+                documents, segmentation, glossary work, and AI orchestration out
+                of scope.
+              </p>
             </div>
 
             <ul className="capability-list">
               <li>
-                Tauri window bootstraps the React app inside the desktop shell.
+                Projects are stored in encrypted SQLite and survive restart.
               </li>
+              <li>The currently open project is persisted explicitly.</li>
+              <li>The frontend can create, list, and reopen projects.</li>
               <li>
-                Frontend commands go through a shared, typed desktop wrapper.
-              </li>
-              <li>
-                Command failures surface a normalized error with code and
-                details.
-              </li>
-              <li>
-                The backend now bootstraps encrypted SQLite with versioned
-                migrations before exposing repository access points.
+                C2 can now attach imported documents to a real project id.
               </li>
             </ul>
           </section>
         </div>
 
         <aside className="app-shell__sidebar">
+          <ProjectComposer
+            error={projectError}
+            isCreating={isCreating}
+            onSubmit={submitProject}
+          />
+
+          <ProjectList
+            activeProjectId={activeProject?.id ?? null}
+            isLoading={isLoadingProjects}
+            onOpen={selectProject}
+            openingProjectId={openingProjectId}
+            projects={projects}
+          />
+
           <section className="surface-card">
             <p className="surface-card__eyebrow">Command pattern</p>
-            <h2>{DESKTOP_COMMANDS.healthcheck}</h2>
+            <h2>{DESKTOP_COMMANDS.listProjects}</h2>
 
             <dl className="detail-list">
               <div>
@@ -88,8 +108,8 @@ export function AppShell() {
                 <dd>{formatCheckedAt(healthcheck?.checkedAt)}</dd>
               </div>
               <div>
-                <dt>Error mode</dt>
-                <dd>{error ? error.code : "No error"}</dd>
+                <dt>Open project</dt>
+                <dd>{activeProject?.name ?? "None"}</dd>
               </div>
               <div>
                 <dt>DB path</dt>
@@ -98,23 +118,12 @@ export function AppShell() {
             </dl>
           </section>
 
-          <section className="surface-card">
-            <p className="surface-card__eyebrow">Readiness notes</p>
-            <ul className="readiness-list">
-              <li>
-                B4 adds encrypted SQLite bootstrap and versioned migrations, but
-                still keeps domain repositories out of scope.
-              </li>
-              <li>
-                The persistence bootstrap is reusable from Rust without wiring
-                the frontend into storage decisions.
-              </li>
-              <li>
-                Future repository modules can open the encrypted database
-                without revisiting shell setup.
-              </li>
-            </ul>
-          </section>
+          <HealthcheckPanel
+            error={error}
+            healthcheck={healthcheck}
+            isLoading={isLoading}
+            onRetry={retry}
+          />
         </aside>
       </section>
     </main>

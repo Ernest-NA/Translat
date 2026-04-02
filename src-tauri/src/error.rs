@@ -17,4 +17,12 @@ impl DesktopCommandError {
             message: message.into(),
         }
     }
+
+    pub fn validation(message: impl Into<String>, details: Option<String>) -> Self {
+        Self {
+            code: "INVALID_INPUT".to_owned(),
+            details,
+            message: message.into(),
+        }
+    }
 }

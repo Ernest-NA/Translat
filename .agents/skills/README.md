@@ -8,3 +8,4 @@ Initial planned skills:
 - action-orchestrator
 - prompt-strategy-by-action
 - parallel-corpus-alignment
+- pr-review

@@ -13,16 +13,24 @@ impl Migration {
     pub fn label(self) -> &'static str {
         match (self.version, self.name) {
             ("0001", "initial_schema") => "0001_initial_schema",
+            ("0002", "projects") => "0002_projects",
             _ => self.version,
         }
     }
 }
 
-const MIGRATIONS: [Migration; 1] = [Migration {
-    version: "0001",
-    name: "initial_schema",
-    sql: include_str!("../../migrations/0001_initial_schema.sql"),
-}];
+const MIGRATIONS: [Migration; 2] = [
+    Migration {
+        version: "0001",
+        name: "initial_schema",
+        sql: include_str!("../../migrations/0001_initial_schema.sql"),
+    },
+    Migration {
+        version: "0002",
+        name: "projects",
+        sql: include_str!("../../migrations/0002_projects.sql"),
+    },
+];
 
 pub fn ensure_schema_migrations_table(connection: &Connection) -> Result<(), PersistenceError> {
     connection

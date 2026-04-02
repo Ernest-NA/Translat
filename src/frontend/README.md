@@ -3,10 +3,10 @@
 This area contains the React + TypeScript user interface that runs inside the Tauri desktop shell.
 
 Current scope:
-- app shell foundation for the desktop runtime,
+- persisted project creation, listing, and opening for C1,
 - reusable frontend wrapper for Tauri command invocation,
 - normalized desktop command errors and healthcheck state handling,
-- and base styling that can grow into real feature modules.
+- and a base workspace layout ready for document import in C2.
 
 Planned responsibility areas:
 - project workspace UI

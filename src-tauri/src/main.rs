@@ -3,6 +3,7 @@
 mod commands;
 mod error;
 mod persistence;
+mod projects;
 
 use tauri::Manager;
 
@@ -23,7 +24,12 @@ fn main() {
 
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![commands::healthcheck::healthcheck])
+        .invoke_handler(tauri::generate_handler![
+            commands::healthcheck::healthcheck,
+            commands::projects::create_project,
+            commands::projects::list_projects,
+            commands::projects::open_project
+        ])
         .run(tauri::generate_context!())
         .expect("error while running the Translat desktop shell");
 }
