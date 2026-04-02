@@ -317,7 +317,9 @@ fn split_paragraph_into_segments(paragraph: &str) -> Vec<String> {
 
             let next_character = characters.get(lookahead).map(|(_, next)| *next);
 
-            if next_character.is_none() || next_character.is_some_and(char::is_whitespace) {
+            if (next_character.is_none() || next_character.is_some_and(char::is_whitespace))
+                && should_split_at_boundary(paragraph, &characters, index, lookahead)
+            {
                 let candidate = paragraph[start..end].trim();
 
                 if !candidate.is_empty() {
@@ -358,6 +360,156 @@ fn split_paragraph_into_segments(paragraph: &str) -> Vec<String> {
     } else {
         segments
     }
+}
+
+fn should_split_at_boundary(
+    paragraph: &str,
+    characters: &[(usize, char)],
+    punctuation_index: usize,
+    lookahead_index: usize,
+) -> bool {
+    let (_, punctuation) = characters[punctuation_index];
+
+    if punctuation != '.' {
+        return true;
+    }
+
+    let byte_index = characters[punctuation_index].0;
+    let current_token = match alphabetic_token_before(paragraph, byte_index) {
+        Some(token) => token,
+        None => return true,
+    };
+    let current_token_lower = current_token.to_lowercase();
+
+    if matches!(
+        current_token_lower.as_str(),
+        "dr" | "dra" | "mr" | "mrs" | "ms" | "prof" | "sr" | "sra" | "srta" | "jr"
+    ) {
+        return false;
+    }
+
+    let previous_token_lower = previous_alphabetic_token_before(paragraph, byte_index)
+        .map(|token| token.to_lowercase());
+    let next_token = next_alphabetic_token_after(paragraph, characters, lookahead_index);
+    let next_token_lower = next_token
+        .as_ref()
+        .map(|(token, _, _): &(&str, usize, bool)| token.to_lowercase());
+
+    if current_token.chars().count() == 1
+        && (previous_token_lower
+            .as_ref()
+            .is_some_and(|token| token.chars().count() == 1)
+            || next_token
+                .as_ref()
+                .is_some_and(|(token, _, followed_by_period): &(&str, usize, bool)| {
+                    token.chars().count() == 1 && *followed_by_period
+                }))
+    {
+        return false;
+    }
+
+    if matches!(
+        (current_token_lower.as_str(), next_token_lower.as_deref()),
+        ("p", Some("ej")) | ("e", Some("g")) | ("i", Some("e"))
+    ) {
+        return false;
+    }
+
+    if matches!(
+        (previous_token_lower.as_deref(), current_token_lower.as_str()),
+        (Some("p"), "ej") | (Some("e"), "g") | (Some("i"), "e")
+    ) {
+        return false;
+    }
+
+    if matches!(
+        current_token_lower.as_str(),
+        "etc" | "no" | "art" | "cap" | "vol" | "fig" | "aprox"
+    ) && next_token
+        .as_ref()
+        .is_some_and(|(token, _, _): &(&str, usize, bool)| {
+            token.chars().next().is_some_and(char::is_lowercase)
+        })
+    {
+        return false;
+    }
+
+    true
+}
+
+fn alphabetic_token_before(paragraph: &str, byte_index: usize) -> Option<&str> {
+    let prefix = &paragraph[..byte_index];
+    let mut token_end = None;
+    let mut token_start = 0_usize;
+
+    for (index, character) in prefix.char_indices().rev() {
+        if token_end.is_none() {
+            if character.is_alphabetic() {
+                token_end = Some(index + character.len_utf8());
+                token_start = index;
+            }
+            continue;
+        }
+
+        if character.is_alphabetic() {
+            token_start = index;
+            continue;
+        }
+
+        break;
+    }
+
+    token_end.map(|end| &prefix[token_start..end])
+}
+
+fn previous_alphabetic_token_before(paragraph: &str, byte_index: usize) -> Option<&str> {
+    let current_token = alphabetic_token_before(paragraph, byte_index)?;
+    let current_start = paragraph[..byte_index].rfind(current_token)?;
+
+    alphabetic_token_before(paragraph, current_start)
+}
+
+fn next_alphabetic_token_after<'a>(
+    paragraph: &'a str,
+    characters: &[(usize, char)],
+    lookahead_index: usize,
+) -> Option<(&'a str, usize, bool)> {
+    let mut token_start = None;
+    let mut token_end = 0_usize;
+    let mut next_index = lookahead_index;
+
+    while let Some((byte_index, character)) = characters.get(next_index) {
+        if token_start.is_none() {
+            if character.is_whitespace() || matches!(character, '"' | '\'' | '(' | '[' | '{') {
+                next_index += 1;
+                continue;
+            }
+
+            if character.is_alphabetic() {
+                token_start = Some(*byte_index);
+                token_end = *byte_index + character.len_utf8();
+                next_index += 1;
+                continue;
+            }
+
+            return None;
+        }
+
+        if character.is_alphabetic() {
+            token_end = *byte_index + character.len_utf8();
+            next_index += 1;
+            continue;
+        }
+
+        break;
+    }
+
+    let start = token_start?;
+    let followed_by_period = characters
+        .get(next_index)
+        .is_some_and(|(_, character)| *character == '.');
+
+    Some((&paragraph[start..token_end], token_end, followed_by_period))
 }
 
 fn build_segment_id(document_id: &str, sequence: i64) -> String {
@@ -425,6 +577,21 @@ mod tests {
                 "First sentence.".to_owned(),
                 "Second sentence?".to_owned(),
                 "Third sentence!".to_owned()
+            ]
+        );
+    }
+
+    #[test]
+    fn split_paragraph_into_segments_keeps_common_abbreviations_together() {
+        let segments = split_paragraph_into_segments(
+            "Dr. Smith reviewed the U.S. draft. Luego añadió p. ej. una nota breve.",
+        );
+
+        assert_eq!(
+            segments,
+            vec![
+                "Dr. Smith reviewed the U.S. draft.".to_owned(),
+                "Luego añadió p. ej. una nota breve.".to_owned(),
             ]
         );
     }
