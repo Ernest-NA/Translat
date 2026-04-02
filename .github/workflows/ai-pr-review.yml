@@ -25,7 +25,7 @@ jobs:
       pull-requests: write
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-      CODEX_MODEL: ${{ vars.CODEX_MODEL || 'gpt-5.3-codex' }}
+      CODEX_MODEL: ${{ vars.CODEX_MODEL || 'gpt-5.4' }}
       HEAD_SHA: ${{ github.event.pull_request.head.sha }}
       BASE_SHA: ${{ github.event.pull_request.base.sha }}
       PR_NUMBER: ${{ github.event.pull_request.number }}
