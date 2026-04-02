@@ -164,7 +164,16 @@ export function useProjectDocuments(activeProjectId: string | null) {
 
       try {
         for (const file of selectedFiles) {
+          if (importRequestIdRef.current !== requestId) {
+            return importedDocuments.length;
+          }
+
           const base64Content = await encodeFileAsBase64(file);
+
+          if (importRequestIdRef.current !== requestId) {
+            return importedDocuments.length;
+          }
+
           const importedDocument = await importProjectDocument({
             base64Content,
             fileName: file.name,

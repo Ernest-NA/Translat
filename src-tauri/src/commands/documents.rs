@@ -143,7 +143,11 @@ fn validate_import_document(
     let project_id = validate_project_id(&input.project_id)?;
     let normalized_file_name = normalize_file_name(&input.file_name)?;
     let mime_type = normalize_mime_type(input.mime_type)?;
-    let bytes = STANDARD.decode(input.base64_content.trim()).map_err(|error| {
+    let normalized_base64_content = input.base64_content.trim();
+
+    validate_base64_payload_size(normalized_base64_content)?;
+
+    let bytes = STANDARD.decode(normalized_base64_content).map_err(|error| {
         DesktopCommandError::validation(
             "The selected document payload could not be decoded.",
             Some(error.to_string()),
@@ -225,6 +229,61 @@ fn normalize_mime_type(
     }
 
     Ok(normalized_mime_type)
+}
+
+fn validate_base64_payload_size(base64_content: &str) -> Result<(), DesktopCommandError> {
+    let estimated_decoded_length = estimate_base64_decoded_length(base64_content)?;
+
+    if estimated_decoded_length > MAX_IMPORTED_DOCUMENT_BYTES {
+        return Err(DesktopCommandError::validation(
+            "The selected document exceeds the current 20 MiB import limit for C2.",
+            None,
+        ));
+    }
+
+    Ok(())
+}
+
+fn estimate_base64_decoded_length(base64_content: &str) -> Result<usize, DesktopCommandError> {
+    if base64_content.is_empty() {
+        return Ok(0);
+    }
+
+    let input_length = base64_content.len();
+    let full_chunks = input_length / 4;
+    let remainder = input_length % 4;
+    let trailing_padding = base64_content
+        .as_bytes()
+        .iter()
+        .rev()
+        .take_while(|&&value| value == b'=')
+        .take(2)
+        .count();
+    let base_length = full_chunks.checked_mul(3).ok_or_else(|| {
+        DesktopCommandError::validation(
+            "The selected document payload could not be decoded.",
+            None,
+        )
+    })?;
+
+    let estimated_length = match remainder {
+        0 => base_length.checked_sub(trailing_padding).ok_or_else(|| {
+            DesktopCommandError::validation(
+                "The selected document payload could not be decoded.",
+                None,
+            )
+        })?,
+        2 => base_length + 1,
+        3 => base_length + 2,
+        _ => {
+            return Err(DesktopCommandError::validation(
+                "The selected document payload could not be decoded.",
+                None,
+            ));
+        }
+    };
+
+    Ok(estimated_length)
 }
 
 fn derive_document_format(file_name: &str) -> String {
@@ -400,9 +459,12 @@ fn current_timestamp() -> Result<i64, DesktopCommandError> {
 #[cfg(test)]
 mod tests {
     use super::{
-        derive_document_format, sanitize_storage_file_name, validate_document_format,
-        validate_project_id, ensure_project_is_active,
+        derive_document_format, ensure_project_is_active, sanitize_storage_file_name,
+        validate_base64_payload_size, validate_document_format, validate_project_id,
     };
+    use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
+    use base64::Engine;
+    use crate::documents::MAX_IMPORTED_DOCUMENT_BYTES;
     use crate::persistence::bootstrap::{bootstrap_database, open_database_with_key};
     use crate::persistence::projects::ProjectRepository;
     use crate::persistence::secret_store::{protect_local_payload, unprotect_local_payload};
@@ -424,6 +486,16 @@ mod tests {
             validate_document_format("docx".to_owned()).expect("format should be valid"),
             "docx"
         );
+    }
+
+    #[test]
+    fn validate_base64_payload_size_rejects_oversized_inputs_before_decode() {
+        let oversized_bytes = vec![0_u8; MAX_IMPORTED_DOCUMENT_BYTES + 1];
+        let oversized_payload = BASE64_STANDARD.encode(oversized_bytes);
+        let max_sized_payload = BASE64_STANDARD.encode(vec![0_u8; MAX_IMPORTED_DOCUMENT_BYTES]);
+
+        assert!(validate_base64_payload_size(&oversized_payload).is_err());
+        assert!(validate_base64_payload_size(&max_sized_payload).is_ok());
     }
 
     #[test]
