@@ -140,9 +140,18 @@ fn import_project_document_with_runtime(
     })?;
 
     if let Err(error) = finalize_stored_document(&stored_document_paths) {
-        let _ = repository.delete_by_id(&new_document.id);
+        let rollback_error = repository.delete_by_id(&new_document.id).err();
         best_effort_remove_file(&stored_document_paths.pending_path);
-        return Err(error);
+        return Err(match rollback_error {
+            Some(rollback_error) => DesktopCommandError::internal(
+                "The desktop shell could not roll back a failed imported document finalization.",
+                Some(format!(
+                    "finalize error: {}; rollback error: {}",
+                    error.message, rollback_error
+                )),
+            ),
+            None => error,
+        });
     }
 
     if let Err(error) = repository.update_stored_path(
