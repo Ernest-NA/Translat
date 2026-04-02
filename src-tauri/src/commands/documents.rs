@@ -465,15 +465,7 @@ fn reconcile_project_document_storage(
 
         if is_pending_document_payload(&entry_path) {
             if is_stale_pending_document_payload(&entry_path, now) {
-                fs::remove_file(&entry_path).map_err(|error| {
-                    DesktopCommandError::internal(
-                        format!(
-                            "The desktop shell could not remove the stale pending document payload at {}.",
-                            entry_path.display()
-                        ),
-                        Some(error.to_string()),
-                    )
-                })?;
+                best_effort_remove_file(&entry_path);
             }
             continue;
         }
@@ -481,15 +473,7 @@ fn reconcile_project_document_storage(
         if !referenced_paths.contains(&entry_path)
             && is_stale_unreferenced_document_payload(&entry_path, now)
         {
-            fs::remove_file(&entry_path).map_err(|error| {
-                DesktopCommandError::internal(
-                    format!(
-                        "The desktop shell could not remove the orphaned document payload at {}.",
-                        entry_path.display()
-                    ),
-                    Some(error.to_string()),
-                )
-            })?;
+            best_effort_remove_file(&entry_path);
         }
     }
 
@@ -500,6 +484,10 @@ fn is_pending_document_payload(path: &Path) -> bool {
     path.file_name()
         .and_then(|value| value.to_str())
         .is_some_and(|value| value.starts_with(PENDING_DOCUMENT_PREFIX))
+}
+
+fn best_effort_remove_file(path: &Path) {
+    let _ = fs::remove_file(path);
 }
 
 fn is_stale_unreferenced_document_payload(path: &Path, now: i64) -> bool {
