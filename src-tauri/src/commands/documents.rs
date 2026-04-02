@@ -60,6 +60,16 @@ pub fn import_project_document(
     let validated_import = validate_import_document(input)?;
     let imported_at = current_timestamp()?;
     let document_id = generate_document_id(imported_at);
+
+    let mut connection = database_runtime.open_connection().map_err(|error| {
+        DesktopCommandError::internal(
+            "The desktop shell could not open the encrypted database for document import.",
+            Some(error.to_string()),
+        )
+    })?;
+
+    ensure_project_exists(&mut connection, &validated_import.project_id)?;
+
     let stored_document_path = persist_document_bytes(
         &database_runtime,
         &validated_import.project_id,
@@ -87,20 +97,6 @@ pub fn import_project_document(
         updated_at: imported_at,
     };
 
-    let mut connection = database_runtime.open_connection().map_err(|error| {
-        let _ = fs::remove_file(&stored_document_path);
-
-        DesktopCommandError::internal(
-            "The desktop shell could not open the encrypted database for document import.",
-            Some(error.to_string()),
-        )
-    })?;
-
-    if let Err(error) = ensure_project_exists(&mut connection, &new_document.project_id) {
-        let _ = fs::remove_file(&stored_document_path);
-        return Err(error);
-    }
-
     let mut repository = DocumentRepository::new(&mut connection);
 
     match repository.create(&new_document) {
@@ -122,6 +118,16 @@ fn validate_project_id(project_id: &str) -> Result<String, DesktopCommandError> 
     if trimmed_project_id.is_empty() {
         return Err(DesktopCommandError::validation(
             "The document flow requires a valid project id.",
+            None,
+        ));
+    }
+
+    if !trimmed_project_id
+        .chars()
+        .all(|character| matches!(character, 'a'..='z' | 'A'..='Z' | '0'..='9' | '_' | '-'))
+    {
+        return Err(DesktopCommandError::validation(
+            "The document flow requires a safe persisted project id.",
             None,
         ));
     }
@@ -369,7 +375,10 @@ fn current_timestamp() -> Result<i64, DesktopCommandError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{derive_document_format, sanitize_storage_file_name, validate_document_format};
+    use super::{
+        derive_document_format, sanitize_storage_file_name, validate_document_format,
+        validate_project_id,
+    };
     use crate::persistence::secret_store::{protect_local_payload, unprotect_local_payload};
 
     #[test]
@@ -387,6 +396,17 @@ mod tests {
             validate_document_format("docx".to_owned()).expect("format should be valid"),
             "docx"
         );
+    }
+
+    #[test]
+    fn validate_project_id_rejects_unsafe_storage_segments() {
+        assert_eq!(
+            validate_project_id("prj_valid_001").expect("project id should be accepted"),
+            "prj_valid_001"
+        );
+        assert!(validate_project_id("../escape").is_err());
+        assert!(validate_project_id(r"..\escape").is_err());
+        assert!(validate_project_id("C:/absolute").is_err());
     }
 
     #[test]

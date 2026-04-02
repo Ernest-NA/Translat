@@ -56,13 +56,23 @@ export function useProjectDocuments(activeProjectId: string | null) {
   const [loadError, setLoadError] = useState<DesktopCommandError | null>(null);
   const importRequestIdRef = useRef(0);
   const loadRequestIdRef = useRef(0);
+  const previousProjectIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (previousProjectIdRef.current === activeProjectId) {
+      return;
+    }
+
+    previousProjectIdRef.current = activeProjectId;
+    importRequestIdRef.current += 1;
+    setImportError(null);
+    setIsImporting(false);
+  }, [activeProjectId]);
 
   const reload = useCallback(async (): Promise<void> => {
     if (!activeProjectId) {
-      importRequestIdRef.current += 1;
       loadRequestIdRef.current += 1;
       setOverview(null);
-      setImportError(null);
       setIsLoading(false);
       setLoadError(null);
       return;
