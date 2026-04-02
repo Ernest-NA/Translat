@@ -156,7 +156,9 @@ fn import_project_document_with_runtime(
 
     if let Err(error) = repository.update_stored_path(
         &new_document.id,
+        &new_document.project_id,
         &stored_document_paths.final_path.display().to_string(),
+        imported_at,
     ) {
         restore_pending_document_payload(&stored_document_paths);
         return Err(DesktopCommandError::internal(
@@ -472,7 +474,7 @@ fn reconcile_project_document_storage(
                 Some(error.to_string()),
             )
         })?;
-    let referenced_paths = repair_project_document_storage(&mut repository, storage_records)?
+    let referenced_paths = repair_project_document_storage(&mut repository, storage_records, now)?
         .into_iter()
         .collect::<HashSet<_>>();
 
@@ -522,6 +524,7 @@ fn reconcile_project_document_storage(
 fn repair_project_document_storage(
     repository: &mut DocumentRepository<'_>,
     storage_records: Vec<StoredDocumentRecord>,
+    now: i64,
 ) -> Result<Vec<PathBuf>, DesktopCommandError> {
     let mut referenced_paths = Vec::new();
 
@@ -529,6 +532,11 @@ fn repair_project_document_storage(
         let stored_path = PathBuf::from(&storage_record.stored_path);
 
         if !is_pending_document_payload(&stored_path) {
+            referenced_paths.push(stored_path);
+            continue;
+        }
+
+        if !is_stale_pending_document_payload(&stored_path, now) {
             referenced_paths.push(stored_path);
             continue;
         }
@@ -546,7 +554,12 @@ fn repair_project_document_storage(
 
         if final_path.exists() {
             repository
-                .update_stored_path(&storage_record.document_id, &final_path.display().to_string())
+                .update_stored_path(
+                    &storage_record.document_id,
+                    project_id_from_stored_path(&final_path)?,
+                    &final_path.display().to_string(),
+                    now,
+                )
                 .map_err(|error| {
                     DesktopCommandError::internal(
                         "The desktop shell could not repair a pending imported document payload.",
@@ -592,6 +605,18 @@ fn final_path_from_pending(pending_path: &Path) -> Result<PathBuf, DesktopComman
         })?;
 
     Ok(pending_path.with_file_name(file_name))
+}
+
+fn project_id_from_stored_path(path: &Path) -> Result<&str, DesktopCommandError> {
+    path.parent()
+        .and_then(|parent| parent.file_name())
+        .and_then(|value| value.to_str())
+        .ok_or_else(|| {
+            DesktopCommandError::internal(
+                "The desktop shell could not resolve the persisted project path for document storage.",
+                None,
+            )
+        })
 }
 
 fn is_stale_unreferenced_document_payload(path: &Path, now: i64) -> bool {
@@ -1161,6 +1186,7 @@ mod tests {
         let encryption_key_path = temporary_directory.path().join("translat.sqlite3.key");
         let runtime = DatabaseRuntime::new(database_path.clone(), encryption_key_path.clone());
         let now = current_timestamp().expect("timestamp should be available");
+        let stale_timestamp = now - (ORPHAN_PENDING_GRACE_PERIOD_SECS + 60);
         let encryption_key = load_or_create_encryption_key(&encryption_key_path)
             .expect("encryption key should be created");
 
@@ -1173,10 +1199,11 @@ mod tests {
         let project_directory = documents_directory.join("prj_active_001");
         fs::create_dir_all(&project_directory).expect("project directory should exist");
         let pending_payload_path = project_directory.join(format!(
-            "{}doc_{now}_repair__source.txt",
+            "{}doc_{stale_timestamp}_repair__source.txt",
             PENDING_DOCUMENT_PREFIX
         ));
-        let final_payload_path = project_directory.join(format!("doc_{now}_repair__source.txt"));
+        let final_payload_path =
+            project_directory.join(format!("doc_{stale_timestamp}_repair__source.txt"));
         fs::write(&pending_payload_path, b"pending").expect("pending payload should write");
 
         let mut connection = open_database_with_key(&database_path, &encryption_key)
@@ -1201,7 +1228,7 @@ mod tests {
             let mut document_repository = DocumentRepository::new(&mut connection);
             document_repository
                 .create(&NewDocument {
-                    id: format!("doc_{now}_repair"),
+                    id: format!("doc_{stale_timestamp}_repair"),
                     project_id: "prj_active_001".to_owned(),
                     name: "source.txt".to_owned(),
                     source_kind: DOCUMENT_SOURCE_LOCAL_FILE.to_owned(),
@@ -1210,8 +1237,8 @@ mod tests {
                     stored_path: pending_payload_path.display().to_string(),
                     file_size_bytes: 7,
                     status: DOCUMENT_STATUS_IMPORTED.to_owned(),
-                    created_at: now,
-                    updated_at: now,
+                    created_at: stale_timestamp,
+                    updated_at: stale_timestamp,
                 })
                 .expect("document should be created");
         }

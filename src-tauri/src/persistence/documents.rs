@@ -68,21 +68,6 @@ impl<'connection> DocumentRepository<'connection> {
                 )
             })?;
 
-        transaction
-            .execute(
-                "UPDATE projects SET updated_at = ?2 WHERE id = ?1",
-                params![new_document.project_id, new_document.updated_at],
-            )
-            .map_err(|error| {
-                PersistenceError::with_details(
-                    format!(
-                        "The document repository could not update project {} after document import.",
-                        new_document.project_id
-                    ),
-                    error,
-                )
-            })?;
-
         transaction.commit().map_err(|error| {
             PersistenceError::with_details(
                 "The document repository could not commit the document import transaction.",
@@ -259,9 +244,20 @@ impl<'connection> DocumentRepository<'connection> {
     pub fn update_stored_path(
         &mut self,
         document_id: &str,
+        project_id: &str,
         stored_path: &str,
+        updated_at: i64,
     ) -> Result<(), PersistenceError> {
-        self.connection
+        let transaction = self.connection.transaction().map_err(|error| {
+            PersistenceError::with_details(
+                format!(
+                    "The document repository could not start finalization for document {document_id}."
+                ),
+                error,
+            )
+        })?;
+
+        transaction
             .execute(
                 "UPDATE documents SET stored_path = ?2 WHERE id = ?1",
                 params![document_id, stored_path],
@@ -274,6 +270,29 @@ impl<'connection> DocumentRepository<'connection> {
                     error,
                 )
             })?;
+
+        transaction
+            .execute(
+                "UPDATE projects SET updated_at = ?2 WHERE id = ?1",
+                params![project_id, updated_at],
+            )
+            .map_err(|error| {
+                PersistenceError::with_details(
+                    format!(
+                        "The document repository could not update project {project_id} after document finalization."
+                    ),
+                    error,
+                )
+            })?;
+
+        transaction.commit().map_err(|error| {
+            PersistenceError::with_details(
+                format!(
+                    "The document repository could not commit finalization for document {document_id}."
+                ),
+                error,
+            )
+        })?;
 
         Ok(())
     }
