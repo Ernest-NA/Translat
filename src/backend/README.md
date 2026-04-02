@@ -12,7 +12,8 @@ Planned responsibility areas:
 - corpus alignment and search services
 - job queue and background execution
 
-Current C1 backend slice in `src-tauri/`:
+Current C1/C2 backend slice in `src-tauri/`:
 - encrypted SQLite bootstrap with versioned migrations,
 - project repository wiring for create/list/open flows,
-- and desktop commands that expose the minimal project workspace state to the frontend.
+- document repository wiring for import/list flows inside a project,
+- and desktop commands that expose the minimal project and document workspace state to the frontend.

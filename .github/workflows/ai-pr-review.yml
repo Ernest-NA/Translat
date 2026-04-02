@@ -25,7 +25,7 @@ jobs:
       pull-requests: write
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-      CODEX_MODEL: ${{ vars.CODEX_MODEL || 'gpt-5.4' }}
+      CODEX_MODEL_MINI: ${{ vars.CODEX_MODEL_MINI || vars.CODEX_MODEL || 'gpt-5.4-mini' }}
       HEAD_SHA: ${{ github.event.pull_request.head.sha }}
       BASE_SHA: ${{ github.event.pull_request.base.sha }}
       PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -59,8 +59,13 @@ jobs:
           fi
 
           reviewable=false
+          changed_files=0
+          added_lines=0
+          deleted_lines=0
+
           while IFS= read -r file; do
             [ -z "$file" ] && continue
+            changed_files=$((changed_files + 1))
             case "$file" in
               docs/*|notion/*|package-lock.json|src-tauri/Cargo.lock)
                 ;;
@@ -68,10 +73,21 @@ jobs:
                 ;;
               *)
                 reviewable=true
-                break
                 ;;
             esac
           done < <(git diff --name-only "${BASE_SHA}" "${HEAD_SHA}")
+
+          while IFS=$'\t' read -r added deleted _path; do
+            [ -z "${_path:-}" ] && continue
+            if [ "$added" != "-" ]; then
+              added_lines=$((added_lines + added))
+            fi
+            if [ "$deleted" != "-" ]; then
+              deleted_lines=$((deleted_lines + deleted))
+            fi
+          done < <(git diff --numstat "${BASE_SHA}" "${HEAD_SHA}")
+
+          total_changed_lines=$((added_lines + deleted_lines))
 
           if [ "$reviewable" = true ]; then
             echo "enabled=true" >> "$GITHUB_OUTPUT"
@@ -80,6 +96,14 @@ jobs:
             echo "enabled=false" >> "$GITHUB_OUTPUT"
             echo "reason=Only docs or lockfile changes detected." >> "$GITHUB_OUTPUT"
           fi
+
+          selected_model="${CODEX_MODEL_MINI}"
+          selection_reason="Defaulting to the lower-cost mini review model."
+
+          echo "selected_model=${selected_model}" >> "$GITHUB_OUTPUT"
+          echo "selection_reason=${selection_reason}" >> "$GITHUB_OUTPUT"
+          echo "changed_files=${changed_files}" >> "$GITHUB_OUTPUT"
+          echo "total_changed_lines=${total_changed_lines}" >> "$GITHUB_OUTPUT"
         shell: bash
 
       - name: Build Codex review prompt
@@ -120,7 +144,7 @@ jobs:
           output-schema-file: .github/codex/pr-review-schema.json
           output-file: codex-output.json
           sandbox: read-only
-          model: ${{ env.CODEX_MODEL }}
+          model: ${{ steps.gate.outputs.selected_model }}
           effort: medium
           allow-bots: true
 
@@ -223,6 +247,9 @@ jobs:
             echo "- Head branch: ${{ github.event.pull_request.head.ref }}"
             echo "- Review executed: ${{ steps.gate.outputs.enabled }}"
             echo "- Reason: ${{ steps.gate.outputs.reason }}"
-            echo "- Model: ${CODEX_MODEL}"
+            echo "- Changed files: ${{ steps.gate.outputs.changed_files }}"
+            echo "- Total changed lines: ${{ steps.gate.outputs.total_changed_lines }}"
+            echo "- Model: ${{ steps.gate.outputs.selected_model }}"
+            echo "- Model selection reason: ${{ steps.gate.outputs.selection_reason }}"
           } >> "$GITHUB_STEP_SUMMARY"
         shell: bash

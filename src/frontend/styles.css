@@ -331,6 +331,90 @@ select {
   font-size: 0.92rem;
 }
 
+.workspace-document-grid {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 24px;
+}
+
+.workspace-panel {
+  min-width: 0;
+  padding: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.document-importer__actions {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.document-list {
+  display: grid;
+  gap: 12px;
+  margin: 18px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.document-list__item {
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.document-list__heading {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.document-list__heading p {
+  margin: 8px 0 0;
+  color: rgba(239, 242, 245, 0.68);
+}
+
+.document-status-pill {
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: rgba(102, 212, 160, 0.14);
+  color: #9cf0c6;
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.document-list__meta {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 16px 0 0;
+}
+
+.document-list__meta div {
+  min-width: 0;
+}
+
+.document-list__meta dt {
+  margin-bottom: 4px;
+  color: rgba(239, 242, 245, 0.5);
+  font-size: 0.76rem;
+  text-transform: uppercase;
+}
+
+.document-list__meta dd {
+  margin: 0;
+  color: #f2f5f8;
+  font-size: 0.92rem;
+  overflow-wrap: anywhere;
+}
+
 .workspace-readiness {
   margin-top: 24px;
   padding-top: 20px;
@@ -379,6 +463,10 @@ select {
     grid-template-columns: 1fr;
   }
 
+  .workspace-document-grid {
+    grid-template-columns: 1fr;
+  }
+
   .app-shell__header {
     flex-direction: column;
   }
@@ -415,6 +503,15 @@ select {
   }
 
   .project-list__meta {
+    grid-template-columns: 1fr;
+  }
+
+  .document-list__heading {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .document-list__meta {
     grid-template-columns: 1fr;
   }
 

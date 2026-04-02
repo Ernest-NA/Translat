@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod commands;
+mod documents;
 mod error;
 mod persistence;
 mod projects;
@@ -25,6 +26,8 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::documents::import_project_document,
+            commands::documents::list_project_documents,
             commands::healthcheck::healthcheck,
             commands::projects::create_project,
             commands::projects::list_projects,

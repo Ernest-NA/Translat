@@ -188,7 +188,7 @@ impl<'connection> ProjectRepository<'connection> {
         })
     }
 
-    fn active_project_id(&mut self) -> Result<Option<String>, PersistenceError> {
+    pub fn active_project_id(&mut self) -> Result<Option<String>, PersistenceError> {
         self.connection
             .query_row(
                 "SELECT value FROM app_metadata WHERE key = ?1",
@@ -202,6 +202,24 @@ impl<'connection> ProjectRepository<'connection> {
                     error,
                 )
             })
+    }
+
+    pub fn exists(&mut self, project_id: &str) -> Result<bool, PersistenceError> {
+        let project_count = self
+            .connection
+            .query_row(
+                "SELECT COUNT(*) FROM projects WHERE id = ?1",
+                [project_id],
+                |row| row.get::<_, i64>(0),
+            )
+            .map_err(|error| {
+                PersistenceError::with_details(
+                    format!("The project repository could not inspect project {project_id}."),
+                    error,
+                )
+            })?;
+
+        Ok(project_count == 1)
     }
 }
 

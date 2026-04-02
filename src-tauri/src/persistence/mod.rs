@@ -1,4 +1,5 @@
 pub mod bootstrap;
+pub mod documents;
 pub mod error;
 pub mod migrations;
 pub mod projects;

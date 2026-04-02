@@ -40,6 +40,17 @@ impl DatabaseRuntime {
 
         inspect_connection(&self.database_path, &connection)
     }
+
+    pub fn documents_directory(&self) -> Result<PathBuf, PersistenceError> {
+        self.database_path
+            .parent()
+            .map(|directory| directory.join("documents"))
+            .ok_or_else(|| {
+                PersistenceError::new(
+                    "The persistence runtime could not derive the document storage directory from the database path.",
+                )
+            })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -212,7 +223,9 @@ fn inspect_connection(
             )
         })?;
 
-    let schema_ready = migrations::has_table(connection, "app_metadata")?;
+    let schema_ready = migrations::has_table(connection, "app_metadata")?
+        && migrations::has_table(connection, "projects")?
+        && migrations::has_table(connection, "documents")?;
 
     Ok(DatabaseStatus {
         applied_migrations,
@@ -248,11 +261,19 @@ mod tests {
         assert!(database_path.exists());
         assert_eq!(
             bootstrap_report.newly_applied_migrations,
-            vec!["0001_initial_schema".to_owned(), "0002_projects".to_owned()]
+            vec![
+                "0001_initial_schema".to_owned(),
+                "0002_projects".to_owned(),
+                "0003_documents".to_owned()
+            ]
         );
         assert_eq!(
             bootstrap_report.applied_migrations,
-            vec!["0001_initial_schema".to_owned(), "0002_projects".to_owned()]
+            vec![
+                "0001_initial_schema".to_owned(),
+                "0002_projects".to_owned(),
+                "0003_documents".to_owned()
+            ]
         );
         assert!(bootstrap_report.schema_ready);
     }
@@ -271,7 +292,11 @@ mod tests {
         assert!(second_report.newly_applied_migrations.is_empty());
         assert_eq!(
             second_report.applied_migrations,
-            vec!["0001_initial_schema".to_owned(), "0002_projects".to_owned()]
+            vec![
+                "0001_initial_schema".to_owned(),
+                "0002_projects".to_owned(),
+                "0003_documents".to_owned()
+            ]
         );
         assert!(second_report.schema_ready);
     }
@@ -305,17 +330,29 @@ mod tests {
                 |row| row.get::<_, i64>(0),
             )
             .expect("projects table should be queryable");
+        let documents_table_count = connection
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'documents'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("documents table should be queryable");
 
         let database_status = inspect_database(&database_path, TEST_DATABASE_KEY)
             .expect("database inspection should succeed");
 
-        assert_eq!(migration_count, 2);
+        assert_eq!(migration_count, 3);
         assert_eq!(app_metadata_table_count, 1);
         assert_eq!(projects_table_count, 1);
-        assert_eq!(database_status.migration_count, 2);
+        assert_eq!(documents_table_count, 1);
+        assert_eq!(database_status.migration_count, 3);
         assert_eq!(
             database_status.applied_migrations,
-            vec!["0001_initial_schema".to_owned(), "0002_projects".to_owned()]
+            vec![
+                "0001_initial_schema".to_owned(),
+                "0002_projects".to_owned(),
+                "0003_documents".to_owned()
+            ]
         );
         assert!(database_status.schema_ready);
     }
