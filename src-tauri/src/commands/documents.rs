@@ -660,8 +660,49 @@ fn sanitize_storage_file_name(file_name: &str) -> String {
     if trimmed.is_empty() {
         "document".to_owned()
     } else {
-        trimmed.chars().take(120).collect()
+        let shortened: String = trimmed.chars().take(120).collect();
+
+        if is_windows_reserved_file_name(&shortened) {
+            format!("document_{shortened}")
+        } else {
+            shortened
+        }
     }
+}
+
+fn is_windows_reserved_file_name(file_name: &str) -> bool {
+    let stem = file_name
+        .split('.')
+        .next()
+        .unwrap_or(file_name)
+        .trim_end_matches([' ', '.'])
+        .to_ascii_uppercase();
+
+    matches!(
+        stem.as_str(),
+        "CON"
+            | "PRN"
+            | "AUX"
+            | "NUL"
+            | "COM1"
+            | "COM2"
+            | "COM3"
+            | "COM4"
+            | "COM5"
+            | "COM6"
+            | "COM7"
+            | "COM8"
+            | "COM9"
+            | "LPT1"
+            | "LPT2"
+            | "LPT3"
+            | "LPT4"
+            | "LPT5"
+            | "LPT6"
+            | "LPT7"
+            | "LPT8"
+            | "LPT9"
+    )
 }
 
 fn ensure_project_exists(
@@ -1271,6 +1312,8 @@ mod tests {
             "chapter_01__draft_.txt"
         );
         assert_eq!(sanitize_storage_file_name(""), "document");
+        assert_eq!(sanitize_storage_file_name("CON.txt"), "document_CON.txt");
+        assert_eq!(sanitize_storage_file_name("nul"), "document_nul");
     }
 
     #[cfg(target_os = "windows")]

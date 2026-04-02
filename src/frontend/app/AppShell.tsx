@@ -43,7 +43,11 @@ export function AppShell() {
       const importedCount = await importDocuments(files);
 
       if (importedCount > 0) {
-        await reloadProjects();
+        try {
+          await reloadProjects();
+        } catch {
+          // Keep the import result successful even if the sidebar refresh fails.
+        }
       }
 
       return importedCount;
