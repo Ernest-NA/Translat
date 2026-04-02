@@ -22,6 +22,7 @@ Rules:
 - do not restate the PR summary as a finding
 - cite exact repo-relative file paths and exact 1-based line numbers on the changed side
 - keep findings short, direct, and evidence-based
+- keep the overall review concise and low-verbosity
 - return at most 5 actionable findings, ordered from highest to lowest severity
 - prefer the most user-impacting and best-supported issues when more than 5 candidates exist
 - if there are no actionable findings, return an empty `findings` array and explain residual risks briefly

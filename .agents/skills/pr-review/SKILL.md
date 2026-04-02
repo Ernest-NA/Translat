@@ -19,13 +19,20 @@ Use this skill when reviewing a pull request diff for Translat, either manually 
 - comments cite exact files and lines
 - severity is clear and findings are ordered from most important to least important
 - summaries stay brief and only follow the findings
+- review outputs stay concise and low-verbosity
 
 ## Working rules
+- default to a review-first mindset
 - review the PR diff, not the codebase in the abstract
 - prioritize correctness, regressions, security, maintainability, and missing tests
 - ignore stylistic nits unless they block understanding or hide a real defect
 - call out scope creep when a PR quietly mixes unrelated work
 - if there are no findings, say that explicitly and mention residual risks briefly
+- if asked to remediate findings, use a bounded loop with at most 2 fix iterations
+- make minimal, targeted changes only
+- run the smallest relevant validation checks
+- stop once the PR is acceptable for human review
+- never enter an indefinite self-review/self-fix loop
 
 ## Recommended checklist
 1. Read `AGENTS.md`, `docs/architecture/system-overview.md`, and `docs/product/git-workflow-and-releases.md` before finalizing findings.
