@@ -3,6 +3,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use tauri::State;
 
+use crate::commands::documents::reconcile_project_document_storage;
 use crate::documents::{DocumentSummary, DOCUMENT_STATUS_IMPORTED, DOCUMENT_STATUS_SEGMENTED};
 use crate::error::DesktopCommandError;
 use crate::persistence::bootstrap::DatabaseRuntime;
@@ -37,6 +38,7 @@ fn process_project_document_with_runtime(
 
     ensure_project_exists(&mut connection, &project_id)?;
     ensure_project_is_active(&mut connection, &project_id)?;
+    reconcile_project_document_storage(database_runtime, &mut connection, &project_id)?;
 
     let processing_record = {
         let mut document_repository = DocumentRepository::new(&mut connection);
