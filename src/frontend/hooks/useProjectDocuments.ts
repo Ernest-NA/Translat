@@ -137,10 +137,6 @@ export function useProjectDocuments(activeProjectId: string | null) {
         return;
       }
 
-      setOverview({
-        documents: [],
-        projectId: activeProjectId,
-      });
       setLoadError(
         caughtError instanceof DesktopCommandError
           ? caughtError

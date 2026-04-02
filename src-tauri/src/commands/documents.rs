@@ -21,6 +21,7 @@ use crate::persistence::secret_store;
 
 const PENDING_DOCUMENT_PREFIX: &str = "__pending__";
 const ORPHAN_PENDING_GRACE_PERIOD_SECS: i64 = 300;
+const MAX_STORAGE_FILE_NAME_CHARS: usize = 240;
 
 #[derive(Debug, Clone, Deserialize)]
 struct ValidatedDocumentImport {
@@ -390,7 +391,10 @@ fn persist_document_bytes(
         )
     })?;
 
-    let stored_file_name = format!("{document_id}__{}", sanitize_storage_file_name(file_name));
+    let stored_file_name = format!(
+        "{document_id}__{}",
+        sanitize_storage_file_name_for_storage(document_id, file_name)
+    );
     let final_path = project_directory.join(stored_file_name);
     let pending_file_name = format!(
         "{}{}",
@@ -543,6 +547,24 @@ fn repair_project_document_storage(
 
         let final_path = final_path_from_pending(&stored_path)?;
 
+        if final_path.exists() {
+            repository
+                .update_stored_path(
+                    &storage_record.document_id,
+                    project_id_from_stored_path(&final_path)?,
+                    &final_path.display().to_string(),
+                    now,
+                )
+                .map_err(|error| {
+                    DesktopCommandError::internal(
+                        "The desktop shell could not repair a pending imported document payload.",
+                        Some(error.to_string()),
+                    )
+                })?;
+            referenced_paths.push(final_path);
+            continue;
+        }
+
         if stored_path.exists() {
             let stored_document_paths = StoredDocumentPaths {
                 final_path: final_path.clone(),
@@ -667,6 +689,25 @@ fn sanitize_storage_file_name(file_name: &str) -> String {
         } else {
             shortened
         }
+    }
+}
+
+fn sanitize_storage_file_name_for_storage(document_id: &str, file_name: &str) -> String {
+    let available_name_chars = MAX_STORAGE_FILE_NAME_CHARS
+        .saturating_sub(document_id.chars().count())
+        .saturating_sub(2);
+    let sanitized = sanitize_storage_file_name(file_name);
+    let mut shortened: String = sanitized.chars().take(available_name_chars).collect();
+
+    if shortened.is_empty() {
+        shortened = "document".to_owned();
+    }
+
+    if is_windows_reserved_file_name(&shortened) {
+        let prefixed = format!("document_{shortened}");
+        prefixed.chars().take(available_name_chars).collect()
+    } else {
+        shortened
     }
 }
 
@@ -1277,6 +1318,91 @@ mod tests {
                     mime_type: Some("text/plain".to_owned()),
                     stored_path: pending_payload_path.display().to_string(),
                     file_size_bytes: 7,
+                    status: DOCUMENT_STATUS_IMPORTED.to_owned(),
+                    created_at: stale_timestamp,
+                    updated_at: stale_timestamp,
+                })
+                .expect("document should be created");
+        }
+        drop(connection);
+
+        let overview = list_project_documents_with_runtime(
+            ListProjectDocumentsInput {
+                project_id: "prj_active_001".to_owned(),
+            },
+            &runtime,
+        )
+        .expect("listing should repair pending storage");
+
+        let mut reopened_connection = open_database_with_key(&database_path, &encryption_key)
+            .expect("database connection should reopen");
+        let repaired_paths = DocumentRepository::new(&mut reopened_connection)
+            .list_stored_paths_by_project("prj_active_001")
+            .expect("stored paths should load");
+
+        assert_eq!(overview.documents.len(), 1);
+        assert!(!pending_payload_path.exists());
+        assert!(final_payload_path.exists());
+        assert_eq!(repaired_paths, vec![final_payload_path.display().to_string()]);
+    }
+
+    #[test]
+    fn list_project_documents_repairs_pending_rows_when_final_payload_already_exists() {
+        let temporary_directory = tempdir().expect("temp dir should be created");
+        let database_path = temporary_directory.path().join("translat.sqlite3");
+        let encryption_key_path = temporary_directory.path().join("translat.sqlite3.key");
+        let runtime = DatabaseRuntime::new(database_path.clone(), encryption_key_path.clone());
+        let now = current_timestamp().expect("timestamp should be available");
+        let stale_timestamp = now - (ORPHAN_PENDING_GRACE_PERIOD_SECS + 60);
+        let encryption_key = load_or_create_encryption_key(&encryption_key_path)
+            .expect("encryption key should be created");
+
+        bootstrap_database(&database_path, &encryption_key)
+            .expect("database bootstrap should succeed");
+
+        let documents_directory = runtime
+            .documents_directory()
+            .expect("documents directory should resolve");
+        let project_directory = documents_directory.join("prj_active_001");
+        fs::create_dir_all(&project_directory).expect("project directory should exist");
+        let pending_payload_path = project_directory.join(format!(
+            "{}doc_{stale_timestamp}_repair__source.txt",
+            PENDING_DOCUMENT_PREFIX
+        ));
+        let final_payload_path =
+            project_directory.join(format!("doc_{stale_timestamp}_repair__source.txt"));
+        fs::write(&final_payload_path, b"finalized").expect("final payload should write");
+
+        let mut connection = open_database_with_key(&database_path, &encryption_key)
+            .expect("database connection should open");
+        {
+            let mut project_repository = ProjectRepository::new(&mut connection);
+            project_repository
+                .create(&NewProject {
+                    id: "prj_active_001".to_owned(),
+                    name: "Active project".to_owned(),
+                    description: None,
+                    created_at: now,
+                    updated_at: now,
+                    last_opened_at: now,
+                })
+                .expect("active project should be created");
+            project_repository
+                .open_project("prj_active_001", now + 1)
+                .expect("project should become active");
+        }
+        {
+            let mut document_repository = DocumentRepository::new(&mut connection);
+            document_repository
+                .create(&NewDocument {
+                    id: format!("doc_{stale_timestamp}_repair"),
+                    project_id: "prj_active_001".to_owned(),
+                    name: "source.txt".to_owned(),
+                    source_kind: DOCUMENT_SOURCE_LOCAL_FILE.to_owned(),
+                    format: "txt".to_owned(),
+                    mime_type: Some("text/plain".to_owned()),
+                    stored_path: pending_payload_path.display().to_string(),
+                    file_size_bytes: 9,
                     status: DOCUMENT_STATUS_IMPORTED.to_owned(),
                     created_at: stale_timestamp,
                     updated_at: stale_timestamp,
