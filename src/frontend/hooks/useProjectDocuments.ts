@@ -157,9 +157,11 @@ export function useProjectDocuments(activeProjectId: string | null) {
 
       const requestId = importRequestIdRef.current + 1;
       importRequestIdRef.current = requestId;
+      loadRequestIdRef.current += 1;
 
       setIsImporting(true);
       setImportError(null);
+      setIsLoading(false);
       const importedDocuments: DocumentSummary[] = [];
 
       try {

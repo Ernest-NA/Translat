@@ -201,6 +201,21 @@ impl<'connection> DocumentRepository<'connection> {
         Ok(stored_paths)
     }
 
+    pub fn delete_by_id(&mut self, document_id: &str) -> Result<(), PersistenceError> {
+        self.connection
+            .execute("DELETE FROM documents WHERE id = ?1", [document_id])
+            .map_err(|error| {
+                PersistenceError::with_details(
+                    format!(
+                        "The document repository could not delete document {document_id} after a failed import finalization."
+                    ),
+                    error,
+                )
+            })?;
+
+        Ok(())
+    }
+
     pub fn load_overview(
         &mut self,
         project_id: &str,
