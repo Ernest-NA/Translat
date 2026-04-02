@@ -84,8 +84,19 @@ export function useProjectDocuments(activeProjectId: string | null) {
 
     previousProjectIdRef.current = activeProjectId;
     importRequestIdRef.current += 1;
+    loadRequestIdRef.current += 1;
     setImportError(null);
     setIsImporting(false);
+    setLoadError(null);
+    setOverview(
+      activeProjectId
+        ? {
+            documents: [],
+            projectId: activeProjectId,
+          }
+        : null,
+    );
+    setIsLoading(Boolean(activeProjectId));
   }, [activeProjectId]);
 
   const reload = useCallback(async (): Promise<void> => {

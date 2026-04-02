@@ -19,7 +19,7 @@ use crate::persistence::documents::DocumentRepository;
 use crate::persistence::projects::ProjectRepository;
 use crate::persistence::secret_store;
 
-const PENDING_DOCUMENT_SUFFIX: &str = ".pending";
+const PENDING_DOCUMENT_PREFIX: &str = "__pending__";
 const ORPHAN_PENDING_GRACE_PERIOD_SECS: i64 = 300;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -353,11 +353,11 @@ fn persist_document_bytes(
     let final_path = project_directory.join(stored_file_name);
     let pending_file_name = format!(
         "{}{}",
+        PENDING_DOCUMENT_PREFIX,
         final_path
             .file_name()
             .and_then(|value| value.to_str())
-            .unwrap_or("document"),
-        PENDING_DOCUMENT_SUFFIX
+            .unwrap_or("document")
     );
     let pending_path = project_directory.join(pending_file_name);
 
@@ -464,7 +464,7 @@ fn reconcile_project_document_storage(
         }
 
         if is_pending_document_payload(&entry_path) {
-            if is_stale_pending_document_payload(&entry_path, now)? {
+            if is_stale_pending_document_payload(&entry_path, now) {
                 fs::remove_file(&entry_path).map_err(|error| {
                     DesktopCommandError::internal(
                         format!(
@@ -479,7 +479,7 @@ fn reconcile_project_document_storage(
         }
 
         if !referenced_paths.contains(&entry_path)
-            && is_stale_unreferenced_document_payload(&entry_path, now)?
+            && is_stale_unreferenced_document_payload(&entry_path, now)
         {
             fs::remove_file(&entry_path).map_err(|error| {
                 DesktopCommandError::internal(
@@ -499,27 +499,23 @@ fn reconcile_project_document_storage(
 fn is_pending_document_payload(path: &Path) -> bool {
     path.file_name()
         .and_then(|value| value.to_str())
-        .is_some_and(|value| value.ends_with(PENDING_DOCUMENT_SUFFIX))
+        .is_some_and(|value| value.starts_with(PENDING_DOCUMENT_PREFIX))
 }
 
-fn is_stale_unreferenced_document_payload(
-    path: &Path,
-    now: i64,
-) -> Result<bool, DesktopCommandError> {
-    let document_id = storage_document_id(path)?;
-    let timestamp = parse_document_timestamp(&document_id)?;
-
-    Ok(now.saturating_sub(timestamp) > ORPHAN_PENDING_GRACE_PERIOD_SECS)
+fn is_stale_unreferenced_document_payload(path: &Path, now: i64) -> bool {
+    storage_payload_timestamp(path)
+        .is_some_and(|timestamp| now.saturating_sub(timestamp) > ORPHAN_PENDING_GRACE_PERIOD_SECS)
 }
 
-fn is_stale_pending_document_payload(
-    path: &Path,
-    now: i64,
-) -> Result<bool, DesktopCommandError> {
-    let document_id = storage_document_id(path)?;
-    let timestamp = parse_document_timestamp(&document_id)?;
+fn is_stale_pending_document_payload(path: &Path, now: i64) -> bool {
+    storage_payload_timestamp(path)
+        .is_some_and(|timestamp| now.saturating_sub(timestamp) > ORPHAN_PENDING_GRACE_PERIOD_SECS)
+}
 
-    Ok(now.saturating_sub(timestamp) > ORPHAN_PENDING_GRACE_PERIOD_SECS)
+fn storage_payload_timestamp(path: &Path) -> Option<i64> {
+    let document_id = storage_document_id(path).ok()?;
+
+    parse_document_timestamp(&document_id).ok()
 }
 
 fn storage_document_id(path: &Path) -> Result<String, DesktopCommandError> {
@@ -532,11 +528,11 @@ fn storage_document_id(path: &Path) -> Result<String, DesktopCommandError> {
                 None,
             )
         })?;
-    let without_suffix = file_name
-        .strip_suffix(PENDING_DOCUMENT_SUFFIX)
+    let without_prefix = file_name
+        .strip_prefix(PENDING_DOCUMENT_PREFIX)
         .unwrap_or(file_name);
 
-    without_suffix
+    without_prefix
         .split_once("__")
         .map(|(id, _)| id.to_owned())
         .ok_or_else(|| {
@@ -676,7 +672,7 @@ mod tests {
         current_timestamp, derive_document_format, ensure_project_is_active,
         reconcile_project_document_storage, sanitize_storage_file_name,
         validate_base64_payload_size, validate_document_format, validate_project_id,
-        ORPHAN_PENDING_GRACE_PERIOD_SECS, PENDING_DOCUMENT_SUFFIX,
+        ORPHAN_PENDING_GRACE_PERIOD_SECS, PENDING_DOCUMENT_PREFIX,
     };
     use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
     use base64::Engine;
@@ -862,7 +858,10 @@ mod tests {
         fs::create_dir_all(&project_directory).expect("project directory should exist");
 
         let pending_payload_path =
-            project_directory.join(format!("doc_{}_test__source.txt{}", now, PENDING_DOCUMENT_SUFFIX));
+            project_directory.join(format!(
+                "{}doc_{}_test__source.txt",
+                PENDING_DOCUMENT_PREFIX, now
+            ));
         fs::write(&pending_payload_path, b"pending").expect("pending payload should write");
 
         let mut connection = open_database_with_key(&database_path, "translat-test-key-for-c2")
@@ -928,6 +927,109 @@ mod tests {
             .expect("cleanup should succeed");
 
         assert!(recent_payload_path.exists());
+    }
+
+    #[test]
+    fn reconcile_project_document_storage_keeps_real_documents_named_pending() {
+        let temporary_directory = tempdir().expect("temp dir should be created");
+        let database_path = temporary_directory.path().join("translat.sqlite3");
+        let encryption_key_path = temporary_directory.path().join("translat.sqlite3.key");
+        let runtime = DatabaseRuntime::new(database_path.clone(), encryption_key_path);
+        let now = current_timestamp().expect("timestamp should be available");
+
+        bootstrap_database(&database_path, "translat-test-key-for-c2")
+            .expect("database bootstrap should succeed");
+
+        let documents_directory = runtime
+            .documents_directory()
+            .expect("documents directory should resolve");
+        let project_directory = documents_directory.join("prj_active_001");
+        fs::create_dir_all(&project_directory).expect("project directory should exist");
+
+        let referenced_payload_path =
+            project_directory.join(format!("doc_{now}_report__report.pending"));
+        fs::write(&referenced_payload_path, b"report").expect("report payload should write");
+
+        let mut connection = open_database_with_key(&database_path, "translat-test-key-for-c2")
+            .expect("database connection should open");
+        {
+            let mut project_repository = ProjectRepository::new(&mut connection);
+            project_repository
+                .create(&NewProject {
+                    id: "prj_active_001".to_owned(),
+                    name: "Active project".to_owned(),
+                    description: None,
+                    created_at: now,
+                    updated_at: now,
+                    last_opened_at: now,
+                })
+                .expect("active project should be created");
+        }
+        {
+            let mut document_repository = DocumentRepository::new(&mut connection);
+            document_repository
+                .create(&NewDocument {
+                    id: format!("doc_{now}_report"),
+                    project_id: "prj_active_001".to_owned(),
+                    name: "report.pending".to_owned(),
+                    source_kind: DOCUMENT_SOURCE_LOCAL_FILE.to_owned(),
+                    format: "pending".to_owned(),
+                    mime_type: Some("text/plain".to_owned()),
+                    stored_path: referenced_payload_path.display().to_string(),
+                    file_size_bytes: 6,
+                    status: DOCUMENT_STATUS_IMPORTED.to_owned(),
+                    created_at: now,
+                    updated_at: now,
+                })
+                .expect("document should be created");
+        }
+
+        reconcile_project_document_storage(&runtime, &mut connection, "prj_active_001")
+            .expect("cleanup should succeed");
+
+        assert!(referenced_payload_path.exists());
+    }
+
+    #[test]
+    fn reconcile_project_document_storage_ignores_unrelated_files() {
+        let temporary_directory = tempdir().expect("temp dir should be created");
+        let database_path = temporary_directory.path().join("translat.sqlite3");
+        let encryption_key_path = temporary_directory.path().join("translat.sqlite3.key");
+        let runtime = DatabaseRuntime::new(database_path.clone(), encryption_key_path);
+        let now = current_timestamp().expect("timestamp should be available");
+
+        bootstrap_database(&database_path, "translat-test-key-for-c2")
+            .expect("database bootstrap should succeed");
+
+        let documents_directory = runtime
+            .documents_directory()
+            .expect("documents directory should resolve");
+        let project_directory = documents_directory.join("prj_active_001");
+        fs::create_dir_all(&project_directory).expect("project directory should exist");
+
+        let unrelated_path = project_directory.join("desktop.ini");
+        fs::write(&unrelated_path, b"metadata").expect("unrelated payload should write");
+
+        let mut connection = open_database_with_key(&database_path, "translat-test-key-for-c2")
+            .expect("database connection should open");
+        {
+            let mut project_repository = ProjectRepository::new(&mut connection);
+            project_repository
+                .create(&NewProject {
+                    id: "prj_active_001".to_owned(),
+                    name: "Active project".to_owned(),
+                    description: None,
+                    created_at: now,
+                    updated_at: now,
+                    last_opened_at: now,
+                })
+                .expect("active project should be created");
+        }
+
+        reconcile_project_document_storage(&runtime, &mut connection, "prj_active_001")
+            .expect("cleanup should succeed");
+
+        assert!(unrelated_path.exists());
     }
 
     #[test]
