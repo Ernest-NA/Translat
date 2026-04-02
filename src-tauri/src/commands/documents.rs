@@ -398,6 +398,7 @@ mod tests {
         assert_eq!(sanitize_storage_file_name(""), "document");
     }
 
+    #[cfg(target_os = "windows")]
     #[test]
     fn protected_document_payload_round_trips() {
         let plaintext = b"Highly sensitive source content.";

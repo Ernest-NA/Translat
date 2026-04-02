@@ -9,6 +9,8 @@ import {
   listProjectDocuments,
 } from "../lib/desktop";
 
+const MAX_IMPORTABLE_DOCUMENT_BYTES = 20 * 1024 * 1024;
+
 function sortDocuments(documents: DocumentSummary[]) {
   return [...documents].sort((left, right) => {
     if (left.createdAt !== right.createdAt) {
@@ -52,10 +54,12 @@ export function useProjectDocuments(activeProjectId: string | null) {
   const [isImporting, setIsImporting] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState<DesktopCommandError | null>(null);
+  const importRequestIdRef = useRef(0);
   const loadRequestIdRef = useRef(0);
 
   const reload = useCallback(async (): Promise<void> => {
     if (!activeProjectId) {
+      importRequestIdRef.current += 1;
       loadRequestIdRef.current += 1;
       setOverview(null);
       setImportError(null);
@@ -125,6 +129,25 @@ export function useProjectDocuments(activeProjectId: string | null) {
         return 0;
       }
 
+      const oversizeFile = selectedFiles.find(
+        (file) => file.size > MAX_IMPORTABLE_DOCUMENT_BYTES,
+      );
+
+      if (oversizeFile) {
+        setImportError(
+          new DesktopCommandError("import_project_document", {
+            code: "INVALID_INPUT",
+            message:
+              "The selected document exceeds the current 20 MiB import limit for C2.",
+          }),
+        );
+
+        return 0;
+      }
+
+      const requestId = importRequestIdRef.current + 1;
+      importRequestIdRef.current = requestId;
+
       setIsImporting(true);
       setImportError(null);
       const importedDocuments: DocumentSummary[] = [];
@@ -140,6 +163,10 @@ export function useProjectDocuments(activeProjectId: string | null) {
           });
 
           importedDocuments.push(importedDocument);
+        }
+
+        if (importRequestIdRef.current !== requestId) {
+          return importedDocuments.length;
         }
 
         setOverview((currentOverview) =>
@@ -159,6 +186,10 @@ export function useProjectDocuments(activeProjectId: string | null) {
 
         return importedDocuments.length;
       } catch (caughtError) {
+        if (importRequestIdRef.current !== requestId) {
+          return importedDocuments.length;
+        }
+
         if (importedDocuments.length > 0) {
           setOverview((currentOverview) =>
             normalizeOverview({
@@ -188,7 +219,9 @@ export function useProjectDocuments(activeProjectId: string | null) {
 
         return importedDocuments.length;
       } finally {
-        setIsImporting(false);
+        if (importRequestIdRef.current === requestId) {
+          setIsImporting(false);
+        }
       }
     },
     [activeProjectId],
