@@ -42,6 +42,13 @@ pub fn list_project_documents(
     input: ListProjectDocumentsInput,
     database_runtime: State<'_, DatabaseRuntime>,
 ) -> Result<ProjectDocumentsOverview, DesktopCommandError> {
+    list_project_documents_with_runtime(input, database_runtime.inner())
+}
+
+fn list_project_documents_with_runtime(
+    input: ListProjectDocumentsInput,
+    database_runtime: &DatabaseRuntime,
+) -> Result<ProjectDocumentsOverview, DesktopCommandError> {
     let project_id = validate_project_id(&input.project_id)?;
     let mut connection = database_runtime.open_connection().map_err(|error| {
         DesktopCommandError::internal(
@@ -68,6 +75,13 @@ pub fn list_project_documents(
 pub fn import_project_document(
     input: ImportDocumentInput,
     database_runtime: State<'_, DatabaseRuntime>,
+) -> Result<DocumentSummary, DesktopCommandError> {
+    import_project_document_with_runtime(input, database_runtime.inner())
+}
+
+fn import_project_document_with_runtime(
+    input: ImportDocumentInput,
+    database_runtime: &DatabaseRuntime,
 ) -> Result<DocumentSummary, DesktopCommandError> {
     let validated_import = validate_import_document(input)?;
     let imported_at = current_timestamp()?;
@@ -658,6 +672,7 @@ fn current_timestamp() -> Result<i64, DesktopCommandError> {
 mod tests {
     use super::{
         current_timestamp, derive_document_format, ensure_project_is_active,
+        import_project_document_with_runtime,
         reconcile_project_document_storage, sanitize_storage_file_name,
         validate_base64_payload_size, validate_document_format, validate_project_id,
         ORPHAN_PENDING_GRACE_PERIOD_SECS, PENDING_DOCUMENT_PREFIX,
@@ -665,7 +680,7 @@ mod tests {
     use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
     use base64::Engine;
     use crate::documents::{
-        NewDocument, DOCUMENT_SOURCE_LOCAL_FILE, DOCUMENT_STATUS_IMPORTED,
+        ImportDocumentInput, NewDocument, DOCUMENT_SOURCE_LOCAL_FILE, DOCUMENT_STATUS_IMPORTED,
         MAX_IMPORTED_DOCUMENT_BYTES,
     };
     use crate::persistence::bootstrap::{
@@ -673,7 +688,9 @@ mod tests {
     };
     use crate::persistence::documents::DocumentRepository;
     use crate::persistence::projects::ProjectRepository;
-    use crate::persistence::secret_store::{protect_local_payload, unprotect_local_payload};
+    use crate::persistence::secret_store::{
+        load_or_create_encryption_key, protect_local_payload, unprotect_local_payload,
+    };
     use crate::projects::NewProject;
     use std::fs;
     use tempfile::tempdir;
@@ -1018,6 +1035,78 @@ mod tests {
             .expect("cleanup should succeed");
 
         assert!(unrelated_path.exists());
+    }
+
+    #[test]
+    fn import_project_document_registers_payload_and_metadata_end_to_end() {
+        let temporary_directory = tempdir().expect("temp dir should be created");
+        let database_path = temporary_directory.path().join("translat.sqlite3");
+        let encryption_key_path = temporary_directory.path().join("translat.sqlite3.key");
+        let runtime = DatabaseRuntime::new(database_path.clone(), encryption_key_path.clone());
+        let now = 1_743_517_200_i64;
+        let plaintext = b"Hello from C2 import";
+        let encryption_key = load_or_create_encryption_key(&encryption_key_path)
+            .expect("encryption key should be created");
+
+        bootstrap_database(&database_path, &encryption_key)
+            .expect("database bootstrap should succeed");
+
+        let mut connection = open_database_with_key(&database_path, &encryption_key)
+            .expect("database connection should open");
+        {
+            let mut project_repository = ProjectRepository::new(&mut connection);
+            project_repository
+                .create(&NewProject {
+                    id: "prj_active_001".to_owned(),
+                    name: "Active project".to_owned(),
+                    description: None,
+                    created_at: now,
+                    updated_at: now,
+                    last_opened_at: now,
+                })
+                .expect("active project should be created");
+            project_repository
+                .open_project("prj_active_001", now + 1)
+                .expect("project should become active");
+        }
+        drop(connection);
+
+        let imported_document = import_project_document_with_runtime(
+            ImportDocumentInput {
+                project_id: "prj_active_001".to_owned(),
+                file_name: "source.txt".to_owned(),
+                mime_type: Some("text/plain".to_owned()),
+                base64_content: BASE64_STANDARD.encode(plaintext),
+            },
+            &runtime,
+        )
+        .expect("document import should succeed");
+
+        assert_eq!(imported_document.project_id, "prj_active_001");
+        assert_eq!(imported_document.name, "source.txt");
+        assert_eq!(imported_document.format, "txt");
+        assert_eq!(imported_document.file_size_bytes, plaintext.len() as i64);
+        assert_eq!(imported_document.status, DOCUMENT_STATUS_IMPORTED);
+
+        let mut reopened_connection = open_database_with_key(&database_path, &encryption_key)
+            .expect("database connection should reopen");
+        let mut document_repository = DocumentRepository::new(&mut reopened_connection);
+        let overview = document_repository
+            .load_overview("prj_active_001")
+            .expect("overview should load");
+        let imported_payload_paths = runtime
+            .documents_directory()
+            .expect("documents directory should resolve")
+            .join("prj_active_001");
+        let stored_entries = fs::read_dir(imported_payload_paths)
+            .expect("stored directory should be readable")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("stored entries should be readable");
+
+        assert_eq!(overview.documents.len(), 1);
+        assert_eq!(overview.documents[0], imported_document);
+        assert_eq!(stored_entries.len(), 1);
+        assert!(stored_entries[0].path().is_file());
     }
 
     #[test]

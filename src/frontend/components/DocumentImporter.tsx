@@ -53,22 +53,16 @@ export function DocumentImporter({
           onClick={() => inputRef.current?.click()}
           type="button"
         >
-          {isImporting ? "Importing documents..." : "Select document files"}
+          {isImporting ? "Importing document..." : "Select document file"}
         </button>
 
         <span className="project-form__hint">
-          You can select one or multiple files. They are copied into the local
-          workspace storage before C3 processes them.
+          C2 imports one source document per action. The file is copied into
+          local workspace storage before C3 processes it.
         </span>
       </div>
 
-      <input
-        hidden
-        multiple
-        onChange={handleFileSelection}
-        ref={inputRef}
-        type="file"
-      />
+      <input hidden onChange={handleFileSelection} ref={inputRef} type="file" />
 
       {error ? (
         <p className="form-error" role="alert">

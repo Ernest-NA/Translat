@@ -173,6 +173,18 @@ export function useProjectDocuments(activeProjectId: string | null) {
         return 0;
       }
 
+      if (selectedFiles.length > 1) {
+        setImportError(
+          new DesktopCommandError("import_project_document", {
+            code: "INVALID_INPUT",
+            message:
+              "C2 imports one document at a time. Select a single file and retry.",
+          }),
+        );
+
+        return 0;
+      }
+
       const oversizeFile = selectedFiles.find(
         (file) => file.size > MAX_IMPORTABLE_DOCUMENT_BYTES,
       );
