@@ -27,6 +27,7 @@ Describe how Translat runs automated AI-assisted pull request reviews after a PR
 - GitHub Actions secret: `OPENAI_API_KEY`
 - Optional repository variable: `CODEX_MODEL_MINI`
   - Default: `gpt-5.4-mini`
+  - Falls back to legacy `CODEX_MODEL` if `CODEX_MODEL_MINI` is unset
 - Bot-authored pull requests are allowed to trigger the review flow, so Dependabot PRs are covered too.
 
 ## Model selection policy

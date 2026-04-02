@@ -129,7 +129,10 @@ fn import_project_document_with_runtime(
         updated_at: imported_at,
     };
 
-    finalize_stored_document(&stored_document_paths)?;
+    if let Err(error) = finalize_stored_document(&stored_document_paths) {
+        best_effort_remove_file(&stored_document_paths.pending_path);
+        return Err(error);
+    }
 
     let mut repository = DocumentRepository::new(&mut connection);
 
