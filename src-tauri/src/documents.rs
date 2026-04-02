@@ -13,7 +13,6 @@ pub struct DocumentSummary {
     pub source_kind: String,
     pub format: String,
     pub mime_type: Option<String>,
-    pub stored_path: String,
     pub file_size_bytes: i64,
     pub status: String,
     pub created_at: i64,

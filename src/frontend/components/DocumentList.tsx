@@ -85,10 +85,6 @@ export function DocumentList({
                   <dt>Document ID</dt>
                   <dd>{document.id}</dd>
                 </div>
-                <div>
-                  <dt>Stored path</dt>
-                  <dd>{document.storedPath}</dd>
-                </div>
               </dl>
             </li>
           ))}

@@ -1,5 +1,6 @@
+use std::collections::HashSet;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
@@ -42,6 +43,7 @@ pub fn list_project_documents(
 
     ensure_project_exists(&mut connection, &project_id)?;
     ensure_project_is_active(&mut connection, &project_id)?;
+    reconcile_project_document_storage(&database_runtime, &mut connection, &project_id)?;
 
     let mut repository = DocumentRepository::new(&mut connection);
 
@@ -71,6 +73,11 @@ pub fn import_project_document(
 
     ensure_project_exists(&mut connection, &validated_import.project_id)?;
     ensure_project_is_active(&mut connection, &validated_import.project_id)?;
+    reconcile_project_document_storage(
+        &database_runtime,
+        &mut connection,
+        &validated_import.project_id,
+    )?;
 
     let stored_document_path = persist_document_bytes(
         &database_runtime,
@@ -360,6 +367,74 @@ fn persist_document_bytes(
     Ok(stored_document_path)
 }
 
+fn reconcile_project_document_storage(
+    database_runtime: &DatabaseRuntime,
+    connection: &mut rusqlite::Connection,
+    project_id: &str,
+) -> Result<(), DesktopCommandError> {
+    let documents_directory = database_runtime.documents_directory().map_err(|error| {
+        DesktopCommandError::internal(
+            "The desktop shell could not resolve the document storage directory.",
+            Some(error.to_string()),
+        )
+    })?;
+    let project_directory = documents_directory.join(project_id);
+
+    if !project_directory.exists() {
+        return Ok(());
+    }
+
+    let mut repository = DocumentRepository::new(connection);
+    let referenced_paths = repository
+        .list_stored_paths_by_project(project_id)
+        .map_err(|error| {
+            DesktopCommandError::internal(
+                "The desktop shell could not inspect stored document paths for cleanup.",
+                Some(error.to_string()),
+            )
+        })?
+        .into_iter()
+        .map(PathBuf::from)
+        .collect::<HashSet<_>>();
+
+    let directory_entries = fs::read_dir(&project_directory).map_err(|error| {
+        DesktopCommandError::internal(
+            format!(
+                "The desktop shell could not inspect the project document directory at {}.",
+                project_directory.display()
+            ),
+            Some(error.to_string()),
+        )
+    })?;
+
+    for entry in directory_entries {
+        let entry = entry.map_err(|error| {
+            DesktopCommandError::internal(
+                format!(
+                    "The desktop shell could not inspect a stored document entry under {}.",
+                    project_directory.display()
+                ),
+                Some(error.to_string()),
+            )
+        })?;
+        let entry_path = entry.path();
+
+        if entry_path.is_file() && !referenced_paths.contains(&entry_path) {
+            fs::remove_file(&entry_path).map_err(|error| {
+                DesktopCommandError::internal(
+                    format!(
+                        "The desktop shell could not remove the orphaned document payload at {}.",
+                        entry_path.display()
+                    ),
+                    Some(error.to_string()),
+                )
+            })?;
+        }
+    }
+
+    Ok(())
+}
+
 fn sanitize_storage_file_name(file_name: &str) -> String {
     let candidate = Path::new(file_name)
         .file_name()
@@ -459,16 +534,24 @@ fn current_timestamp() -> Result<i64, DesktopCommandError> {
 #[cfg(test)]
 mod tests {
     use super::{
-        derive_document_format, ensure_project_is_active, sanitize_storage_file_name,
-        validate_base64_payload_size, validate_document_format, validate_project_id,
+        derive_document_format, ensure_project_is_active, reconcile_project_document_storage,
+        sanitize_storage_file_name, validate_base64_payload_size, validate_document_format,
+        validate_project_id,
     };
     use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
     use base64::Engine;
-    use crate::documents::MAX_IMPORTED_DOCUMENT_BYTES;
-    use crate::persistence::bootstrap::{bootstrap_database, open_database_with_key};
+    use crate::documents::{
+        NewDocument, DOCUMENT_SOURCE_LOCAL_FILE, DOCUMENT_STATUS_IMPORTED,
+        MAX_IMPORTED_DOCUMENT_BYTES,
+    };
+    use crate::persistence::bootstrap::{
+        bootstrap_database, open_database_with_key, DatabaseRuntime,
+    };
+    use crate::persistence::documents::DocumentRepository;
     use crate::persistence::projects::ProjectRepository;
     use crate::persistence::secret_store::{protect_local_payload, unprotect_local_payload};
     use crate::projects::NewProject;
+    use std::fs;
     use tempfile::tempdir;
 
     #[test]
@@ -553,6 +636,69 @@ mod tests {
         }
         assert!(ensure_project_is_active(&mut connection, "prj_active_001").is_ok());
         assert!(ensure_project_is_active(&mut connection, "prj_other_001").is_err());
+    }
+
+    #[test]
+    fn reconcile_project_document_storage_removes_orphaned_payloads() {
+        let temporary_directory = tempdir().expect("temp dir should be created");
+        let database_path = temporary_directory.path().join("translat.sqlite3");
+        let encryption_key_path = temporary_directory.path().join("translat.sqlite3.key");
+        let runtime = DatabaseRuntime::new(database_path.clone(), encryption_key_path);
+        let now = 1_743_517_200_i64;
+
+        bootstrap_database(&database_path, "translat-test-key-for-c2")
+            .expect("database bootstrap should succeed");
+
+        let documents_directory = runtime
+            .documents_directory()
+            .expect("documents directory should resolve");
+        let project_directory = documents_directory.join("prj_active_001");
+        fs::create_dir_all(&project_directory).expect("project directory should exist");
+
+        let referenced_payload_path = project_directory.join("doc_test_001__source.txt");
+        let orphaned_payload_path = project_directory.join("doc_orphan_001__source.txt");
+        fs::write(&referenced_payload_path, b"referenced").expect("referenced payload should write");
+        fs::write(&orphaned_payload_path, b"orphaned").expect("orphaned payload should write");
+
+        let mut connection = open_database_with_key(&database_path, "translat-test-key-for-c2")
+            .expect("database connection should open");
+        {
+            let mut project_repository = ProjectRepository::new(&mut connection);
+            project_repository
+                .create(&NewProject {
+                    id: "prj_active_001".to_owned(),
+                    name: "Active project".to_owned(),
+                    description: None,
+                    created_at: now,
+                    updated_at: now,
+                    last_opened_at: now,
+                })
+                .expect("active project should be created");
+        }
+        {
+            let mut document_repository = DocumentRepository::new(&mut connection);
+            document_repository
+                .create(&NewDocument {
+                    id: "doc_test_001".to_owned(),
+                    project_id: "prj_active_001".to_owned(),
+                    name: "source.txt".to_owned(),
+                    source_kind: DOCUMENT_SOURCE_LOCAL_FILE.to_owned(),
+                    format: "txt".to_owned(),
+                    mime_type: Some("text/plain".to_owned()),
+                    stored_path: referenced_payload_path.display().to_string(),
+                    file_size_bytes: 10,
+                    status: DOCUMENT_STATUS_IMPORTED.to_owned(),
+                    created_at: now,
+                    updated_at: now,
+                })
+                .expect("referenced document should be created");
+        }
+
+        reconcile_project_document_storage(&runtime, &mut connection, "prj_active_001")
+            .expect("cleanup should succeed");
+
+        assert!(referenced_payload_path.exists());
+        assert!(!orphaned_payload_path.exists());
     }
 
     #[test]

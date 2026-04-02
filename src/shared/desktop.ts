@@ -56,7 +56,6 @@ export interface DocumentSummary {
   sourceKind: string;
   format: string;
   mimeType: string | null;
-  storedPath: string;
   fileSizeBytes: number;
   status: string;
   createdAt: number;

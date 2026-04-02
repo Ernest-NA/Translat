@@ -91,7 +91,6 @@ impl<'connection> DocumentRepository<'connection> {
             source_kind: new_document.source_kind.clone(),
             format: new_document.format.clone(),
             mime_type: new_document.mime_type.clone(),
-            stored_path: new_document.stored_path.clone(),
             file_size_bytes: new_document.file_size_bytes,
             status: new_document.status.clone(),
             created_at: new_document.created_at,
@@ -114,7 +113,6 @@ impl<'connection> DocumentRepository<'connection> {
                   source_kind,
                   format,
                   mime_type,
-                  stored_path,
                   file_size_bytes,
                   status,
                   created_at,
@@ -160,6 +158,49 @@ impl<'connection> DocumentRepository<'connection> {
         Ok(documents)
     }
 
+    pub fn list_stored_paths_by_project(
+        &mut self,
+        project_id: &str,
+    ) -> Result<Vec<String>, PersistenceError> {
+        let mut statement = self
+            .connection
+            .prepare("SELECT stored_path FROM documents WHERE project_id = ?1")
+            .map_err(|error| {
+                PersistenceError::with_details(
+                    format!(
+                        "The document repository could not prepare the stored-path query for project {project_id}."
+                    ),
+                    error,
+                )
+            })?;
+
+        let rows = statement
+            .query_map([project_id], |row| row.get::<_, String>(0))
+            .map_err(|error| {
+                PersistenceError::with_details(
+                    format!(
+                        "The document repository could not read stored paths for project {project_id}."
+                    ),
+                    error,
+                )
+            })?;
+
+        let mut stored_paths = Vec::new();
+
+        for row in rows {
+            stored_paths.push(row.map_err(|error| {
+                PersistenceError::with_details(
+                    format!(
+                        "The document repository could not decode a stored path for project {project_id}."
+                    ),
+                    error,
+                )
+            })?);
+        }
+
+        Ok(stored_paths)
+    }
+
     pub fn load_overview(
         &mut self,
         project_id: &str,
@@ -179,11 +220,10 @@ fn map_document_summary(row: &Row<'_>) -> rusqlite::Result<DocumentSummary> {
         source_kind: row.get(3)?,
         format: row.get(4)?,
         mime_type: row.get(5)?,
-        stored_path: row.get(6)?,
-        file_size_bytes: row.get(7)?,
-        status: row.get(8)?,
-        created_at: row.get(9)?,
-        updated_at: row.get(10)?,
+        file_size_bytes: row.get(6)?,
+        status: row.get(7)?,
+        created_at: row.get(8)?,
+        updated_at: row.get(9)?,
     })
 }
 
