@@ -16,6 +16,7 @@ use crate::error::DesktopCommandError;
 use crate::persistence::bootstrap::DatabaseRuntime;
 use crate::persistence::documents::DocumentRepository;
 use crate::persistence::projects::ProjectRepository;
+use crate::persistence::secret_store;
 
 #[derive(Debug, Clone, Deserialize)]
 struct ValidatedDocumentImport {
@@ -157,7 +158,7 @@ fn validate_import_document(
 
     Ok(ValidatedDocumentImport {
         project_id,
-        format: derive_document_format(&normalized_file_name),
+        format: validate_document_format(derive_document_format(&normalized_file_name))?,
         file_name: normalized_file_name,
         mime_type,
         bytes,
@@ -228,6 +229,19 @@ fn derive_document_format(file_name: &str) -> String {
         .unwrap_or_else(|| "unknown".to_owned())
 }
 
+fn validate_document_format(format: String) -> Result<String, DesktopCommandError> {
+    let normalized_format = format.trim().to_owned();
+
+    if normalized_format.is_empty() || normalized_format.chars().count() > 40 {
+        return Err(DesktopCommandError::validation(
+            "The selected document format must stay within 40 characters.",
+            None,
+        ));
+    }
+
+    Ok(normalized_format)
+}
+
 fn persist_document_bytes(
     database_runtime: &DatabaseRuntime,
     project_id: &str,
@@ -256,7 +270,17 @@ fn persist_document_bytes(
     let stored_file_name = format!("{document_id}__{}", sanitize_storage_file_name(file_name));
     let stored_document_path = project_directory.join(stored_file_name);
 
-    fs::write(&stored_document_path, bytes).map_err(|error| {
+    let protected_bytes =
+        secret_store::protect_local_payload(bytes, "Translat imported document payload").map_err(
+            |error| {
+                DesktopCommandError::internal(
+                    "The desktop shell could not protect the imported document payload for local storage.",
+                    Some(error.to_string()),
+                )
+            },
+        )?;
+
+    fs::write(&stored_document_path, protected_bytes).map_err(|error| {
         DesktopCommandError::internal(
             format!(
                 "The desktop shell could not persist the imported document at {}.",
@@ -345,12 +369,24 @@ fn current_timestamp() -> Result<i64, DesktopCommandError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{derive_document_format, sanitize_storage_file_name};
+    use super::{derive_document_format, sanitize_storage_file_name, validate_document_format};
+    use crate::persistence::secret_store::{protect_local_payload, unprotect_local_payload};
 
     #[test]
     fn derive_document_format_uses_extension_when_available() {
         assert_eq!(derive_document_format("notes.final.DOCX"), "docx");
         assert_eq!(derive_document_format("README"), "unknown");
+    }
+
+    #[test]
+    fn validate_document_format_rejects_extensions_longer_than_database_limit() {
+        let long_format = "a".repeat(41);
+
+        assert!(validate_document_format(long_format).is_err());
+        assert_eq!(
+            validate_document_format("docx".to_owned()).expect("format should be valid"),
+            "docx"
+        );
     }
 
     #[test]
@@ -360,5 +396,17 @@ mod tests {
             "chapter_01__draft_.txt"
         );
         assert_eq!(sanitize_storage_file_name(""), "document");
+    }
+
+    #[test]
+    fn protected_document_payload_round_trips() {
+        let plaintext = b"Highly sensitive source content.";
+        let protected_payload = protect_local_payload(plaintext, "Translat imported document payload")
+            .expect("payload should be protected");
+        let unprotected_payload =
+            unprotect_local_payload(&protected_payload).expect("payload should be readable");
+
+        assert_ne!(protected_payload, plaintext);
+        assert_eq!(unprotected_payload, plaintext);
     }
 }

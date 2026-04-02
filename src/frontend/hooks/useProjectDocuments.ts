@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   DocumentSummary,
   ProjectDocumentsOverview,
@@ -52,9 +52,11 @@ export function useProjectDocuments(activeProjectId: string | null) {
   const [isImporting, setIsImporting] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState<DesktopCommandError | null>(null);
+  const loadRequestIdRef = useRef(0);
 
   const reload = useCallback(async (): Promise<void> => {
     if (!activeProjectId) {
+      loadRequestIdRef.current += 1;
       setOverview(null);
       setImportError(null);
       setIsLoading(false);
@@ -62,6 +64,13 @@ export function useProjectDocuments(activeProjectId: string | null) {
       return;
     }
 
+    const requestId = loadRequestIdRef.current + 1;
+    loadRequestIdRef.current = requestId;
+
+    setOverview({
+      documents: [],
+      projectId: activeProjectId,
+    });
     setIsLoading(true);
     setLoadError(null);
 
@@ -69,8 +78,17 @@ export function useProjectDocuments(activeProjectId: string | null) {
       const nextOverview = await listProjectDocuments({
         projectId: activeProjectId,
       });
+
+      if (loadRequestIdRef.current !== requestId) {
+        return;
+      }
+
       setOverview(normalizeOverview(nextOverview));
     } catch (caughtError) {
+      if (loadRequestIdRef.current !== requestId) {
+        return;
+      }
+
       setOverview({
         documents: [],
         projectId: activeProjectId,
@@ -85,7 +103,9 @@ export function useProjectDocuments(activeProjectId: string | null) {
             }),
       );
     } finally {
-      setIsLoading(false);
+      if (loadRequestIdRef.current === requestId) {
+        setIsLoading(false);
+      }
     }
   }, [activeProjectId]);
 

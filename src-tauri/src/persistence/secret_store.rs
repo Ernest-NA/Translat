@@ -74,9 +74,23 @@ pub fn load_existing_encryption_key(key_path: &Path) -> Result<String, Persisten
     })
 }
 
+pub fn protect_local_payload(
+    plaintext: &[u8],
+    purpose: &str,
+) -> Result<Vec<u8>, PersistenceError> {
+    protect_bytes(plaintext, purpose)
+}
+
+#[allow(dead_code)]
+pub fn unprotect_local_payload(
+    ciphertext: &[u8],
+) -> Result<Vec<u8>, PersistenceError> {
+    unprotect_bytes(ciphertext)
+}
+
 #[cfg(target_os = "windows")]
 fn protect_key(plaintext: &[u8]) -> Result<Vec<u8>, PersistenceError> {
-    windows_dpapi::protect(plaintext)
+    protect_bytes(plaintext, "Translat encrypted database key")
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -88,13 +102,37 @@ fn protect_key(_plaintext: &[u8]) -> Result<Vec<u8>, PersistenceError> {
 
 #[cfg(target_os = "windows")]
 fn unprotect_key(ciphertext: &[u8]) -> Result<Vec<u8>, PersistenceError> {
-    windows_dpapi::unprotect(ciphertext)
+    unprotect_bytes(ciphertext)
 }
 
 #[cfg(not(target_os = "windows"))]
 fn unprotect_key(_ciphertext: &[u8]) -> Result<Vec<u8>, PersistenceError> {
     Err(PersistenceError::new(
         "The encrypted SQLite key bootstrap is currently supported only on Windows.",
+    ))
+}
+
+#[cfg(target_os = "windows")]
+fn protect_bytes(plaintext: &[u8], purpose: &str) -> Result<Vec<u8>, PersistenceError> {
+    windows_dpapi::protect(plaintext, purpose)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn protect_bytes(_plaintext: &[u8], _purpose: &str) -> Result<Vec<u8>, PersistenceError> {
+    Err(PersistenceError::new(
+        "Local payload protection is currently supported only on Windows.",
+    ))
+}
+
+#[cfg(target_os = "windows")]
+fn unprotect_bytes(ciphertext: &[u8]) -> Result<Vec<u8>, PersistenceError> {
+    windows_dpapi::unprotect(ciphertext)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn unprotect_bytes(_ciphertext: &[u8]) -> Result<Vec<u8>, PersistenceError> {
+    Err(PersistenceError::new(
+        "Local payload protection is currently supported only on Windows.",
     ))
 }
 
@@ -110,10 +148,10 @@ mod windows_dpapi {
 
     use crate::persistence::error::PersistenceError;
 
-    pub fn protect(plaintext: &[u8]) -> Result<Vec<u8>, PersistenceError> {
+    pub fn protect(plaintext: &[u8], purpose: &str) -> Result<Vec<u8>, PersistenceError> {
         let input_blob = blob_from_bytes(plaintext);
         let mut output_blob = empty_blob();
-        let description = wide_description("Translat encrypted database key");
+        let description = wide_description(purpose);
 
         let protected_ok = unsafe {
             CryptProtectData(

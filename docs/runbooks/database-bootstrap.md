@@ -37,7 +37,7 @@ Describe how Translat initializes its local encrypted SQLite database during the
 - The desktop shell bootstraps the database during Tauri setup.
 - The healthcheck command reports the database path, the applied migrations, and whether the initial schema is ready.
 - Project commands persist project metadata and the active project selection through the same encrypted database.
-- Document commands persist imported document metadata plus their project association through the same encrypted database.
+- Document commands persist imported document metadata plus their project association through the same encrypted database, and the copied local file payload is protected at rest with Windows DPAPI before it is written to disk.
 - Rust tests validate first initialization, second initialization without reapplying migrations, the presence of the `projects` and `documents` tables, project persistence across reopen, and document persistence across reopen.
 
 ## Current limits
@@ -45,4 +45,4 @@ Describe how Translat initializes its local encrypted SQLite database during the
 - Key protection is currently implemented for Windows with DPAPI because Translat targets Windows 11 at this stage.
 - The current SQLCipher toolchain depends on Strawberry Perl during compilation. If the project later changes SQLite encryption strategy, revisit this prerequisite together with the build pipeline.
 - If the project later expands beyond Windows, revisit key storage behind the persistence boundary instead of changing repository code ad hoc.
-- This stage now adds persisted projects plus the first document registry and local copied file storage. Normalization, segmentation, FTS, and later business tables remain out of scope.
+- This stage now adds persisted projects plus the first document registry and DPAPI-protected local copied file storage. Normalization, segmentation, FTS, and later business tables remain out of scope.
