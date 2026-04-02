@@ -32,6 +32,25 @@ function normalizeOverview(
   };
 }
 
+function mergeImportedDocuments(
+  currentOverview: ProjectDocumentsOverview | null,
+  importedDocuments: DocumentSummary[],
+  projectId: string,
+): ProjectDocumentsOverview {
+  return normalizeOverview({
+    documents: [
+      ...importedDocuments,
+      ...(currentOverview?.documents ?? []).filter(
+        (document) =>
+          !importedDocuments.some(
+            (importedDocument) => importedDocument.id === document.id,
+          ),
+      ),
+    ],
+    projectId,
+  });
+}
+
 async function encodeFileAsBase64(file: File) {
   const bytes = new Uint8Array(await file.arrayBuffer());
   const chunkSize = 0x8000;
@@ -81,10 +100,14 @@ export function useProjectDocuments(activeProjectId: string | null) {
     const requestId = loadRequestIdRef.current + 1;
     loadRequestIdRef.current = requestId;
 
-    setOverview({
-      documents: [],
-      projectId: activeProjectId,
-    });
+    setOverview((currentOverview) =>
+      currentOverview?.projectId === activeProjectId
+        ? currentOverview
+        : {
+            documents: [],
+            projectId: activeProjectId,
+          },
+    );
     setIsLoading(true);
     setLoadError(null);
 
@@ -191,19 +214,13 @@ export function useProjectDocuments(activeProjectId: string | null) {
         }
 
         setOverview((currentOverview) =>
-          normalizeOverview({
-            documents: [
-              ...importedDocuments,
-              ...(currentOverview?.documents ?? []).filter(
-                (document) =>
-                  !importedDocuments.some(
-                    (importedDocument) => importedDocument.id === document.id,
-                  ),
-              ),
-            ],
-            projectId: activeProjectId,
-          }),
+          mergeImportedDocuments(
+            currentOverview,
+            importedDocuments,
+            activeProjectId,
+          ),
         );
+        await reload();
 
         return importedDocuments.length;
       } catch (caughtError) {
@@ -213,19 +230,13 @@ export function useProjectDocuments(activeProjectId: string | null) {
 
         if (importedDocuments.length > 0) {
           setOverview((currentOverview) =>
-            normalizeOverview({
-              documents: [
-                ...importedDocuments,
-                ...(currentOverview?.documents ?? []).filter(
-                  (document) =>
-                    !importedDocuments.some(
-                      (importedDocument) => importedDocument.id === document.id,
-                    ),
-                ),
-              ],
-              projectId: activeProjectId,
-            }),
+            mergeImportedDocuments(
+              currentOverview,
+              importedDocuments,
+              activeProjectId,
+            ),
           );
+          await reload();
         }
 
         setImportError(
@@ -245,7 +256,7 @@ export function useProjectDocuments(activeProjectId: string | null) {
         }
       }
     },
-    [activeProjectId],
+    [activeProjectId, reload],
   );
 
   return {

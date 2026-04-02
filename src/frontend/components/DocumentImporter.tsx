@@ -1,3 +1,4 @@
+import type { ChangeEvent } from "react";
 import { useRef } from "react";
 import type { ProjectSummary } from "../../shared/desktop";
 import type { DesktopCommandError } from "../lib/desktop";
@@ -17,9 +18,7 @@ export function DocumentImporter({
 }: DocumentImporterProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
 
-  async function handleFileSelection(
-    event: React.ChangeEvent<HTMLInputElement>,
-  ) {
+  async function handleFileSelection(event: ChangeEvent<HTMLInputElement>) {
     const nextFiles = event.target.files;
 
     if (!nextFiles || nextFiles.length === 0) {

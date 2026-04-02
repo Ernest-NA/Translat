@@ -115,28 +115,18 @@ pub fn import_project_document(
         updated_at: imported_at,
     };
 
+    finalize_stored_document(&stored_document_paths)?;
+
     let mut repository = DocumentRepository::new(&mut connection);
 
-    match repository.create(&new_document) {
-        Ok(document) => {
-            if let Err(error) = finalize_stored_document(&stored_document_paths) {
-                let _ = repository.delete_by_id(&new_document.id);
-                let _ = fs::remove_file(&stored_document_paths.pending_path);
+    repository.create(&new_document).map_err(|error| {
+        let _ = fs::remove_file(&stored_document_paths.final_path);
 
-                return Err(error);
-            }
-
-            Ok(document)
-        }
-        Err(error) => {
-            let _ = fs::remove_file(&stored_document_paths.pending_path);
-
-            Err(DesktopCommandError::internal(
-                "The desktop shell could not register the imported document.",
-                Some(error.to_string()),
-            ))
-        }
-    }
+        DesktopCommandError::internal(
+            "The desktop shell could not register the imported document.",
+            Some(error.to_string()),
+        )
+    })
 }
 
 fn validate_project_id(project_id: &str) -> Result<String, DesktopCommandError> {
@@ -488,7 +478,9 @@ fn reconcile_project_document_storage(
             continue;
         }
 
-        if !referenced_paths.contains(&entry_path) {
+        if !referenced_paths.contains(&entry_path)
+            && is_stale_unreferenced_document_payload(&entry_path, now)?
+        {
             fs::remove_file(&entry_path).map_err(|error| {
                 DesktopCommandError::internal(
                     format!(
@@ -510,39 +502,49 @@ fn is_pending_document_payload(path: &Path) -> bool {
         .is_some_and(|value| value.ends_with(PENDING_DOCUMENT_SUFFIX))
 }
 
+fn is_stale_unreferenced_document_payload(
+    path: &Path,
+    now: i64,
+) -> Result<bool, DesktopCommandError> {
+    let document_id = storage_document_id(path)?;
+    let timestamp = parse_document_timestamp(&document_id)?;
+
+    Ok(now.saturating_sub(timestamp) > ORPHAN_PENDING_GRACE_PERIOD_SECS)
+}
+
 fn is_stale_pending_document_payload(
     path: &Path,
     now: i64,
 ) -> Result<bool, DesktopCommandError> {
+    let document_id = storage_document_id(path)?;
+    let timestamp = parse_document_timestamp(&document_id)?;
+
+    Ok(now.saturating_sub(timestamp) > ORPHAN_PENDING_GRACE_PERIOD_SECS)
+}
+
+fn storage_document_id(path: &Path) -> Result<String, DesktopCommandError> {
     let file_name = path
         .file_name()
         .and_then(|value| value.to_str())
         .ok_or_else(|| {
             DesktopCommandError::internal(
-                "The desktop shell found a pending document payload with an invalid file name.",
+                "The desktop shell found a stored document payload with an invalid file name.",
                 None,
             )
         })?;
     let without_suffix = file_name
         .strip_suffix(PENDING_DOCUMENT_SUFFIX)
-        .ok_or_else(|| {
-            DesktopCommandError::internal(
-                "The desktop shell found a pending document payload with an invalid suffix.",
-                None,
-            )
-        })?;
-    let document_id = without_suffix
-        .split_once("__")
-        .map(|(id, _)| id)
-        .ok_or_else(|| {
-            DesktopCommandError::internal(
-                "The desktop shell found a pending document payload with an invalid storage id.",
-                None,
-            )
-        })?;
-    let timestamp = parse_document_timestamp(document_id)?;
+        .unwrap_or(file_name);
 
-    Ok(now.saturating_sub(timestamp) > ORPHAN_PENDING_GRACE_PERIOD_SECS)
+    without_suffix
+        .split_once("__")
+        .map(|(id, _)| id.to_owned())
+        .ok_or_else(|| {
+            DesktopCommandError::internal(
+                "The desktop shell found a stored document payload with an invalid storage id.",
+                None,
+            )
+        })
 }
 
 fn parse_document_timestamp(document_id: &str) -> Result<i64, DesktopCommandError> {
@@ -674,7 +676,7 @@ mod tests {
         current_timestamp, derive_document_format, ensure_project_is_active,
         reconcile_project_document_storage, sanitize_storage_file_name,
         validate_base64_payload_size, validate_document_format, validate_project_id,
-        PENDING_DOCUMENT_SUFFIX,
+        ORPHAN_PENDING_GRACE_PERIOD_SECS, PENDING_DOCUMENT_SUFFIX,
     };
     use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
     use base64::Engine;
@@ -793,8 +795,11 @@ mod tests {
         let project_directory = documents_directory.join("prj_active_001");
         fs::create_dir_all(&project_directory).expect("project directory should exist");
 
-        let referenced_payload_path = project_directory.join("doc_test_001__source.txt");
-        let orphaned_payload_path = project_directory.join("doc_orphan_001__source.txt");
+        let stale_timestamp = now - (ORPHAN_PENDING_GRACE_PERIOD_SECS + 60);
+        let referenced_payload_path =
+            project_directory.join(format!("doc_{stale_timestamp}_ref__source.txt"));
+        let orphaned_payload_path =
+            project_directory.join(format!("doc_{stale_timestamp}_orphan__source.txt"));
         fs::write(&referenced_payload_path, b"referenced").expect("referenced payload should write");
         fs::write(&orphaned_payload_path, b"orphaned").expect("orphaned payload should write");
 
@@ -817,7 +822,7 @@ mod tests {
             let mut document_repository = DocumentRepository::new(&mut connection);
             document_repository
                 .create(&NewDocument {
-                    id: "doc_test_001".to_owned(),
+                    id: format!("doc_{stale_timestamp}_ref"),
                     project_id: "prj_active_001".to_owned(),
                     name: "source.txt".to_owned(),
                     source_kind: DOCUMENT_SOURCE_LOCAL_FILE.to_owned(),
@@ -880,6 +885,49 @@ mod tests {
             .expect("cleanup should succeed");
 
         assert!(pending_payload_path.exists());
+    }
+
+    #[test]
+    fn reconcile_project_document_storage_keeps_recent_unreferenced_payloads() {
+        let temporary_directory = tempdir().expect("temp dir should be created");
+        let database_path = temporary_directory.path().join("translat.sqlite3");
+        let encryption_key_path = temporary_directory.path().join("translat.sqlite3.key");
+        let runtime = DatabaseRuntime::new(database_path.clone(), encryption_key_path);
+        let now = current_timestamp().expect("timestamp should be available");
+
+        bootstrap_database(&database_path, "translat-test-key-for-c2")
+            .expect("database bootstrap should succeed");
+
+        let documents_directory = runtime
+            .documents_directory()
+            .expect("documents directory should resolve");
+        let project_directory = documents_directory.join("prj_active_001");
+        fs::create_dir_all(&project_directory).expect("project directory should exist");
+
+        let recent_payload_path =
+            project_directory.join(format!("doc_{now}_recent__source.txt"));
+        fs::write(&recent_payload_path, b"recent").expect("recent payload should write");
+
+        let mut connection = open_database_with_key(&database_path, "translat-test-key-for-c2")
+            .expect("database connection should open");
+        {
+            let mut project_repository = ProjectRepository::new(&mut connection);
+            project_repository
+                .create(&NewProject {
+                    id: "prj_active_001".to_owned(),
+                    name: "Active project".to_owned(),
+                    description: None,
+                    created_at: now,
+                    updated_at: now,
+                    last_opened_at: now,
+                })
+                .expect("active project should be created");
+        }
+
+        reconcile_project_document_storage(&runtime, &mut connection, "prj_active_001")
+            .expect("cleanup should succeed");
+
+        assert!(recent_payload_path.exists());
     }
 
     #[test]
