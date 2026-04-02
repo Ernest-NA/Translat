@@ -16,6 +16,7 @@ Describe how Translat runs automated AI-assisted pull request reviews after a PR
 
 - Focuses on actionable issues introduced by the diff
 - Prioritizes correctness, regressions, security, maintainability, and missing tests
+- Returns up to 5 findings per run, ordered by severity
 - Skips docs-only and lockfile-only pull requests
 - Leaves findings, residual risks, and open questions in a single PR comment
 - Does not block merge by itself; human review remains required
@@ -36,5 +37,6 @@ Describe how Translat runs automated AI-assisted pull request reviews after a PR
 
 - If `OPENAI_API_KEY` is missing, the workflow skips cleanly and records the reason in the workflow summary.
 - The workflow posts a top-level PR comment rather than inline review comments to keep the first rollout simpler and easier to maintain.
+- The review is prioritized, not exhaustive. If a PR contains several defects, later runs may expose additional issues after the first set is fixed because the diff has changed.
 - If the review quality or noise level needs adjustment, update the skill first, then the prompt or workflow only when necessary.
 - Pull request title and body are passed into the prompt through environment variables to avoid shell-escaping issues with quotes or multiline text.
