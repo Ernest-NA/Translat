@@ -1,0 +1,228 @@
+name: AI PR review
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+    branches:
+      - develop
+      - main
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - "notion/**"
+
+concurrency:
+  group: ai-pr-review-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  codex-pr-review:
+    if: ${{ !github.event.pull_request.draft }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      CODEX_MODEL: ${{ vars.CODEX_MODEL || 'gpt-5.2-codex' }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      REPOSITORY: ${{ github.repository }}
+      REVIEW_MARKER: "<!-- codex-pr-review -->"
+      PR_TITLE: ${{ github.event.pull_request.title }}
+      PR_BODY: ${{ github.event.pull_request.body }}
+    steps:
+      - name: Checkout pull request merge commit
+        uses: actions/checkout@v5
+        with:
+          ref: refs/pull/${{ github.event.pull_request.number }}/merge
+          persist-credentials: false
+
+      - name: Fetch base and head refs
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin \
+            "${{ github.event.pull_request.base.ref }}" \
+            "+refs/pull/${{ github.event.pull_request.number }}/head"
+        shell: bash
+
+      - name: Determine whether review should run
+        id: gate
+        run: |
+          set -euo pipefail
+          if [ -z "${OPENAI_API_KEY}" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "reason=Missing OPENAI_API_KEY secret." >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          reviewable=false
+          while IFS= read -r file; do
+            [ -z "$file" ] && continue
+            case "$file" in
+              docs/*|notion/*|package-lock.json|src-tauri/Cargo.lock)
+                ;;
+              *.md)
+                ;;
+              *)
+                reviewable=true
+                break
+                ;;
+            esac
+          done < <(git diff --name-only "${BASE_SHA}" "${HEAD_SHA}")
+
+          if [ "$reviewable" = true ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "reason=Reviewable code or workflow changes detected." >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "reason=Only docs or lockfile changes detected." >> "$GITHUB_OUTPUT"
+          fi
+        shell: bash
+
+      - name: Build Codex review prompt
+        if: ${{ steps.gate.outputs.enabled == 'true' }}
+        run: |
+          set -euo pipefail
+          cat .github/codex/pr-review-prompt.md > codex-prompt.md
+          {
+            echo ""
+            echo "Repository: ${REPOSITORY}"
+            echo "Pull request #: ${PR_NUMBER}"
+            echo "Base ref: ${{ github.event.pull_request.base.ref }}"
+            echo "Head ref: ${{ github.event.pull_request.head.ref }}"
+            echo "Base SHA: ${BASE_SHA}"
+            echo "Head SHA: ${HEAD_SHA}"
+            echo ""
+            echo "Pull request title:"
+            printf '%s\n' "${PR_TITLE}"
+            echo ""
+            echo "Pull request body:"
+            printf '%s\n' "${PR_BODY}"
+            echo ""
+            echo "Changed files:"
+            git --no-pager diff --name-status "${BASE_SHA}" "${HEAD_SHA}"
+            echo ""
+            echo "Unified diff (context=5):"
+            git --no-pager diff --unified=5 --no-color "${BASE_SHA}" "${HEAD_SHA}"
+          } >> codex-prompt.md
+        shell: bash
+
+      - name: Run Codex PR review
+        if: ${{ steps.gate.outputs.enabled == 'true' }}
+        id: run-codex
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          prompt-file: codex-prompt.md
+          output-schema-file: .github/codex/pr-review-schema.json
+          output-file: codex-output.json
+          sandbox: read-only
+          model: ${{ env.CODEX_MODEL }}
+          effort: medium
+          allow-bots: true
+
+      - name: Publish PR review comment
+        if: ${{ steps.gate.outputs.enabled == 'true' && always() }}
+        uses: actions/github-script@v7
+        env:
+          REVIEW_JSON_PATH: codex-output.json
+          REVIEW_MARKER: ${{ env.REVIEW_MARKER }}
+          HEAD_SHA: ${{ env.HEAD_SHA }}
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const fs = require("fs");
+            const marker = process.env.REVIEW_MARKER;
+            const reviewPath = process.env.REVIEW_JSON_PATH;
+            const headSha = process.env.HEAD_SHA;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const issue_number = context.payload.pull_request.number;
+
+            let body = `${marker}\n## Codex PR Review\n\nReview output was unavailable for this run. Check the workflow logs.`;
+
+            if (fs.existsSync(reviewPath) && fs.statSync(reviewPath).size > 0) {
+              const review = JSON.parse(fs.readFileSync(reviewPath, "utf8"));
+              const severityRank = { high: 0, medium: 1, low: 2 };
+              const findings = [...review.findings].sort((left, right) => {
+                return severityRank[left.severity] - severityRank[right.severity];
+              });
+
+              const findingLines = findings.length === 0
+                ? ["No actionable findings."]
+                : findings.map((finding, index) => {
+                    const encodedPath = finding.file.split("/").map(encodeURIComponent).join("/");
+                    const fileUrl = `https://github.com/${owner}/${repo}/blob/${headSha}/${encodedPath}#L${finding.line}`;
+                    return `${index + 1}. **${finding.severity.toUpperCase()}** ${finding.title} ([${finding.file}:${finding.line}](${fileUrl}))\n${finding.body}\nConfidence: ${finding.confidence_score}`;
+                  });
+
+              const residualRiskLines = review.residual_risks.length === 0
+                ? ["None noted."]
+                : review.residual_risks.map((risk) => `- ${risk}`);
+
+              const openQuestionLines = review.open_questions.length === 0
+                ? ["None."]
+                : review.open_questions.map((question) => `- ${question}`);
+
+              body = [
+                marker,
+                "## Codex PR Review",
+                `Verdict: **${review.overall_correctness}**`,
+                `Confidence: **${review.overall_confidence_score}**`,
+                "",
+                review.overall_explanation,
+                "",
+                "### Findings",
+                ...findingLines,
+                "",
+                "### Residual Risks",
+                ...residualRiskLines,
+                "",
+                "### Open Questions",
+                ...openQuestionLines
+              ].join("\n");
+            }
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number,
+              per_page: 100
+            });
+
+            const existing = comments.find((comment) => {
+              return comment.user?.type === "Bot" && comment.body?.includes(marker);
+            });
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existing.id,
+                body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number,
+                body
+              });
+            }
+
+      - name: Write workflow summary
+        if: ${{ always() }}
+        run: |
+          {
+            echo "## AI PR review"
+            echo "- PR: #${PR_NUMBER}"
+            echo "- Base branch: ${{ github.event.pull_request.base.ref }}"
+            echo "- Head branch: ${{ github.event.pull_request.head.ref }}"
+            echo "- Review executed: ${{ steps.gate.outputs.enabled }}"
+            echo "- Reason: ${{ steps.gate.outputs.reason }}"
+            echo "- Model: ${CODEX_MODEL}"
+          } >> "$GITHUB_STEP_SUMMARY"
+        shell: bash
