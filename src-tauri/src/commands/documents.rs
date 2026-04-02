@@ -145,14 +145,15 @@ fn import_project_document_with_runtime(
         return Err(error);
     }
 
-    if repository
-        .update_stored_path(
-            &new_document.id,
-            &stored_document_paths.final_path.display().to_string(),
-        )
-        .is_err()
-    {
+    if let Err(error) = repository.update_stored_path(
+        &new_document.id,
+        &stored_document_paths.final_path.display().to_string(),
+    ) {
         restore_pending_document_payload(&stored_document_paths);
+        return Err(DesktopCommandError::internal(
+            "The desktop shell could not finalize the imported document registration.",
+            Some(error.to_string()),
+        ));
     }
 
     Ok(created_document)
