@@ -259,8 +259,8 @@ impl<'connection> DocumentRepository<'connection> {
 
         transaction
             .execute(
-                "UPDATE documents SET stored_path = ?2 WHERE id = ?1",
-                params![document_id, stored_path],
+                "UPDATE documents SET stored_path = ?2, updated_at = ?3 WHERE id = ?1",
+                params![document_id, stored_path, updated_at],
             )
             .map_err(|error| {
                 PersistenceError::with_details(
