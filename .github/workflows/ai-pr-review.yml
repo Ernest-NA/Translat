@@ -26,7 +26,6 @@ jobs:
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       CODEX_MODEL_MINI: ${{ vars.CODEX_MODEL_MINI || 'gpt-5.4-mini' }}
-      CODEX_MODEL_FULL: ${{ vars.CODEX_MODEL_FULL || 'gpt-5.4' }}
       HEAD_SHA: ${{ github.event.pull_request.head.sha }}
       BASE_SHA: ${{ github.event.pull_request.base.sha }}
       PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -98,16 +97,8 @@ jobs:
             echo "reason=Only docs or lockfile changes detected." >> "$GITHUB_OUTPUT"
           fi
 
-          if [ "${{ github.event.pull_request.base.ref }}" = "main" ]; then
-            selected_model="${CODEX_MODEL_FULL}"
-            selection_reason="Target branch is main."
-          elif [ "$changed_files" -ge 25 ] || [ "$total_changed_lines" -ge 1200 ]; then
-            selected_model="${CODEX_MODEL_FULL}"
-            selection_reason="Diff is large enough to use the full review model."
-          else
-            selected_model="${CODEX_MODEL_MINI}"
-            selection_reason="Defaulting to the lower-cost mini review model."
-          fi
+          selected_model="${CODEX_MODEL_MINI}"
+          selection_reason="Defaulting to the lower-cost mini review model."
 
           echo "selected_model=${selected_model}" >> "$GITHUB_OUTPUT"
           echo "selection_reason=${selection_reason}" >> "$GITHUB_OUTPUT"
