@@ -3,7 +3,7 @@ import type { ProjectSummary } from "../../shared/desktop";
 interface ProjectListProps {
   activeProjectId: string | null;
   isLoading: boolean;
-  onOpen: (projectId: string) => Promise<void>;
+  onOpen: (projectId: string) => Promise<boolean>;
   openingProjectId: string | null;
   projects: ProjectSummary[];
 }

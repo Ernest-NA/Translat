@@ -4,7 +4,7 @@ import type { DesktopCommandError } from "../lib/desktop";
 interface ProjectComposerProps {
   error: DesktopCommandError | null;
   isCreating: boolean;
-  onSubmit: (input: { description?: string; name: string }) => Promise<void>;
+  onSubmit: (input: { description?: string; name: string }) => Promise<boolean>;
 }
 
 export function ProjectComposer({
@@ -18,13 +18,15 @@ export function ProjectComposer({
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    await onSubmit({
+    const wasCreated = await onSubmit({
       description,
       name,
     });
 
-    setName("");
-    setDescription("");
+    if (wasCreated) {
+      setName("");
+      setDescription("");
+    }
   }
 
   return (

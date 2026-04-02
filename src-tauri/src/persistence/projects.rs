@@ -128,7 +128,7 @@ impl<'connection> ProjectRepository<'connection> {
 
         let updated_rows = transaction
             .execute(
-                "UPDATE projects SET last_opened_at = ?2, updated_at = ?2 WHERE id = ?1",
+                "UPDATE projects SET last_opened_at = ?2 WHERE id = ?1",
                 params![project_id, opened_at],
             )
             .map_err(|error| {
@@ -320,6 +320,6 @@ mod tests {
         assert_eq!(overview.active_project_id, Some("prj_test_001".to_owned()));
         assert_eq!(overview.projects.len(), 1);
         assert_eq!(overview.projects[0].last_opened_at, reopened_at);
-        assert_eq!(overview.projects[0].updated_at, reopened_at);
+        assert_eq!(overview.projects[0].updated_at, created_at);
     }
 }

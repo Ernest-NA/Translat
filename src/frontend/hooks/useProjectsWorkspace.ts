@@ -71,69 +71,77 @@ export function useProjectsWorkspace() {
     void reload();
   }, [reload]);
 
-  const submitProject = useCallback(async (input: CreateProjectInput) => {
-    setIsCreating(true);
-    setError(null);
+  const submitProject = useCallback(
+    async (input: CreateProjectInput): Promise<boolean> => {
+      setIsCreating(true);
+      setError(null);
 
-    try {
-      const createdProject = await createProject(input);
-      setOverview((currentOverview) =>
-        normalizeProjectsOverview({
-          activeProjectId: createdProject.id,
-          projects: [
-            createdProject,
-            ...currentOverview.projects.filter(
-              (project) => project.id !== createdProject.id,
-            ),
-          ],
-        }),
-      );
-    } catch (caughtError) {
-      setError(
-        caughtError instanceof DesktopCommandError
-          ? caughtError
-          : new DesktopCommandError("create_project", {
-              code: "UNEXPECTED_DESKTOP_ERROR",
-              message: "The desktop shell could not create the project.",
-            }),
-      );
-      throw caughtError;
-    } finally {
-      setIsCreating(false);
-    }
-  }, []);
+      try {
+        const createdProject = await createProject(input);
+        setOverview((currentOverview) =>
+          normalizeProjectsOverview({
+            activeProjectId: createdProject.id,
+            projects: [
+              createdProject,
+              ...currentOverview.projects.filter(
+                (project) => project.id !== createdProject.id,
+              ),
+            ],
+          }),
+        );
+        return true;
+      } catch (caughtError) {
+        setError(
+          caughtError instanceof DesktopCommandError
+            ? caughtError
+            : new DesktopCommandError("create_project", {
+                code: "UNEXPECTED_DESKTOP_ERROR",
+                message: "The desktop shell could not create the project.",
+              }),
+        );
+        return false;
+      } finally {
+        setIsCreating(false);
+      }
+    },
+    [],
+  );
 
-  const selectProject = useCallback(async (projectId: string) => {
-    setOpeningProjectId(projectId);
-    setError(null);
+  const selectProject = useCallback(
+    async (projectId: string): Promise<boolean> => {
+      setOpeningProjectId(projectId);
+      setError(null);
 
-    try {
-      const openedProject = await openProject({ projectId });
-      setOverview((currentOverview) =>
-        normalizeProjectsOverview({
-          activeProjectId: openedProject.id,
-          projects: [
-            openedProject,
-            ...currentOverview.projects.filter(
-              (project) => project.id !== openedProject.id,
-            ),
-          ],
-        }),
-      );
-    } catch (caughtError) {
-      setError(
-        caughtError instanceof DesktopCommandError
-          ? caughtError
-          : new DesktopCommandError("open_project", {
-              code: "UNEXPECTED_DESKTOP_ERROR",
-              message: "The desktop shell could not open the project.",
-            }),
-      );
-      throw caughtError;
-    } finally {
-      setOpeningProjectId(null);
-    }
-  }, []);
+      try {
+        const openedProject = await openProject({ projectId });
+        setOverview((currentOverview) =>
+          normalizeProjectsOverview({
+            activeProjectId: openedProject.id,
+            projects: [
+              openedProject,
+              ...currentOverview.projects.filter(
+                (project) => project.id !== openedProject.id,
+              ),
+            ],
+          }),
+        );
+        return true;
+      } catch (caughtError) {
+        setError(
+          caughtError instanceof DesktopCommandError
+            ? caughtError
+            : new DesktopCommandError("open_project", {
+                code: "UNEXPECTED_DESKTOP_ERROR",
+                message: "The desktop shell could not open the project.",
+              }),
+        );
+        return false;
+      } finally {
+        setOpeningProjectId(null);
+      }
+    },
+    [],
+  );
 
   const activeProject = useMemo(
     () =>
