@@ -10,6 +10,7 @@ pub struct SegmentSummary {
     pub document_id: String,
     pub sequence: i64,
     pub source_text: String,
+    pub target_text: Option<String>,
     pub source_word_count: i64,
     pub source_character_count: i64,
     pub status: String,
@@ -17,9 +18,24 @@ pub struct SegmentSummary {
     pub updated_at: i64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DocumentSegmentsOverview {
+    pub project_id: String,
+    pub document_id: String,
+    pub segments: Vec<SegmentSummary>,
+}
+
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ProcessDocumentInput {
+    pub project_id: String,
+    pub document_id: String,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ListDocumentSegmentsInput {
     pub project_id: String,
     pub document_id: String,
 }

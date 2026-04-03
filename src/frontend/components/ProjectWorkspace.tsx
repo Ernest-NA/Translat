@@ -1,19 +1,33 @@
-import type { DocumentSummary, ProjectSummary } from "../../shared/desktop";
+import type {
+  DocumentSummary,
+  ProjectSummary,
+  SegmentSummary,
+} from "../../shared/desktop";
 import type { DesktopCommandError } from "../lib/desktop";
 import { DocumentImporter } from "./DocumentImporter";
 import { DocumentList } from "./DocumentList";
+import { SegmentBrowser } from "./SegmentBrowser";
 
 interface ProjectWorkspaceProps {
+  activeDocument: DocumentSummary | null;
   documents: DocumentSummary[];
   importError: DesktopCommandError | null;
   isImportingDocuments: boolean;
   isLoadingDocuments: boolean;
+  isLoadingSegments: boolean;
   loadError: DesktopCommandError | null;
+  onOpenDocument: (documentId: string) => Promise<void>;
   onImportDocuments: (files: FileList) => Promise<number>;
   onProcessDocument: (documentId: string) => Promise<void>;
+  onSelectSegment: (segmentId: string) => void;
   processError: DesktopCommandError | null;
   processingDocumentId: string | null;
   project: ProjectSummary | null;
+  segmentError: DesktopCommandError | null;
+  segmentLoadingDocumentId: string | null;
+  segments: SegmentSummary[];
+  selectedSegment: SegmentSummary | null;
+  selectedSegmentId: string | null;
 }
 
 function formatTimestamp(timestamp: number) {
@@ -21,16 +35,25 @@ function formatTimestamp(timestamp: number) {
 }
 
 export function ProjectWorkspace({
+  activeDocument,
   documents,
   importError,
   isImportingDocuments,
   isLoadingDocuments,
+  isLoadingSegments,
   loadError,
+  onOpenDocument,
   onImportDocuments,
   onProcessDocument,
+  onSelectSegment,
   processError,
   processingDocumentId,
   project,
+  segmentError,
+  segmentLoadingDocumentId,
+  segments,
+  selectedSegment,
+  selectedSegmentId,
 }: ProjectWorkspaceProps) {
   if (!project) {
     return (
@@ -88,25 +111,40 @@ export function ProjectWorkspace({
         />
 
         <DocumentList
+          activeDocumentId={activeDocument?.id ?? null}
           documents={documents}
           error={loadError}
           isLoading={isLoadingDocuments}
+          onOpenDocument={onOpenDocument}
           onProcessDocument={onProcessDocument}
           processError={processError}
           processingDocumentId={processingDocumentId}
+          segmentLoadingDocumentId={segmentLoadingDocumentId}
         />
       </div>
 
+      <SegmentBrowser
+        activeDocument={activeDocument}
+        error={segmentError}
+        isLoading={isLoadingSegments}
+        onSelectSegment={onSelectSegment}
+        project={project}
+        segments={segments}
+        selectedSegment={selectedSegment}
+        selectedSegmentId={selectedSegmentId}
+      />
+
       <section className="workspace-readiness">
         <p className="surface-card__eyebrow">Ready for C4</p>
-        <h3>Documents can now be segmented in place</h3>
+        <h3>Segment navigation now runs on persisted C3 output</h3>
         <ul className="readiness-list">
           <li>Imported documents are linked explicitly to this project id.</li>
           <li>
             Segment processing persists ordered source segments per document.
           </li>
           <li>
-            C4 can consume status and segment counts without reprocessing.
+            C4 opens segmented documents and lets the user inspect one segment
+            at a time without editing it.
           </li>
         </ul>
       </section>

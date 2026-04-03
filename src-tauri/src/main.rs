@@ -33,6 +33,7 @@ fn main() {
             commands::projects::create_project,
             commands::projects::list_projects,
             commands::projects::open_project,
+            commands::segments::list_document_segments,
             commands::segments::process_project_document
         ])
         .run(tauri::generate_context!())

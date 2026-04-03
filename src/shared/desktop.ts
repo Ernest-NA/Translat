@@ -4,6 +4,7 @@ export const DESKTOP_COMMANDS = {
   importProjectDocument: "import_project_document",
   listProjects: "list_projects",
   listProjectDocuments: "list_project_documents",
+  listDocumentSegments: "list_document_segments",
   openProject: "open_project",
   processProjectDocument: "process_project_document",
 } as const;
@@ -69,6 +70,25 @@ export interface ProjectDocumentsOverview {
   documents: DocumentSummary[];
 }
 
+export interface SegmentSummary {
+  id: string;
+  documentId: string;
+  sequence: number;
+  sourceText: string;
+  targetText: string | null;
+  sourceWordCount: number;
+  sourceCharacterCount: number;
+  status: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface DocumentSegmentsOverview {
+  projectId: string;
+  documentId: string;
+  segments: SegmentSummary[];
+}
+
 export interface CreateProjectInput {
   name: string;
   description?: string;
@@ -90,6 +110,11 @@ export interface ImportDocumentInput {
 }
 
 export interface ProcessDocumentInput {
+  projectId: string;
+  documentId: string;
+}
+
+export interface ListDocumentSegmentsInput {
   projectId: string;
   documentId: string;
 }

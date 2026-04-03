@@ -2,12 +2,15 @@ import type { DocumentSummary } from "../../shared/desktop";
 import type { DesktopCommandError } from "../lib/desktop";
 
 interface DocumentListProps {
+  activeDocumentId: string | null;
   documents: DocumentSummary[];
   error: DesktopCommandError | null;
   isLoading: boolean;
+  onOpenDocument: (documentId: string) => Promise<void>;
   onProcessDocument: (documentId: string) => Promise<void>;
   processError: DesktopCommandError | null;
   processingDocumentId: string | null;
+  segmentLoadingDocumentId: string | null;
 }
 
 function formatBytes(value: number) {
@@ -31,12 +34,15 @@ function formatSourceKind(value: string) {
 }
 
 export function DocumentList({
+  activeDocumentId,
   documents,
   error,
   isLoading,
+  onOpenDocument,
   onProcessDocument,
   processError,
   processingDocumentId,
+  segmentLoadingDocumentId,
 }: DocumentListProps) {
   return (
     <section className="workspace-panel">
@@ -58,7 +64,7 @@ export function DocumentList({
       {!isLoading && !error && documents.length === 0 ? (
         <p className="surface-card__copy">
           No document is registered yet. Import the first file to leave a real
-          input ready for C3.
+          input ready for segmentation and navigation.
         </p>
       ) : null}
 
@@ -70,7 +76,7 @@ export function DocumentList({
                 <div>
                   <strong>{document.name}</strong>
                   <p>
-                    {document.format.toUpperCase()} ·{" "}
+                    {document.format.toUpperCase()} |{" "}
                     {formatSourceKind(document.sourceKind)}
                   </p>
                 </div>
@@ -79,6 +85,22 @@ export function DocumentList({
                   <span className="document-status-pill">
                     {document.status}
                   </span>
+                  <button
+                    className="document-action-button"
+                    disabled={
+                      document.status !== "segmented" ||
+                      (segmentLoadingDocumentId !== null &&
+                        segmentLoadingDocumentId !== document.id)
+                    }
+                    onClick={() => void onOpenDocument(document.id)}
+                    type="button"
+                  >
+                    {segmentLoadingDocumentId === document.id
+                      ? "Opening..."
+                      : activeDocumentId === document.id
+                        ? "Viewing"
+                        : "Open segments"}
+                  </button>
                   <button
                     className="document-action-button"
                     disabled={processingDocumentId !== null}

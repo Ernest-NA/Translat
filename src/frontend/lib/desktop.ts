@@ -4,9 +4,11 @@ import {
   DESKTOP_COMMANDS,
   type DesktopCommandErrorPayload,
   type DesktopCommandName,
+  type DocumentSegmentsOverview,
   type DocumentSummary,
   type HealthcheckResponse,
   type ImportDocumentInput,
+  type ListDocumentSegmentsInput,
   type ListProjectDocumentsInput,
   type OpenProjectInput,
   type ProcessDocumentInput,
@@ -104,6 +106,15 @@ export function createProject(input: CreateProjectInput) {
 export function listProjectDocuments(input: ListProjectDocumentsInput) {
   return invokeDesktopCommand<ProjectDocumentsOverview>(
     DESKTOP_COMMANDS.listProjectDocuments,
+    {
+      input,
+    },
+  );
+}
+
+export function listDocumentSegments(input: ListDocumentSegmentsInput) {
+  return invokeDesktopCommand<DocumentSegmentsOverview>(
+    DESKTOP_COMMANDS.listDocumentSegments,
     {
       input,
     },

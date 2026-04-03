@@ -1,9 +1,10 @@
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import { DESKTOP_COMMANDS } from "../../shared/desktop";
 import { HealthcheckPanel } from "../components/HealthcheckPanel";
 import { ProjectComposer } from "../components/ProjectComposer";
 import { ProjectList } from "../components/ProjectList";
 import { ProjectWorkspace } from "../components/ProjectWorkspace";
+import { useDocumentSegments } from "../hooks/useDocumentSegments";
 import { useHealthcheck } from "../hooks/useHealthcheck";
 import { useProjectDocuments } from "../hooks/useProjectDocuments";
 import { useProjectsWorkspace } from "../hooks/useProjectsWorkspace";
@@ -39,7 +40,19 @@ export function AppShell() {
     processError,
     processingDocumentId,
   } = useProjectDocuments(activeProject?.id ?? null);
+  const {
+    activeDocument,
+    error: segmentError,
+    isLoading: isLoadingSegments,
+    openDocument,
+    segments,
+    selectedSegment,
+    selectedSegmentId,
+    selectSegment,
+  } = useDocumentSegments(activeProject?.id ?? null, documents);
   const { error, healthcheck, isLoading, retry } = useHealthcheck();
+  const activeProjectIdRef = useRef<string | null>(activeProject?.id ?? null);
+  activeProjectIdRef.current = activeProject?.id ?? null;
 
   const handleImportDocuments = useCallback(
     async (files: FileList): Promise<number> => {
@@ -63,6 +76,16 @@ export function AppShell() {
       const processedDocument = await processDocument(documentId);
 
       if (processedDocument) {
+        if (activeProjectIdRef.current !== processedDocument.projectId) {
+          return;
+        }
+
+        await openDocument(processedDocument.id);
+
+        if (activeProjectIdRef.current !== processedDocument.projectId) {
+          return;
+        }
+
         try {
           await reloadProjects();
         } catch {
@@ -70,7 +93,7 @@ export function AppShell() {
         }
       }
     },
-    [processDocument, reloadProjects],
+    [openDocument, processDocument, reloadProjects],
   );
 
   const runtimeLabel = healthcheck
@@ -82,11 +105,10 @@ export function AppShell() {
       <header className="app-shell__header">
         <div>
           <p className="app-shell__eyebrow">Translat</p>
-          <h1>Project document processing</h1>
+          <h1>Segment list and detail</h1>
           <p className="app-shell__lead">
-            C3 takes imported documents, normalizes their text, and persists
-            ordered source segments so C4 can navigate a real document
-            structure.
+            C4 opens a segmented document, lists its persisted segments in
+            order, and shows a stable detail view for the selected segment.
           </p>
         </div>
 
@@ -98,49 +120,64 @@ export function AppShell() {
               ? `${documents.length} documents in workspace`
               : "No active project"}
           </span>
+          <span>
+            {activeDocument
+              ? `${segments.length} segments in open document`
+              : "No open document"}
+          </span>
         </div>
       </header>
 
       <section className="app-shell__grid">
         <div className="app-shell__primary">
           <ProjectWorkspace
+            activeDocument={activeDocument}
             documents={documents}
             importError={importError}
             isImportingDocuments={isImporting}
             isLoadingDocuments={isLoadingDocuments}
+            isLoadingSegments={isLoadingSegments}
             loadError={loadError}
+            onOpenDocument={openDocument}
             onImportDocuments={handleImportDocuments}
             onProcessDocument={handleProcessDocument}
+            onSelectSegment={selectSegment}
             processError={processError}
             processingDocumentId={processingDocumentId}
             project={activeProject}
+            segmentError={segmentError}
+            segmentLoadingDocumentId={
+              isLoadingSegments ? (activeDocument?.id ?? null) : null
+            }
+            segments={segments}
+            selectedSegment={selectedSegment}
+            selectedSegmentId={selectedSegmentId}
           />
 
           <section className="surface-card surface-card--split">
             <div>
-              <p className="surface-card__eyebrow">C3 scope</p>
-              <h2>Normalize and persist source segments.</h2>
+              <p className="surface-card__eyebrow">C4 scope</p>
+              <h2>Open a segmented document and navigate its segments.</h2>
               <p className="surface-card__copy">
-                This slice turns imported documents into ordered persisted
-                segments and keeps segment navigation, translation, glossary
-                work, and AI orchestration out of scope.
+                This slice stays focused on querying persisted segments,
+                selecting them, and showing their essential data without adding
+                editing, translation, QA, or AI actions.
               </p>
             </div>
 
             <ul className="capability-list">
               <li>
-                Imported UTF-8 documents can be processed inside the active
-                project.
+                Segmented documents can be opened directly from the project
+                workspace.
               </li>
               <li>
-                Normalization is deterministic and intentionally minimal for the
-                MVP.
+                Segments are listed in persisted sequence order from SQLite.
               </li>
-              <li>Segments are persisted with stable sequence per document.</li>
               <li>
-                C4 can list and navigate the resulting segments without
-                reprocessing.
+                The selected segment shows sequence, state, source text, and
+                current target text when present.
               </li>
+              <li>Editing, translation, AI, and history remain outside C4.</li>
             </ul>
           </section>
         </div>
@@ -162,7 +199,7 @@ export function AppShell() {
 
           <section className="surface-card">
             <p className="surface-card__eyebrow">Command pattern</p>
-            <h2>{DESKTOP_COMMANDS.processProjectDocument}</h2>
+            <h2>{DESKTOP_COMMANDS.listDocumentSegments}</h2>
 
             <dl className="detail-list">
               <div>
@@ -182,13 +219,17 @@ export function AppShell() {
                 <dd>{activeProject ? documents.length : 0}</dd>
               </div>
               <div>
-                <dt>Segmented docs</dt>
+                <dt>Open document</dt>
+                <dd>{activeDocument?.name ?? "None"}</dd>
+              </div>
+              <div>
+                <dt>Loaded segments</dt>
+                <dd>{activeDocument ? segments.length : 0}</dd>
+              </div>
+              <div>
+                <dt>Selected segment</dt>
                 <dd>
-                  {activeProject
-                    ? documents.filter(
-                        (document) => document.status === "segmented",
-                      ).length
-                    : 0}
+                  {selectedSegment ? `#${selectedSegment.sequence}` : "None"}
                 </dd>
               </div>
             </dl>
