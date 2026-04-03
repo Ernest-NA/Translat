@@ -76,21 +76,24 @@ fn process_project_document_with_runtime(
             })?;
     }
 
-    let mut document_repository = DocumentRepository::new(&mut connection);
-    document_repository
-        .load_summary(&project_id, &document_id)
-        .map_err(|error| {
+    Ok(DocumentSummary {
+        id: processing_record.id,
+        project_id: processing_record.project_id,
+        name: processing_record.name,
+        source_kind: processing_record.source_kind,
+        format: processing_record.format,
+        mime_type: processing_record.mime_type,
+        file_size_bytes: processing_record.file_size_bytes,
+        status: DOCUMENT_STATUS_SEGMENTED.to_owned(),
+        segment_count: i64::try_from(segments.len()).map_err(|error| {
             DesktopCommandError::internal(
-                "The desktop shell could not reload the processed document after segmentation.",
+                "The desktop shell produced an invalid persisted segment count.",
                 Some(error.to_string()),
             )
-        })?
-        .ok_or_else(|| {
-            DesktopCommandError::internal(
-                "The desktop shell lost the processed document after segmentation.",
-                None,
-            )
-        })
+        })?,
+        created_at: processing_record.created_at,
+        updated_at: processed_at,
+    })
 }
 
 fn validate_identifier(value: &str, label: &str) -> Result<String, DesktopCommandError> {

@@ -13,8 +13,15 @@ pub struct StoredDocumentRecord {
 pub struct DocumentProcessingRecord {
     pub id: String,
     pub project_id: String,
+    pub name: String,
+    pub source_kind: String,
+    pub format: String,
+    pub mime_type: Option<String>,
+    pub file_size_bytes: i64,
     pub status: String,
     pub stored_path: String,
+    pub created_at: i64,
+    pub updated_at: i64,
 }
 
 pub struct DocumentRepository<'connection> {
@@ -218,8 +225,15 @@ impl<'connection> DocumentRepository<'connection> {
                 SELECT
                   id,
                   project_id,
+                  name,
+                  source_kind,
+                  format,
+                  mime_type,
+                  file_size_bytes,
                   status,
-                  stored_path
+                  stored_path,
+                  created_at,
+                  updated_at
                 FROM documents
                 WHERE project_id = ?1 AND id = ?2
                 "#,
@@ -228,8 +242,15 @@ impl<'connection> DocumentRepository<'connection> {
                     Ok(DocumentProcessingRecord {
                         id: row.get(0)?,
                         project_id: row.get(1)?,
-                        status: row.get(2)?,
-                        stored_path: row.get(3)?,
+                        name: row.get(2)?,
+                        source_kind: row.get(3)?,
+                        format: row.get(4)?,
+                        mime_type: row.get(5)?,
+                        file_size_bytes: row.get(6)?,
+                        status: row.get(7)?,
+                        stored_path: row.get(8)?,
+                        created_at: row.get(9)?,
+                        updated_at: row.get(10)?,
                     })
                 },
             )
