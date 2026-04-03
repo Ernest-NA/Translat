@@ -3,8 +3,8 @@ use std::path::Path;
 
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
-use rand::rngs::OsRng;
-use rand::RngCore;
+use rand::rngs::SysRng;
+use rand::TryRng;
 
 use crate::persistence::error::PersistenceError;
 
@@ -25,10 +25,7 @@ pub fn load_or_create_encryption_key(key_path: &Path) -> Result<String, Persiste
         })?;
     }
 
-    let mut secret_bytes = [0_u8; 32];
-    OsRng.fill_bytes(&mut secret_bytes);
-
-    let encryption_key = URL_SAFE_NO_PAD.encode(secret_bytes);
+    let encryption_key = generate_encryption_key()?;
     let protected_key_bytes = protect_key(encryption_key.as_bytes())?;
 
     fs::write(key_path, protected_key_bytes).map_err(|error| {
@@ -42,6 +39,18 @@ pub fn load_or_create_encryption_key(key_path: &Path) -> Result<String, Persiste
     })?;
 
     Ok(encryption_key)
+}
+
+fn generate_encryption_key() -> Result<String, PersistenceError> {
+    let mut secret_bytes = [0_u8; 32];
+    SysRng.try_fill_bytes(&mut secret_bytes).map_err(|error| {
+        PersistenceError::with_details(
+            "The persistence bootstrap could not generate an encryption key from the system RNG.",
+            error,
+        )
+    })?;
+
+    Ok(URL_SAFE_NO_PAD.encode(secret_bytes))
 }
 
 pub fn load_existing_encryption_key(key_path: &Path) -> Result<String, PersistenceError> {
@@ -65,9 +74,23 @@ pub fn load_existing_encryption_key(key_path: &Path) -> Result<String, Persisten
     })
 }
 
+pub fn protect_local_payload(
+    plaintext: &[u8],
+    purpose: &str,
+) -> Result<Vec<u8>, PersistenceError> {
+    protect_bytes(plaintext, purpose, "local payload")
+}
+
+#[allow(dead_code)]
+pub fn unprotect_local_payload(
+    ciphertext: &[u8],
+) -> Result<Vec<u8>, PersistenceError> {
+    unprotect_bytes(ciphertext, "local payload")
+}
+
 #[cfg(target_os = "windows")]
 fn protect_key(plaintext: &[u8]) -> Result<Vec<u8>, PersistenceError> {
-    windows_dpapi::protect(plaintext)
+    protect_bytes(plaintext, "Translat encrypted database key", "database key")
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -79,13 +102,45 @@ fn protect_key(_plaintext: &[u8]) -> Result<Vec<u8>, PersistenceError> {
 
 #[cfg(target_os = "windows")]
 fn unprotect_key(ciphertext: &[u8]) -> Result<Vec<u8>, PersistenceError> {
-    windows_dpapi::unprotect(ciphertext)
+    unprotect_bytes(ciphertext, "database key")
 }
 
 #[cfg(not(target_os = "windows"))]
 fn unprotect_key(_ciphertext: &[u8]) -> Result<Vec<u8>, PersistenceError> {
     Err(PersistenceError::new(
         "The encrypted SQLite key bootstrap is currently supported only on Windows.",
+    ))
+}
+
+#[cfg(target_os = "windows")]
+fn protect_bytes(
+    plaintext: &[u8],
+    purpose: &str,
+    context: &str,
+) -> Result<Vec<u8>, PersistenceError> {
+    windows_dpapi::protect(plaintext, purpose, context)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn protect_bytes(
+    _plaintext: &[u8],
+    _purpose: &str,
+    _context: &str,
+) -> Result<Vec<u8>, PersistenceError> {
+    Err(PersistenceError::new(
+        "Local payload protection is currently supported only on Windows.",
+    ))
+}
+
+#[cfg(target_os = "windows")]
+fn unprotect_bytes(ciphertext: &[u8], context: &str) -> Result<Vec<u8>, PersistenceError> {
+    windows_dpapi::unprotect(ciphertext, context)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn unprotect_bytes(_ciphertext: &[u8], _context: &str) -> Result<Vec<u8>, PersistenceError> {
+    Err(PersistenceError::new(
+        "Local payload protection is currently supported only on Windows.",
     ))
 }
 
@@ -101,10 +156,14 @@ mod windows_dpapi {
 
     use crate::persistence::error::PersistenceError;
 
-    pub fn protect(plaintext: &[u8]) -> Result<Vec<u8>, PersistenceError> {
+    pub fn protect(
+        plaintext: &[u8],
+        purpose: &str,
+        context: &str,
+    ) -> Result<Vec<u8>, PersistenceError> {
         let input_blob = blob_from_bytes(plaintext);
         let mut output_blob = empty_blob();
-        let description = wide_description("Translat encrypted database key");
+        let description = wide_description(purpose);
 
         let protected_ok = unsafe {
             CryptProtectData(
@@ -120,7 +179,7 @@ mod windows_dpapi {
 
         if protected_ok == 0 {
             return Err(PersistenceError::with_details(
-                "The persistence bootstrap could not protect the database key with DPAPI.",
+                format!("The persistence layer could not protect the {context} with DPAPI."),
                 io::Error::last_os_error(),
             ));
         }
@@ -131,7 +190,7 @@ mod windows_dpapi {
         Ok(protected_bytes)
     }
 
-    pub fn unprotect(ciphertext: &[u8]) -> Result<Vec<u8>, PersistenceError> {
+    pub fn unprotect(ciphertext: &[u8], context: &str) -> Result<Vec<u8>, PersistenceError> {
         let input_blob = blob_from_bytes(ciphertext);
         let mut output_blob = empty_blob();
 
@@ -149,7 +208,7 @@ mod windows_dpapi {
 
         if unprotected_ok == 0 {
             return Err(PersistenceError::with_details(
-                "The persistence bootstrap could not decrypt the stored database key with DPAPI.",
+                format!("The persistence layer could not decrypt the stored {context} with DPAPI."),
                 io::Error::last_os_error(),
             ));
         }
@@ -194,5 +253,20 @@ mod windows_dpapi {
 
     fn wide_description(value: &str) -> Vec<u16> {
         value.encode_utf16().chain(std::iter::once(0)).collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::generate_encryption_key;
+
+    #[test]
+    fn generated_encryption_key_has_expected_length_and_charset() {
+        let encryption_key = generate_encryption_key().expect("encryption key generation");
+
+        assert_eq!(encryption_key.len(), 43);
+        assert!(encryption_key
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || character == '-' || character == '_'));
     }
 }

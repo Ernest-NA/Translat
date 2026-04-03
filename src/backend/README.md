@@ -11,3 +11,12 @@ Planned responsibility areas:
 - context building and validation
 - corpus alignment and search services
 - job queue and background execution
+
+Current C1/C2/C3/C4/C5 backend slice in `src-tauri/`:
+- encrypted SQLite bootstrap with versioned migrations,
+- project repository wiring for create/list/open flows,
+- document repository wiring for import/list flows inside a project,
+- segment repository wiring for deterministic normalization and persisted segmentation,
+- document-section repository wiring for a minimal persisted outline over segmented documents,
+- desktop commands that expose project, document, segment, and document-structure state to the frontend,
+- and read-side segment queries that can backfill document structure without mutating document text.

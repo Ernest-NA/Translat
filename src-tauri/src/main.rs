@@ -1,8 +1,12 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod commands;
+mod documents;
 mod error;
 mod persistence;
+mod projects;
+mod sections;
+mod segments;
 
 use tauri::Manager;
 
@@ -23,7 +27,16 @@ fn main() {
 
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![commands::healthcheck::healthcheck])
+        .invoke_handler(tauri::generate_handler![
+            commands::documents::import_project_document,
+            commands::documents::list_project_documents,
+            commands::healthcheck::healthcheck,
+            commands::projects::create_project,
+            commands::projects::list_projects,
+            commands::projects::open_project,
+            commands::segments::list_document_segments,
+            commands::segments::process_project_document
+        ])
         .run(tauri::generate_context!())
         .expect("error while running the Translat desktop shell");
 }

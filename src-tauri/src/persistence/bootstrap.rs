@@ -29,10 +29,27 @@ impl DatabaseRuntime {
         }
     }
 
-    pub fn inspect(&self) -> Result<DatabaseStatus, PersistenceError> {
+    pub fn open_connection(&self) -> Result<Connection, PersistenceError> {
         let encryption_key = secret_store::load_existing_encryption_key(&self.encryption_key_path)?;
 
-        inspect_database(&self.database_path, &encryption_key)
+        open_database_with_key(&self.database_path, &encryption_key)
+    }
+
+    pub fn inspect(&self) -> Result<DatabaseStatus, PersistenceError> {
+        let connection = self.open_connection()?;
+
+        inspect_connection(&self.database_path, &connection)
+    }
+
+    pub fn documents_directory(&self) -> Result<PathBuf, PersistenceError> {
+        self.database_path
+            .parent()
+            .map(|directory| directory.join("documents"))
+            .ok_or_else(|| {
+                PersistenceError::new(
+                    "The persistence runtime could not derive the document storage directory from the database path.",
+                )
+            })
     }
 }
 
@@ -123,6 +140,7 @@ pub fn bootstrap_database(
     })
 }
 
+#[cfg(test)]
 pub fn inspect_database(
     database_path: &Path,
     encryption_key: &str,
@@ -205,7 +223,11 @@ fn inspect_connection(
             )
         })?;
 
-    let schema_ready = migrations::has_table(connection, "app_metadata")?;
+    let schema_ready = migrations::has_table(connection, "app_metadata")?
+        && migrations::has_table(connection, "projects")?
+        && migrations::has_table(connection, "documents")?
+        && migrations::has_table(connection, "segments")?
+        && migrations::has_table(connection, "document_sections")?;
 
     Ok(DatabaseStatus {
         applied_migrations,
@@ -241,11 +263,23 @@ mod tests {
         assert!(database_path.exists());
         assert_eq!(
             bootstrap_report.newly_applied_migrations,
-            vec!["0001_initial_schema".to_owned()]
+            vec![
+                "0001_initial_schema".to_owned(),
+                "0002_projects".to_owned(),
+                "0003_documents".to_owned(),
+                "0004_segments".to_owned(),
+                "0005_document_sections".to_owned()
+            ]
         );
         assert_eq!(
             bootstrap_report.applied_migrations,
-            vec!["0001_initial_schema".to_owned()]
+            vec![
+                "0001_initial_schema".to_owned(),
+                "0002_projects".to_owned(),
+                "0003_documents".to_owned(),
+                "0004_segments".to_owned(),
+                "0005_document_sections".to_owned()
+            ]
         );
         assert!(bootstrap_report.schema_ready);
     }
@@ -264,7 +298,13 @@ mod tests {
         assert!(second_report.newly_applied_migrations.is_empty());
         assert_eq!(
             second_report.applied_migrations,
-            vec!["0001_initial_schema".to_owned()]
+            vec![
+                "0001_initial_schema".to_owned(),
+                "0002_projects".to_owned(),
+                "0003_documents".to_owned(),
+                "0004_segments".to_owned(),
+                "0005_document_sections".to_owned()
+            ]
         );
         assert!(second_report.schema_ready);
     }
@@ -291,16 +331,55 @@ mod tests {
                 |row| row.get::<_, i64>(0),
             )
             .expect("initial schema table should be queryable");
+        let projects_table_count = connection
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'projects'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("projects table should be queryable");
+        let documents_table_count = connection
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'documents'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("documents table should be queryable");
 
         let database_status = inspect_database(&database_path, TEST_DATABASE_KEY)
             .expect("database inspection should succeed");
 
-        assert_eq!(migration_count, 1);
+        let segments_table_count = connection
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'segments'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("segments table should be queryable");
+        let document_sections_table_count = connection
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'document_sections'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("document_sections table should be queryable");
+
+        assert_eq!(migration_count, 5);
         assert_eq!(app_metadata_table_count, 1);
-        assert_eq!(database_status.migration_count, 1);
+        assert_eq!(projects_table_count, 1);
+        assert_eq!(documents_table_count, 1);
+        assert_eq!(segments_table_count, 1);
+        assert_eq!(document_sections_table_count, 1);
+        assert_eq!(database_status.migration_count, 5);
         assert_eq!(
             database_status.applied_migrations,
-            vec!["0001_initial_schema".to_owned()]
+            vec![
+                "0001_initial_schema".to_owned(),
+                "0002_projects".to_owned(),
+                "0003_documents".to_owned(),
+                "0004_segments".to_owned(),
+                "0005_document_sections".to_owned()
+            ]
         );
         assert!(database_status.schema_ready);
     }

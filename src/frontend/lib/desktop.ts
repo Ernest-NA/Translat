@@ -1,9 +1,20 @@
 import { invoke } from "@tauri-apps/api/core";
 import {
+  type CreateProjectInput,
   DESKTOP_COMMANDS,
   type DesktopCommandErrorPayload,
   type DesktopCommandName,
+  type DocumentSegmentsOverview,
+  type DocumentSummary,
   type HealthcheckResponse,
+  type ImportDocumentInput,
+  type ListDocumentSegmentsInput,
+  type ListProjectDocumentsInput,
+  type OpenProjectInput,
+  type ProcessDocumentInput,
+  type ProjectDocumentsOverview,
+  type ProjectSummary,
+  type ProjectsOverview,
 } from "../../shared/desktop";
 
 export class DesktopCommandError extends Error {
@@ -80,4 +91,56 @@ export function runHealthcheck() {
   return invokeDesktopCommand<HealthcheckResponse>(
     DESKTOP_COMMANDS.healthcheck,
   );
+}
+
+export function listProjects() {
+  return invokeDesktopCommand<ProjectsOverview>(DESKTOP_COMMANDS.listProjects);
+}
+
+export function createProject(input: CreateProjectInput) {
+  return invokeDesktopCommand<ProjectSummary>(DESKTOP_COMMANDS.createProject, {
+    input,
+  });
+}
+
+export function listProjectDocuments(input: ListProjectDocumentsInput) {
+  return invokeDesktopCommand<ProjectDocumentsOverview>(
+    DESKTOP_COMMANDS.listProjectDocuments,
+    {
+      input,
+    },
+  );
+}
+
+export function listDocumentSegments(input: ListDocumentSegmentsInput) {
+  return invokeDesktopCommand<DocumentSegmentsOverview>(
+    DESKTOP_COMMANDS.listDocumentSegments,
+    {
+      input,
+    },
+  );
+}
+
+export function importProjectDocument(input: ImportDocumentInput) {
+  return invokeDesktopCommand<DocumentSummary>(
+    DESKTOP_COMMANDS.importProjectDocument,
+    {
+      input,
+    },
+  );
+}
+
+export function processProjectDocument(input: ProcessDocumentInput) {
+  return invokeDesktopCommand<DocumentSummary>(
+    DESKTOP_COMMANDS.processProjectDocument,
+    {
+      input,
+    },
+  );
+}
+
+export function openProject(input: OpenProjectInput) {
+  return invokeDesktopCommand<ProjectSummary>(DESKTOP_COMMANDS.openProject, {
+    input,
+  });
 }

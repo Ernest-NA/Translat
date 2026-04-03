@@ -13,16 +13,42 @@ impl Migration {
     pub fn label(self) -> &'static str {
         match (self.version, self.name) {
             ("0001", "initial_schema") => "0001_initial_schema",
+            ("0002", "projects") => "0002_projects",
+            ("0003", "documents") => "0003_documents",
+            ("0004", "segments") => "0004_segments",
+            ("0005", "document_sections") => "0005_document_sections",
             _ => self.version,
         }
     }
 }
 
-const MIGRATIONS: [Migration; 1] = [Migration {
-    version: "0001",
-    name: "initial_schema",
-    sql: include_str!("../../migrations/0001_initial_schema.sql"),
-}];
+const MIGRATIONS: [Migration; 5] = [
+    Migration {
+        version: "0001",
+        name: "initial_schema",
+        sql: include_str!("../../migrations/0001_initial_schema.sql"),
+    },
+    Migration {
+        version: "0002",
+        name: "projects",
+        sql: include_str!("../../migrations/0002_projects.sql"),
+    },
+    Migration {
+        version: "0003",
+        name: "documents",
+        sql: include_str!("../../migrations/0003_documents.sql"),
+    },
+    Migration {
+        version: "0004",
+        name: "segments",
+        sql: include_str!("../../migrations/0004_segments.sql"),
+    },
+    Migration {
+        version: "0005",
+        name: "document_sections",
+        sql: include_str!("../../migrations/0005_document_sections.sql"),
+    },
+];
 
 pub fn ensure_schema_migrations_table(connection: &Connection) -> Result<(), PersistenceError> {
     connection
