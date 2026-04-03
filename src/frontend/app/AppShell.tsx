@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import { DESKTOP_COMMANDS } from "../../shared/desktop";
 import { HealthcheckPanel } from "../components/HealthcheckPanel";
 import { ProjectComposer } from "../components/ProjectComposer";
@@ -51,6 +51,8 @@ export function AppShell() {
     selectSegment,
   } = useDocumentSegments(activeProject?.id ?? null, documents);
   const { error, healthcheck, isLoading, retry } = useHealthcheck();
+  const activeProjectIdRef = useRef<string | null>(activeProject?.id ?? null);
+  activeProjectIdRef.current = activeProject?.id ?? null;
 
   const handleImportDocuments = useCallback(
     async (files: FileList): Promise<number> => {
@@ -74,7 +76,16 @@ export function AppShell() {
       const processedDocument = await processDocument(documentId);
 
       if (processedDocument) {
+        if (activeProjectIdRef.current !== processedDocument.projectId) {
+          return;
+        }
+
         await openDocument(processedDocument.id);
+
+        if (activeProjectIdRef.current !== processedDocument.projectId) {
+          return;
+        }
+
         try {
           await reloadProjects();
         } catch {
