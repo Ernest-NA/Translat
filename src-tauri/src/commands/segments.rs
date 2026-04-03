@@ -9,11 +9,16 @@ use crate::error::DesktopCommandError;
 use crate::persistence::bootstrap::DatabaseRuntime;
 use crate::persistence::documents::{DocumentProcessingRecord, DocumentRepository};
 use crate::persistence::projects::ProjectRepository;
+use crate::persistence::sections::DocumentSectionRepository;
 use crate::persistence::secret_store;
 use crate::persistence::segments::SegmentRepository;
+use crate::sections::{
+    DocumentSectionSummary, NewDocumentSection, DOCUMENT_SECTION_TYPE_CHAPTER,
+    DOCUMENT_SECTION_TYPE_DOCUMENT, DOCUMENT_SECTION_TYPE_SECTION,
+};
 use crate::segments::{
     DocumentSegmentsOverview, ListDocumentSegmentsInput, NewSegment, ProcessDocumentInput,
-    SEGMENT_STATUS_PENDING_TRANSLATION,
+    SegmentSummary, SEGMENT_STATUS_PENDING_TRANSLATION,
 };
 
 #[tauri::command]
@@ -159,11 +164,298 @@ fn list_document_segments_with_runtime(
             )
         })?;
 
+    let sections = ensure_document_sections(
+        &mut connection,
+        &processing_record,
+        &segments,
+        current_timestamp()?,
+    )?;
+
     Ok(DocumentSegmentsOverview {
         project_id,
         document_id,
+        sections,
         segments,
     })
+}
+
+fn ensure_document_sections(
+    connection: &mut rusqlite::Connection,
+    processing_record: &DocumentProcessingRecord,
+    segments: &[SegmentSummary],
+    timestamp: i64,
+) -> Result<Vec<DocumentSectionSummary>, DesktopCommandError> {
+    let mut repository = DocumentSectionRepository::new(connection);
+    let existing_sections = repository
+        .list_by_document(&processing_record.id)
+        .map_err(|error| {
+            DesktopCommandError::internal(
+                "The desktop shell could not load the persisted document structure.",
+                Some(error.to_string()),
+            )
+        })?;
+
+    if !sections_need_rebuild(&existing_sections, segments) {
+        return Ok(existing_sections);
+    }
+
+    let rebuilt_sections =
+        build_document_sections(&processing_record.id, &processing_record.name, segments, timestamp)?;
+
+    repository
+        .replace_for_document(&processing_record.id, &rebuilt_sections)
+        .map_err(|error| {
+            DesktopCommandError::internal(
+                "The desktop shell could not persist the document structure for segment navigation.",
+                Some(error.to_string()),
+            )
+        })?;
+
+    Ok(rebuilt_sections
+        .into_iter()
+        .map(map_new_section_to_summary)
+        .collect())
+}
+
+fn sections_need_rebuild(
+    sections: &[DocumentSectionSummary],
+    segments: &[SegmentSummary],
+) -> bool {
+    if segments.is_empty() {
+        return false;
+    }
+
+    if sections.is_empty() {
+        return true;
+    }
+
+    let Some(last_segment_sequence) = segments.last().map(|segment| segment.sequence) else {
+        return false;
+    };
+
+    let mut expected_start = 1_i64;
+
+    for section in sections {
+        if section.start_segment_sequence != expected_start {
+            return true;
+        }
+
+        if section.end_segment_sequence < section.start_segment_sequence {
+            return true;
+        }
+
+        let expected_segment_count = section.end_segment_sequence - section.start_segment_sequence + 1;
+
+        if section.segment_count != expected_segment_count {
+            return true;
+        }
+
+        expected_start = section.end_segment_sequence + 1;
+    }
+
+    expected_start - 1 != last_segment_sequence
+}
+
+fn build_document_sections(
+    document_id: &str,
+    document_name: &str,
+    segments: &[SegmentSummary],
+    timestamp: i64,
+) -> Result<Vec<NewDocumentSection>, DesktopCommandError> {
+    let Some(last_segment_sequence) = segments.last().map(|segment| segment.sequence) else {
+        return Err(DesktopCommandError::validation(
+            "A segmented document needs persisted segments before a document structure can be built.",
+            None,
+        ));
+    };
+
+    let structure_markers = detect_structure_markers(segments);
+
+    if structure_markers.is_empty() {
+        return Ok(vec![build_section_record(
+            document_id,
+            1,
+            SectionRecordSeed {
+                title: document_name.to_owned(),
+                section_type: DOCUMENT_SECTION_TYPE_DOCUMENT.to_owned(),
+                level: 1,
+                start_segment_sequence: 1,
+                end_segment_sequence: last_segment_sequence,
+            },
+            timestamp,
+        )]);
+    }
+
+    let mut sections = Vec::new();
+    let mut next_sequence = 1_i64;
+
+    if let Some(first_marker) = structure_markers.first() {
+        if first_marker.start_segment_sequence > 1 {
+            sections.push(build_section_record(
+                document_id,
+                next_sequence,
+                SectionRecordSeed {
+                    title: document_name.to_owned(),
+                    section_type: DOCUMENT_SECTION_TYPE_DOCUMENT.to_owned(),
+                    level: 1,
+                    start_segment_sequence: 1,
+                    end_segment_sequence: first_marker.start_segment_sequence - 1,
+                },
+                timestamp,
+            ));
+            next_sequence += 1;
+        }
+    }
+
+    for (index, marker) in structure_markers.iter().enumerate() {
+        let end_segment_sequence = structure_markers
+            .get(index + 1)
+            .map(|next_marker| next_marker.start_segment_sequence - 1)
+            .unwrap_or(last_segment_sequence);
+
+        sections.push(build_section_record(
+            document_id,
+            next_sequence,
+            SectionRecordSeed {
+                title: marker.title.clone(),
+                section_type: marker.section_type.clone(),
+                level: marker.level,
+                start_segment_sequence: marker.start_segment_sequence,
+                end_segment_sequence,
+            },
+            timestamp,
+        ));
+        next_sequence += 1;
+    }
+
+    Ok(sections)
+}
+
+struct SectionRecordSeed {
+    title: String,
+    section_type: String,
+    level: i64,
+    start_segment_sequence: i64,
+    end_segment_sequence: i64,
+}
+
+fn build_section_record(
+    document_id: &str,
+    sequence: i64,
+    seed: SectionRecordSeed,
+    timestamp: i64,
+) -> NewDocumentSection {
+    NewDocumentSection {
+        id: format!("{document_id}_sec_{sequence:04}"),
+        document_id: document_id.to_owned(),
+        sequence,
+        title: seed.title,
+        section_type: seed.section_type,
+        level: seed.level,
+        start_segment_sequence: seed.start_segment_sequence,
+        end_segment_sequence: seed.end_segment_sequence,
+        segment_count: seed.end_segment_sequence - seed.start_segment_sequence + 1,
+        created_at: timestamp,
+        updated_at: timestamp,
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct StructureMarker {
+    start_segment_sequence: i64,
+    title: String,
+    section_type: String,
+    level: i64,
+}
+
+fn detect_structure_markers(segments: &[SegmentSummary]) -> Vec<StructureMarker> {
+    segments
+        .iter()
+        .filter_map(detect_structure_marker)
+        .collect()
+}
+
+fn detect_structure_marker(segment: &SegmentSummary) -> Option<StructureMarker> {
+    let title = segment.source_text.trim();
+
+    if title.is_empty() || title.chars().count() > 96 || title.split_whitespace().count() > 14 {
+        return None;
+    }
+
+    let normalized_title = normalize_structure_probe(title);
+    let (section_type, level) = if starts_with_structure_keyword(
+        &normalized_title,
+        &["chapter", "part", "capitulo", "cap."],
+    ) {
+        (DOCUMENT_SECTION_TYPE_CHAPTER.to_owned(), 1)
+    } else if starts_with_structure_keyword(
+        &normalized_title,
+        &[
+            "section",
+            "sec.",
+            "sec",
+            "annex",
+            "appendix",
+            "seccion",
+            "apartado",
+            "anexo",
+            "apendice",
+        ],
+    ) {
+        (DOCUMENT_SECTION_TYPE_SECTION.to_owned(), 2)
+    } else {
+        return None;
+    };
+
+    Some(StructureMarker {
+        start_segment_sequence: segment.sequence,
+        title: title.to_owned(),
+        section_type,
+        level,
+    })
+}
+
+fn starts_with_structure_keyword(value: &str, keywords: &[&str]) -> bool {
+    keywords.iter().any(|keyword| {
+        value == *keyword
+            || value
+                .strip_prefix(keyword)
+                .is_some_and(|suffix| suffix.starts_with(' ') || suffix.starts_with('.'))
+    })
+}
+
+fn normalize_structure_probe(value: &str) -> String {
+    let mut normalized = String::with_capacity(value.len());
+
+    for character in value.chars() {
+        normalized.push(match character {
+            'Á' | 'À' | 'Ä' | 'Â' | 'á' | 'à' | 'ä' | 'â' => 'a',
+            'É' | 'È' | 'Ë' | 'Ê' | 'é' | 'è' | 'ë' | 'ê' => 'e',
+            'Í' | 'Ì' | 'Ï' | 'Î' | 'í' | 'ì' | 'ï' | 'î' => 'i',
+            'Ó' | 'Ò' | 'Ö' | 'Ô' | 'ó' | 'ò' | 'ö' | 'ô' => 'o',
+            'Ú' | 'Ù' | 'Ü' | 'Û' | 'ú' | 'ù' | 'ü' | 'û' => 'u',
+            'Ñ' | 'ñ' => 'n',
+            _ => character.to_ascii_lowercase(),
+        });
+    }
+
+    normalized
+}
+
+fn map_new_section_to_summary(section: NewDocumentSection) -> DocumentSectionSummary {
+    DocumentSectionSummary {
+        id: section.id,
+        document_id: section.document_id,
+        sequence: section.sequence,
+        title: section.title,
+        section_type: section.section_type,
+        level: section.level,
+        start_segment_sequence: section.start_segment_sequence,
+        end_segment_sequence: section.end_segment_sequence,
+        segment_count: section.segment_count,
+        created_at: section.created_at,
+        updated_at: section.updated_at,
+    }
 }
 
 fn validate_identifier(value: &str, label: &str) -> Result<String, DesktopCommandError> {
@@ -709,9 +1001,11 @@ mod tests {
     };
     use crate::persistence::documents::DocumentRepository;
     use crate::persistence::projects::ProjectRepository;
+    use crate::persistence::sections::DocumentSectionRepository;
     use crate::persistence::secret_store::{load_or_create_encryption_key, protect_local_payload};
     use crate::persistence::segments::SegmentRepository;
     use crate::projects::NewProject;
+    use crate::sections::DOCUMENT_SECTION_TYPE_DOCUMENT;
     use crate::segments::{
         ListDocumentSegmentsInput, NewSegment, ProcessDocumentInput,
         SEGMENT_STATUS_PENDING_TRANSLATION,
@@ -1102,9 +1396,9 @@ mod tests {
                         id: "doc_1743517200_test_seg_00002".to_owned(),
                         document_id: document.id.clone(),
                         sequence: 2,
-                        source_text: "Second".to_owned(),
-                        source_word_count: 1,
-                        source_character_count: 6,
+                        source_text: "Scope details follow.".to_owned(),
+                        source_word_count: 3,
+                        source_character_count: 21,
                         status: SEGMENT_STATUS_PENDING_TRANSLATION.to_owned(),
                         created_at: 1_743_517_201,
                         updated_at: 1_743_517_201,
@@ -1113,9 +1407,31 @@ mod tests {
                         id: "doc_1743517200_test_seg_00001".to_owned(),
                         document_id: document.id.clone(),
                         sequence: 1,
-                        source_text: "First".to_owned(),
-                        source_word_count: 1,
-                        source_character_count: 5,
+                        source_text: "Section 1. Scope.".to_owned(),
+                        source_word_count: 3,
+                        source_character_count: 17,
+                        status: SEGMENT_STATUS_PENDING_TRANSLATION.to_owned(),
+                        created_at: 1_743_517_201,
+                        updated_at: 1_743_517_201,
+                    },
+                    NewSegment {
+                        id: "doc_1743517200_test_seg_00004".to_owned(),
+                        document_id: document.id.clone(),
+                        sequence: 4,
+                        source_text: "Execution details follow.".to_owned(),
+                        source_word_count: 3,
+                        source_character_count: 25,
+                        status: SEGMENT_STATUS_PENDING_TRANSLATION.to_owned(),
+                        created_at: 1_743_517_201,
+                        updated_at: 1_743_517_201,
+                    },
+                    NewSegment {
+                        id: "doc_1743517200_test_seg_00003".to_owned(),
+                        document_id: document.id.clone(),
+                        sequence: 3,
+                        source_text: "Section 2. Execution.".to_owned(),
+                        source_word_count: 3,
+                        source_character_count: 21,
                         status: SEGMENT_STATUS_PENDING_TRANSLATION.to_owned(),
                         created_at: 1_743_517_201,
                         updated_at: 1_743_517_201,
@@ -1136,10 +1452,119 @@ mod tests {
         )
         .expect("segments should load");
 
-        assert_eq!(overview.segments.len(), 2);
+        assert_eq!(overview.segments.len(), 4);
         assert_eq!(overview.segments[0].sequence, 1);
-        assert_eq!(overview.segments[0].source_text, "First");
+        assert_eq!(overview.segments[0].source_text, "Section 1. Scope.");
         assert_eq!(overview.segments[0].target_text, None);
-        assert_eq!(overview.segments[1].sequence, 2);
+        assert_eq!(overview.segments[3].sequence, 4);
+        assert_eq!(overview.sections.len(), 2);
+        assert_eq!(overview.sections[0].title, "Section 1. Scope.");
+        assert_eq!(overview.sections[0].start_segment_sequence, 1);
+        assert_eq!(overview.sections[0].end_segment_sequence, 2);
+        assert_eq!(overview.sections[1].title, "Section 2. Execution.");
+
+        let mut reopened_connection = open_database_with_key(&database_path, &encryption_key)
+            .expect("database connection should reopen");
+        let persisted_sections = DocumentSectionRepository::new(&mut reopened_connection)
+            .list_by_document("doc_1743517200_test")
+            .expect("sections should persist");
+
+        assert_eq!(persisted_sections.len(), 2);
+    }
+
+    #[test]
+    fn list_document_segments_builds_default_structure_when_no_headings_exist() {
+        let temporary_directory = tempdir().expect("temp dir should be created");
+        let database_path = temporary_directory.path().join("translat.sqlite3");
+        let encryption_key_path = temporary_directory.path().join("translat.sqlite3.key");
+        let runtime = DatabaseRuntime::new(database_path.clone(), encryption_key_path.clone());
+        let encryption_key = load_or_create_encryption_key(&encryption_key_path)
+            .expect("encryption key should be created");
+
+        bootstrap_database(&database_path, &encryption_key)
+            .expect("database bootstrap should succeed");
+
+        let mut connection = open_database_with_key(&database_path, &encryption_key)
+            .expect("database connection should open");
+
+        let project = NewProject {
+            id: "prj_active_001".to_owned(),
+            name: "Outline project".to_owned(),
+            description: None,
+            created_at: 1_743_517_200,
+            updated_at: 1_743_517_200,
+            last_opened_at: 1_743_517_200,
+        };
+
+        ProjectRepository::new(&mut connection)
+            .create(&project)
+            .expect("project should persist");
+
+        let document = NewDocument {
+            id: "doc_outline_001".to_owned(),
+            project_id: project.id.clone(),
+            name: "plain.txt".to_owned(),
+            source_kind: DOCUMENT_SOURCE_LOCAL_FILE.to_owned(),
+            format: "txt".to_owned(),
+            mime_type: Some("text/plain".to_owned()),
+            stored_path: "ignored".to_owned(),
+            file_size_bytes: 10,
+            status: DOCUMENT_STATUS_SEGMENTED.to_owned(),
+            created_at: 1_743_517_200,
+            updated_at: 1_743_517_200,
+        };
+
+        DocumentRepository::new(&mut connection)
+            .create(&document)
+            .expect("document should persist");
+
+        SegmentRepository::new(&mut connection)
+            .replace_for_document(
+                &project.id,
+                &document.id,
+                &[
+                    NewSegment {
+                        id: "doc_outline_001_seg_00001".to_owned(),
+                        document_id: document.id.clone(),
+                        sequence: 1,
+                        source_text: "Alpha sentence.".to_owned(),
+                        source_word_count: 2,
+                        source_character_count: 15,
+                        status: SEGMENT_STATUS_PENDING_TRANSLATION.to_owned(),
+                        created_at: 1_743_517_201,
+                        updated_at: 1_743_517_201,
+                    },
+                    NewSegment {
+                        id: "doc_outline_001_seg_00002".to_owned(),
+                        document_id: document.id.clone(),
+                        sequence: 2,
+                        source_text: "Beta sentence.".to_owned(),
+                        source_word_count: 2,
+                        source_character_count: 14,
+                        status: SEGMENT_STATUS_PENDING_TRANSLATION.to_owned(),
+                        created_at: 1_743_517_201,
+                        updated_at: 1_743_517_201,
+                    },
+                ],
+                1_743_517_201,
+            )
+            .expect("segments should persist");
+
+        drop(connection);
+
+        let overview = list_document_segments_with_runtime(
+            ListDocumentSegmentsInput {
+                project_id: project.id,
+                document_id: document.id,
+            },
+            &runtime,
+        )
+        .expect("segments should load");
+
+        assert_eq!(overview.sections.len(), 1);
+        assert_eq!(overview.sections[0].title, "plain.txt");
+        assert_eq!(overview.sections[0].section_type, DOCUMENT_SECTION_TYPE_DOCUMENT);
+        assert_eq!(overview.sections[0].start_segment_sequence, 1);
+        assert_eq!(overview.sections[0].end_segment_sequence, 2);
     }
 }

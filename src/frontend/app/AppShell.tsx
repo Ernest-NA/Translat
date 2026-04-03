@@ -45,7 +45,10 @@ export function AppShell() {
     error: segmentError,
     isLoading: isLoadingSegments,
     openDocument,
+    sections,
     segments,
+    selectedSection,
+    selectSection,
     selectedSegment,
     selectedSegmentId,
     selectSegment,
@@ -105,10 +108,11 @@ export function AppShell() {
       <header className="app-shell__header">
         <div>
           <p className="app-shell__eyebrow">Translat</p>
-          <h1>Segment list and detail</h1>
+          <h1>Document structure and segments</h1>
           <p className="app-shell__lead">
-            C4 opens a segmented document, lists its persisted segments in
-            order, and shows a stable detail view for the selected segment.
+            C5 adds a minimal persisted section outline on top of segmented
+            documents so the workspace can orient segment navigation with a
+            stable document structure.
           </p>
         </div>
 
@@ -122,7 +126,7 @@ export function AppShell() {
           </span>
           <span>
             {activeDocument
-              ? `${segments.length} segments in open document`
+              ? `${sections.length} sections | ${segments.length} segments`
               : "No open document"}
           </span>
         </div>
@@ -141,6 +145,7 @@ export function AppShell() {
             onOpenDocument={openDocument}
             onImportDocuments={handleImportDocuments}
             onProcessDocument={handleProcessDocument}
+            onSelectSection={selectSection}
             onSelectSegment={selectSegment}
             processError={processError}
             processingDocumentId={processingDocumentId}
@@ -149,6 +154,8 @@ export function AppShell() {
             segmentLoadingDocumentId={
               isLoadingSegments ? (activeDocument?.id ?? null) : null
             }
+            sections={sections}
+            selectedSection={selectedSection}
             segments={segments}
             selectedSegment={selectedSegment}
             selectedSegmentId={selectedSegmentId}
@@ -156,28 +163,31 @@ export function AppShell() {
 
           <section className="surface-card surface-card--split">
             <div>
-              <p className="surface-card__eyebrow">C4 scope</p>
-              <h2>Open a segmented document and navigate its segments.</h2>
+              <p className="surface-card__eyebrow">C5 scope</p>
+              <h2>
+                Orient segment navigation with a persisted section outline.
+              </h2>
               <p className="surface-card__copy">
-                This slice stays focused on querying persisted segments,
-                selecting them, and showing their essential data without adding
+                This slice stays focused on adding a conservative document
+                structure layer over persisted segments without introducing
                 editing, translation, QA, or AI actions.
               </p>
             </div>
 
             <ul className="capability-list">
               <li>
-                Segmented documents can be opened directly from the project
-                workspace.
+                Segmented documents expose persisted sections alongside their
+                ordered segments.
               </li>
               <li>
-                Segments are listed in persisted sequence order from SQLite.
+                The outline degrades gracefully to a single document-level
+                section when no clearer structure is detected.
               </li>
               <li>
-                The selected segment shows sequence, state, source text, and
-                current target text when present.
+                The selected segment still shows sequence, state, source text,
+                and current target text when present.
               </li>
-              <li>Editing, translation, AI, and history remain outside C4.</li>
+              <li>Editing, translation, AI, and history remain outside C5.</li>
             </ul>
           </section>
         </div>
@@ -227,10 +237,18 @@ export function AppShell() {
                 <dd>{activeDocument ? segments.length : 0}</dd>
               </div>
               <div>
+                <dt>Loaded sections</dt>
+                <dd>{activeDocument ? sections.length : 0}</dd>
+              </div>
+              <div>
                 <dt>Selected segment</dt>
                 <dd>
                   {selectedSegment ? `#${selectedSegment.sequence}` : "None"}
                 </dd>
+              </div>
+              <div>
+                <dt>Selected section</dt>
+                <dd>{selectedSection?.title ?? "None"}</dd>
               </div>
             </dl>
           </section>

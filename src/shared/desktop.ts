@@ -83,9 +83,24 @@ export interface SegmentSummary {
   updatedAt: number;
 }
 
+export interface DocumentSectionSummary {
+  id: string;
+  documentId: string;
+  sequence: number;
+  title: string;
+  sectionType: string;
+  level: number;
+  startSegmentSequence: number;
+  endSegmentSequence: number;
+  segmentCount: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface DocumentSegmentsOverview {
   projectId: string;
   documentId: string;
+  sections: DocumentSectionSummary[];
   segments: SegmentSummary[];
 }
 

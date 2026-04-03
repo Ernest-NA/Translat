@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::sections::DocumentSectionSummary;
+
 pub const SEGMENT_STATUS_PENDING_TRANSLATION: &str = "pending_translation";
 
 #[cfg_attr(not(test), allow(dead_code))]
@@ -23,6 +25,7 @@ pub struct SegmentSummary {
 pub struct DocumentSegmentsOverview {
     pub project_id: String,
     pub document_id: String,
+    pub sections: Vec<DocumentSectionSummary>,
     pub segments: Vec<SegmentSummary>,
 }
 

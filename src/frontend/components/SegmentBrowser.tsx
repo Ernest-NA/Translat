@@ -1,4 +1,5 @@
 import type {
+  DocumentSectionSummary,
   DocumentSummary,
   ProjectSummary,
   SegmentSummary,
@@ -9,8 +10,11 @@ interface SegmentBrowserProps {
   activeDocument: DocumentSummary | null;
   error: DesktopCommandError | null;
   isLoading: boolean;
+  onSelectSection: (sectionId: string) => void;
   onSelectSegment: (segmentId: string) => void;
   project: ProjectSummary | null;
+  sections: DocumentSectionSummary[];
+  selectedSection: DocumentSectionSummary | null;
   segments: SegmentSummary[];
   selectedSegment: SegmentSummary | null;
   selectedSegmentId: string | null;
@@ -24,8 +28,11 @@ export function SegmentBrowser({
   activeDocument,
   error,
   isLoading,
+  onSelectSection,
   onSelectSegment,
   project,
+  sections,
+  selectedSection,
   segments,
   selectedSegment,
   selectedSegmentId,
@@ -41,7 +48,9 @@ export function SegmentBrowser({
         </div>
 
         <strong className="status-pill">
-          {activeDocument ? `${segments.length} loaded` : "No document"}
+          {activeDocument
+            ? `${sections.length} sections | ${segments.length} segments`
+            : "No document"}
         </strong>
       </div>
 
@@ -72,6 +81,36 @@ export function SegmentBrowser({
       {activeDocument && !isLoading && !error ? (
         <div className="segment-browser">
           <div className="segment-browser__list">
+            <div className="segment-outline">
+              <p className="surface-card__eyebrow">Document structure</p>
+
+              {sections.length > 0 ? (
+                <ol className="segment-outline__list">
+                  {sections.map((section) => (
+                    <li key={section.id}>
+                      <button
+                        className="segment-outline__item"
+                        data-active={section.id === selectedSection?.id}
+                        onClick={() => onSelectSection(section.id)}
+                        type="button"
+                      >
+                        <strong>{section.title}</strong>
+                        <span>
+                          {section.sectionType} | #
+                          {section.startSegmentSequence}
+                          -#{section.endSegmentSequence}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <p className="surface-card__copy">
+                  No persisted structure is available for this document yet.
+                </p>
+              )}
+            </div>
+
             {segments.length > 0 ? (
               <ol className="segment-list">
                 {segments.map((segment) => (
@@ -118,6 +157,10 @@ export function SegmentBrowser({
                   <div>
                     <dt>Segment ID</dt>
                     <dd>{selectedSegment.id}</dd>
+                  </div>
+                  <div>
+                    <dt>Section</dt>
+                    <dd>{selectedSection?.title ?? "Unassigned"}</dd>
                   </div>
                   <div>
                     <dt>Words</dt>

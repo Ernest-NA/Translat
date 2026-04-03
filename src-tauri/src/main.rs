@@ -5,6 +5,7 @@ mod documents;
 mod error;
 mod persistence;
 mod projects;
+mod sections;
 mod segments;
 
 use tauri::Manager;
