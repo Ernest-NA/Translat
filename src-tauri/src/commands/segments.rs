@@ -456,10 +456,10 @@ fn should_split_at_boundary(
                     | "annex"
                     | "appendix"
                     | "capitulo"
-                    | "capÃ­tulo"
+                    | "cap\u{ed}tulo"
                     | "apartado"
                     | "seccion"
-                    | "secciÃ³n"
+                    | "secci\u{f3}n"
             )
         })
         && next_token
@@ -708,6 +708,21 @@ mod tests {
                 "Chapter 1. Introduction.".to_owned(),
                 "Dept. 4 remains active.".to_owned(),
                 "pp. 12-13 cover the scope.".to_owned(),
+            ]
+        );
+    }
+
+    #[test]
+    fn split_paragraph_into_segments_keeps_spanish_numbered_headings_together() {
+        let segments = split_paragraph_into_segments(
+            "Cap\u{ed}tulo 1. Introducci\u{f3}n. Secci\u{f3}n 2. Alcance.",
+        );
+
+        assert_eq!(
+            segments,
+            vec![
+                "Cap\u{ed}tulo 1. Introducci\u{f3}n.".to_owned(),
+                "Secci\u{f3}n 2. Alcance.".to_owned(),
             ]
         );
     }
