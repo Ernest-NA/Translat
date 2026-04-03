@@ -195,12 +195,12 @@ fn ensure_document_sections(
             )
         })?;
 
-    if !sections_need_rebuild(&existing_sections, segments) {
-        return Ok(existing_sections);
-    }
-
     let rebuilt_sections =
         build_document_sections(&processing_record.id, &processing_record.name, segments, timestamp)?;
+
+    if section_summaries_match(&existing_sections, &rebuilt_sections) {
+        return Ok(existing_sections);
+    }
 
     repository
         .replace_for_document(&processing_record.id, &rebuilt_sections)
@@ -217,43 +217,26 @@ fn ensure_document_sections(
         .collect())
 }
 
-fn sections_need_rebuild(
-    sections: &[DocumentSectionSummary],
-    segments: &[SegmentSummary],
+fn section_summaries_match(
+    existing_sections: &[DocumentSectionSummary],
+    expected_sections: &[NewDocumentSection],
 ) -> bool {
-    if segments.is_empty() {
+    if existing_sections.len() != expected_sections.len() {
         return false;
     }
 
-    if sections.is_empty() {
-        return true;
-    }
-
-    let Some(last_segment_sequence) = segments.last().map(|segment| segment.sequence) else {
-        return false;
-    };
-
-    let mut expected_start = 1_i64;
-
-    for section in sections {
-        if section.start_segment_sequence != expected_start {
-            return true;
-        }
-
-        if section.end_segment_sequence < section.start_segment_sequence {
-            return true;
-        }
-
-        let expected_segment_count = section.end_segment_sequence - section.start_segment_sequence + 1;
-
-        if section.segment_count != expected_segment_count {
-            return true;
-        }
-
-        expected_start = section.end_segment_sequence + 1;
-    }
-
-    expected_start - 1 != last_segment_sequence
+    existing_sections
+        .iter()
+        .zip(expected_sections.iter())
+        .all(|(existing, expected)| {
+            existing.sequence == expected.sequence
+                && existing.title == expected.title
+                && existing.section_type == expected.section_type
+                && existing.level == expected.level
+                && existing.start_segment_sequence == expected.start_segment_sequence
+                && existing.end_segment_sequence == expected.end_segment_sequence
+                && existing.segment_count == expected.segment_count
+        })
 }
 
 fn build_document_sections(
@@ -383,12 +366,11 @@ fn detect_structure_marker(segment: &SegmentSummary) -> Option<StructureMarker> 
     }
 
     let normalized_title = normalize_structure_probe(title);
-    let (section_type, level) = if starts_with_structure_keyword(
-        &normalized_title,
-        &["chapter", "part", "capitulo", "cap."],
-    ) {
-        (DOCUMENT_SECTION_TYPE_CHAPTER.to_owned(), 1)
-    } else if starts_with_structure_keyword(
+    let (section_type, level, remainder) = if let Some(remainder) =
+        strip_structure_keyword(&normalized_title, &["chapter", "part", "capitulo", "cap."])
+    {
+        (DOCUMENT_SECTION_TYPE_CHAPTER.to_owned(), 1, remainder)
+    } else if let Some(remainder) = strip_structure_keyword(
         &normalized_title,
         &[
             "section",
@@ -402,10 +384,14 @@ fn detect_structure_marker(segment: &SegmentSummary) -> Option<StructureMarker> 
             "apendice",
         ],
     ) {
-        (DOCUMENT_SECTION_TYPE_SECTION.to_owned(), 2)
+        (DOCUMENT_SECTION_TYPE_SECTION.to_owned(), 2, remainder)
     } else {
         return None;
     };
+
+    if !is_heading_remainder(remainder) {
+        return None;
+    }
 
     Some(StructureMarker {
         start_segment_sequence: segment.sequence,
@@ -415,13 +401,61 @@ fn detect_structure_marker(segment: &SegmentSummary) -> Option<StructureMarker> 
     })
 }
 
-fn starts_with_structure_keyword(value: &str, keywords: &[&str]) -> bool {
-    keywords.iter().any(|keyword| {
-        value == *keyword
-            || value
-                .strip_prefix(keyword)
-                .is_some_and(|suffix| suffix.starts_with(' ') || suffix.starts_with('.'))
+fn strip_structure_keyword<'value>(value: &'value str, keywords: &[&str]) -> Option<&'value str> {
+    keywords.iter().find_map(|keyword| {
+        if value == *keyword {
+            Some("")
+        } else {
+            value.strip_prefix(keyword).and_then(|suffix| {
+                if suffix.starts_with(' ') || suffix.starts_with('.') {
+                    Some(suffix)
+                } else {
+                    None
+                }
+            })
+        }
     })
+}
+
+fn is_heading_remainder(value: &str) -> bool {
+    let trimmed = value.trim_start_matches([' ', '.']);
+
+    if trimmed.is_empty() {
+        return false;
+    }
+
+    let identifier_end = trimmed
+        .find(|character: char| {
+            !(character.is_ascii_digit()
+                || matches!(character, 'a'..='z')
+                || matches!(character, 'i' | 'v' | 'x' | 'l' | 'c' | 'd' | 'm'))
+        })
+        .unwrap_or(trimmed.len());
+
+    if identifier_end == 0 {
+        return false;
+    }
+
+    let identifier = &trimmed[..identifier_end];
+
+    if !is_heading_identifier(identifier) {
+        return false;
+    }
+
+    let rest = trimmed[identifier_end..].trim_start();
+
+    rest.starts_with('.') || rest.starts_with(':') || rest.starts_with('-') || rest.starts_with(')')
+}
+
+fn is_heading_identifier(value: &str) -> bool {
+    let is_numeric = value.chars().all(|character| character.is_ascii_digit());
+    let is_roman = value
+        .chars()
+        .all(|character| matches!(character, 'i' | 'v' | 'x' | 'l' | 'c' | 'd' | 'm'));
+    let is_single_letter =
+        value.chars().count() == 1 && value.chars().all(|character| character.is_ascii_alphabetic());
+
+    is_numeric || is_roman || is_single_letter
 }
 
 fn normalize_structure_probe(value: &str) -> String {
@@ -1005,7 +1039,9 @@ mod tests {
     use crate::persistence::secret_store::{load_or_create_encryption_key, protect_local_payload};
     use crate::persistence::segments::SegmentRepository;
     use crate::projects::NewProject;
-    use crate::sections::DOCUMENT_SECTION_TYPE_DOCUMENT;
+    use crate::sections::{
+        NewDocumentSection, DOCUMENT_SECTION_TYPE_DOCUMENT, DOCUMENT_SECTION_TYPE_SECTION,
+    };
     use crate::segments::{
         ListDocumentSegmentsInput, NewSegment, ProcessDocumentInput,
         SEGMENT_STATUS_PENDING_TRANSLATION,
@@ -1566,5 +1602,210 @@ mod tests {
         assert_eq!(overview.sections[0].section_type, DOCUMENT_SECTION_TYPE_DOCUMENT);
         assert_eq!(overview.sections[0].start_segment_sequence, 1);
         assert_eq!(overview.sections[0].end_segment_sequence, 2);
+    }
+
+    #[test]
+    fn list_document_segments_rebuilds_stale_structure_when_titles_change() {
+        let temporary_directory = tempdir().expect("temp dir should be created");
+        let database_path = temporary_directory.path().join("translat.sqlite3");
+        let encryption_key_path = temporary_directory.path().join("translat.sqlite3.key");
+        let runtime = DatabaseRuntime::new(database_path.clone(), encryption_key_path.clone());
+        let encryption_key = load_or_create_encryption_key(&encryption_key_path)
+            .expect("encryption key should be created");
+
+        bootstrap_database(&database_path, &encryption_key)
+            .expect("database bootstrap should succeed");
+
+        let mut connection = open_database_with_key(&database_path, &encryption_key)
+            .expect("database connection should open");
+
+        let project = NewProject {
+            id: "prj_active_001".to_owned(),
+            name: "Outline project".to_owned(),
+            description: None,
+            created_at: 1_743_517_200,
+            updated_at: 1_743_517_200,
+            last_opened_at: 1_743_517_200,
+        };
+
+        ProjectRepository::new(&mut connection)
+            .create(&project)
+            .expect("project should persist");
+
+        let document = NewDocument {
+            id: "doc_outline_002".to_owned(),
+            project_id: project.id.clone(),
+            name: "structured.txt".to_owned(),
+            source_kind: DOCUMENT_SOURCE_LOCAL_FILE.to_owned(),
+            format: "txt".to_owned(),
+            mime_type: Some("text/plain".to_owned()),
+            stored_path: "ignored".to_owned(),
+            file_size_bytes: 10,
+            status: DOCUMENT_STATUS_SEGMENTED.to_owned(),
+            created_at: 1_743_517_200,
+            updated_at: 1_743_517_200,
+        };
+
+        DocumentRepository::new(&mut connection)
+            .create(&document)
+            .expect("document should persist");
+
+        SegmentRepository::new(&mut connection)
+            .replace_for_document(
+                &project.id,
+                &document.id,
+                &[
+                    NewSegment {
+                        id: "doc_outline_002_seg_00001".to_owned(),
+                        document_id: document.id.clone(),
+                        sequence: 1,
+                        source_text: "Section 1. Scope.".to_owned(),
+                        source_word_count: 3,
+                        source_character_count: 17,
+                        status: SEGMENT_STATUS_PENDING_TRANSLATION.to_owned(),
+                        created_at: 1_743_517_201,
+                        updated_at: 1_743_517_201,
+                    },
+                    NewSegment {
+                        id: "doc_outline_002_seg_00002".to_owned(),
+                        document_id: document.id.clone(),
+                        sequence: 2,
+                        source_text: "Scope body.".to_owned(),
+                        source_word_count: 2,
+                        source_character_count: 11,
+                        status: SEGMENT_STATUS_PENDING_TRANSLATION.to_owned(),
+                        created_at: 1_743_517_201,
+                        updated_at: 1_743_517_201,
+                    },
+                ],
+                1_743_517_201,
+            )
+            .expect("segments should persist");
+
+        DocumentSectionRepository::new(&mut connection)
+            .replace_for_document(
+                &document.id,
+                &[NewDocumentSection {
+                    id: "doc_outline_002_sec_0001".to_owned(),
+                    document_id: document.id.clone(),
+                    sequence: 1,
+                    title: "Old heading".to_owned(),
+                    section_type: DOCUMENT_SECTION_TYPE_SECTION.to_owned(),
+                    level: 2,
+                    start_segment_sequence: 1,
+                    end_segment_sequence: 2,
+                    segment_count: 2,
+                    created_at: 1_743_517_201,
+                    updated_at: 1_743_517_201,
+                }],
+            )
+            .expect("stale section should persist");
+
+        drop(connection);
+
+        let overview = list_document_segments_with_runtime(
+            ListDocumentSegmentsInput {
+                project_id: project.id,
+                document_id: document.id,
+            },
+            &runtime,
+        )
+        .expect("segments should load");
+
+        assert_eq!(overview.sections.len(), 1);
+        assert_eq!(overview.sections[0].title, "Section 1. Scope.");
+    }
+
+    #[test]
+    fn list_document_segments_does_not_promote_plain_prose_to_structure() {
+        let temporary_directory = tempdir().expect("temp dir should be created");
+        let database_path = temporary_directory.path().join("translat.sqlite3");
+        let encryption_key_path = temporary_directory.path().join("translat.sqlite3.key");
+        let runtime = DatabaseRuntime::new(database_path.clone(), encryption_key_path.clone());
+        let encryption_key = load_or_create_encryption_key(&encryption_key_path)
+            .expect("encryption key should be created");
+
+        bootstrap_database(&database_path, &encryption_key)
+            .expect("database bootstrap should succeed");
+
+        let mut connection = open_database_with_key(&database_path, &encryption_key)
+            .expect("database connection should open");
+
+        let project = NewProject {
+            id: "prj_active_001".to_owned(),
+            name: "Outline project".to_owned(),
+            description: None,
+            created_at: 1_743_517_200,
+            updated_at: 1_743_517_200,
+            last_opened_at: 1_743_517_200,
+        };
+
+        ProjectRepository::new(&mut connection)
+            .create(&project)
+            .expect("project should persist");
+
+        let document = NewDocument {
+            id: "doc_outline_003".to_owned(),
+            project_id: project.id.clone(),
+            name: "prose.txt".to_owned(),
+            source_kind: DOCUMENT_SOURCE_LOCAL_FILE.to_owned(),
+            format: "txt".to_owned(),
+            mime_type: Some("text/plain".to_owned()),
+            stored_path: "ignored".to_owned(),
+            file_size_bytes: 10,
+            status: DOCUMENT_STATUS_SEGMENTED.to_owned(),
+            created_at: 1_743_517_200,
+            updated_at: 1_743_517_200,
+        };
+
+        DocumentRepository::new(&mut connection)
+            .create(&document)
+            .expect("document should persist");
+
+        SegmentRepository::new(&mut connection)
+            .replace_for_document(
+                &project.id,
+                &document.id,
+                &[
+                    NewSegment {
+                        id: "doc_outline_003_seg_00001".to_owned(),
+                        document_id: document.id.clone(),
+                        sequence: 1,
+                        source_text: "Part of the reason is timing.".to_owned(),
+                        source_word_count: 6,
+                        source_character_count: 29,
+                        status: SEGMENT_STATUS_PENDING_TRANSLATION.to_owned(),
+                        created_at: 1_743_517_201,
+                        updated_at: 1_743_517_201,
+                    },
+                    NewSegment {
+                        id: "doc_outline_003_seg_00002".to_owned(),
+                        document_id: document.id.clone(),
+                        sequence: 2,
+                        source_text: "Section 2 of the report stays unchanged.".to_owned(),
+                        source_word_count: 8,
+                        source_character_count: 40,
+                        status: SEGMENT_STATUS_PENDING_TRANSLATION.to_owned(),
+                        created_at: 1_743_517_201,
+                        updated_at: 1_743_517_201,
+                    },
+                ],
+                1_743_517_201,
+            )
+            .expect("segments should persist");
+
+        drop(connection);
+
+        let overview = list_document_segments_with_runtime(
+            ListDocumentSegmentsInput {
+                project_id: project.id,
+                document_id: document.id,
+            },
+            &runtime,
+        )
+        .expect("segments should load");
+
+        assert_eq!(overview.sections.len(), 1);
+        assert_eq!(overview.sections[0].section_type, DOCUMENT_SECTION_TYPE_DOCUMENT);
     }
 }
