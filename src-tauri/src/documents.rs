@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 
 pub const DOCUMENT_SOURCE_LOCAL_FILE: &str = "local_file";
 pub const DOCUMENT_STATUS_IMPORTED: &str = "imported";
+pub const DOCUMENT_STATUS_SEGMENTED: &str = "segmented";
 pub const MAX_IMPORTED_DOCUMENT_BYTES: usize = 20 * 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -15,6 +16,7 @@ pub struct DocumentSummary {
     pub mime_type: Option<String>,
     pub file_size_bytes: i64,
     pub status: String,
+    pub segment_count: i64,
     pub created_at: i64,
     pub updated_at: i64,
 }

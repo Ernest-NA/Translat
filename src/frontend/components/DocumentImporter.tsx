@@ -44,9 +44,8 @@ export function DocumentImporter({
       </div>
 
       <p className="surface-card__copy">
-        C2 copies selected files into Translat storage, records minimal
-        metadata, and marks them as ready for C3 input. No normalization or
-        segmentation happens here.
+        C2 still handles intake here: import keeps the source file under local
+        protected storage so C3 can normalize and segment it afterward.
       </p>
 
       <div className="document-importer__actions">
@@ -60,8 +59,8 @@ export function DocumentImporter({
         </button>
 
         <span className="project-form__hint">
-          C2 imports one source document per action. The file is copied into
-          local workspace storage before C3 processes it.
+          Import one source document per action. After it lands in the project,
+          C3 can process it into persisted segments.
         </span>
       </div>
 

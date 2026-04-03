@@ -5,9 +5,10 @@ This area contains the React + TypeScript user interface that runs inside the Ta
 Current scope:
 - persisted project creation, listing, and opening from C1,
 - project-scoped document import and persisted document listing for C2,
+- document processing triggers plus document status and segment-count feedback for C3,
 - reusable frontend wrapper for Tauri command invocation,
 - normalized desktop command errors and healthcheck state handling,
-- and a workspace layout that keeps normalization and segmentation outside C2.
+- and a workspace layout that stops before advanced segment navigation in C4.
 
 Planned responsibility areas:
 - project workspace UI

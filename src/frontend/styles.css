@@ -374,6 +374,12 @@ select {
   justify-content: space-between;
 }
 
+.document-list__actions {
+  display: grid;
+  gap: 10px;
+  justify-items: end;
+}
+
 .document-list__heading p {
   margin: 8px 0 0;
   color: rgba(239, 242, 245, 0.68);
@@ -388,6 +394,31 @@ select {
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+.document-action-button {
+  padding: 9px 12px;
+  border: 1px solid rgba(143, 216, 255, 0.22);
+  border-radius: 999px;
+  background: rgba(143, 216, 255, 0.08);
+  color: #d6f0ff;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    transform 140ms ease,
+    opacity 140ms ease,
+    background 140ms ease;
+}
+
+.document-action-button:hover:enabled {
+  transform: translateY(-1px);
+  background: rgba(143, 216, 255, 0.14);
+}
+
+.document-action-button:disabled {
+  opacity: 0.7;
+  cursor: wait;
 }
 
 .document-list__meta {

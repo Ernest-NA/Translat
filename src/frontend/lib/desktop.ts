@@ -9,6 +9,7 @@ import {
   type ImportDocumentInput,
   type ListProjectDocumentsInput,
   type OpenProjectInput,
+  type ProcessDocumentInput,
   type ProjectDocumentsOverview,
   type ProjectSummary,
   type ProjectsOverview,
@@ -112,6 +113,15 @@ export function listProjectDocuments(input: ListProjectDocumentsInput) {
 export function importProjectDocument(input: ImportDocumentInput) {
   return invokeDesktopCommand<DocumentSummary>(
     DESKTOP_COMMANDS.importProjectDocument,
+    {
+      input,
+    },
+  );
+}
+
+export function processProjectDocument(input: ProcessDocumentInput) {
+  return invokeDesktopCommand<DocumentSummary>(
+    DESKTOP_COMMANDS.processProjectDocument,
     {
       input,
     },

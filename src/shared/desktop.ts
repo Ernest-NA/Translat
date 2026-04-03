@@ -5,6 +5,7 @@ export const DESKTOP_COMMANDS = {
   listProjects: "list_projects",
   listProjectDocuments: "list_project_documents",
   openProject: "open_project",
+  processProjectDocument: "process_project_document",
 } as const;
 
 export type DesktopCommandName =
@@ -58,6 +59,7 @@ export interface DocumentSummary {
   mimeType: string | null;
   fileSizeBytes: number;
   status: string;
+  segmentCount: number;
   createdAt: number;
   updatedAt: number;
 }
@@ -85,4 +87,9 @@ export interface ImportDocumentInput {
   fileName: string;
   mimeType?: string;
   base64Content: string;
+}
+
+export interface ProcessDocumentInput {
+  projectId: string;
+  documentId: string;
 }

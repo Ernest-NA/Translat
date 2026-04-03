@@ -446,7 +446,7 @@ fn finalize_stored_document(
     })
 }
 
-fn reconcile_project_document_storage(
+pub(crate) fn reconcile_project_document_storage(
     database_runtime: &DatabaseRuntime,
     connection: &mut rusqlite::Connection,
     project_id: &str,

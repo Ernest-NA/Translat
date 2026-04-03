@@ -5,6 +5,7 @@ mod documents;
 mod error;
 mod persistence;
 mod projects;
+mod segments;
 
 use tauri::Manager;
 
@@ -31,7 +32,8 @@ fn main() {
             commands::healthcheck::healthcheck,
             commands::projects::create_project,
             commands::projects::list_projects,
-            commands::projects::open_project
+            commands::projects::open_project,
+            commands::segments::process_project_document
         ])
         .run(tauri::generate_context!())
         .expect("error while running the Translat desktop shell");
