@@ -246,10 +246,7 @@ fn build_document_sections(
     timestamp: i64,
 ) -> Result<Vec<NewDocumentSection>, DesktopCommandError> {
     let Some(last_segment_sequence) = segments.last().map(|segment| segment.sequence) else {
-        return Err(DesktopCommandError::validation(
-            "A segmented document needs persisted segments before a document structure can be built.",
-            None,
-        ));
+        return Ok(vec![]);
     };
 
     let structure_markers = detect_structure_markers(segments);
@@ -1925,5 +1922,66 @@ mod tests {
         assert_eq!(overview.sections.len(), 2);
         assert_eq!(overview.sections[0].title, "Chapter 1");
         assert_eq!(overview.sections[1].title, "Section: 2");
+    }
+
+    #[test]
+    fn list_document_segments_gracefully_handles_empty_segment_sets() {
+        let temporary_directory = tempdir().expect("temp dir should be created");
+        let database_path = temporary_directory.path().join("translat.sqlite3");
+        let encryption_key_path = temporary_directory.path().join("translat.sqlite3.key");
+        let runtime = DatabaseRuntime::new(database_path.clone(), encryption_key_path.clone());
+        let encryption_key = load_or_create_encryption_key(&encryption_key_path)
+            .expect("encryption key should be created");
+
+        bootstrap_database(&database_path, &encryption_key)
+            .expect("database bootstrap should succeed");
+
+        let mut connection = open_database_with_key(&database_path, &encryption_key)
+            .expect("database connection should open");
+
+        let project = NewProject {
+            id: "prj_active_002".to_owned(),
+            name: "Empty segments project".to_owned(),
+            description: None,
+            created_at: 1_743_517_200,
+            updated_at: 1_743_517_200,
+            last_opened_at: 1_743_517_200,
+        };
+
+        ProjectRepository::new(&mut connection)
+            .create(&project)
+            .expect("project should persist");
+
+        let document = NewDocument {
+            id: "doc_outline_005".to_owned(),
+            project_id: project.id.clone(),
+            name: "empty-segments.txt".to_owned(),
+            source_kind: DOCUMENT_SOURCE_LOCAL_FILE.to_owned(),
+            format: "txt".to_owned(),
+            mime_type: Some("text/plain".to_owned()),
+            stored_path: "ignored".to_owned(),
+            file_size_bytes: 10,
+            status: DOCUMENT_STATUS_SEGMENTED.to_owned(),
+            created_at: 1_743_517_200,
+            updated_at: 1_743_517_200,
+        };
+
+        DocumentRepository::new(&mut connection)
+            .create(&document)
+            .expect("document should persist");
+
+        drop(connection);
+
+        let overview = list_document_segments_with_runtime(
+            ListDocumentSegmentsInput {
+                project_id: project.id,
+                document_id: document.id,
+            },
+            &runtime,
+        )
+        .expect("empty segment sets should not fail");
+
+        assert!(overview.segments.is_empty());
+        assert!(overview.sections.is_empty());
     }
 }
