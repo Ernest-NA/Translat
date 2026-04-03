@@ -380,6 +380,7 @@ fn should_split_at_boundary(
     }
 
     let byte_index = characters[punctuation_index].0;
+    let current_meaningful_token = previous_meaningful_token_before(paragraph, byte_index);
     let current_token = match alphabetic_token_before(paragraph, byte_index) {
         Some(token) => token,
         None => return true,
@@ -427,9 +428,44 @@ fn should_split_at_boundary(
         return false;
     }
 
+    let previous_meaningful_token_lower = current_meaningful_token
+        .and_then(|token| {
+            let token_start = paragraph[..byte_index].rfind(token)?;
+            previous_meaningful_token_before(paragraph, token_start)
+        })
+        .map(|token| token.to_lowercase());
+
+    if current_meaningful_token.is_some_and(|token| {
+        token.chars().all(|character| character.is_ascii_digit())
+    })
+        && previous_meaningful_token_lower.as_ref().is_some_and(|token| {
+            matches!(
+                token.as_str(),
+                "chapter"
+                    | "section"
+                    | "sec"
+                    | "part"
+                    | "annex"
+                    | "appendix"
+                    | "capitulo"
+                    | "capítulo"
+                    | "apartado"
+                    | "seccion"
+                    | "sección"
+            )
+        })
+        && next_token
+            .as_ref()
+            .is_some_and(|(token, _, _): &(&str, usize, bool)| {
+                token.chars().next().is_some_and(char::is_uppercase)
+            })
+    {
+        return false;
+    }
+
     if matches!(
         current_token_lower.as_str(),
-        "etc" | "no" | "art" | "cap" | "vol" | "fig" | "aprox"
+        "etc" | "no" | "art" | "cap" | "vol" | "fig" | "aprox" | "pp" | "dept"
     ) && next_meaningful_character_after(characters, lookahead_index).is_some_and(|character| {
         character.is_lowercase() || character.is_ascii_digit()
     })
@@ -470,6 +506,31 @@ fn previous_alphabetic_token_before(paragraph: &str, byte_index: usize) -> Optio
     let current_start = paragraph[..byte_index].rfind(current_token)?;
 
     alphabetic_token_before(paragraph, current_start)
+}
+
+fn previous_meaningful_token_before(paragraph: &str, byte_index: usize) -> Option<&str> {
+    let prefix = &paragraph[..byte_index];
+    let mut token_end = None;
+    let mut token_start = 0_usize;
+
+    for (index, character) in prefix.char_indices().rev() {
+        if token_end.is_none() {
+            if character.is_alphanumeric() {
+                token_end = Some(index + character.len_utf8());
+                token_start = index;
+            }
+            continue;
+        }
+
+        if character.is_alphanumeric() {
+            token_start = index;
+            continue;
+        }
+
+        break;
+    }
+
+    token_end.map(|end| &prefix[token_start..end])
 }
 
 fn next_alphabetic_token_after<'a>(
@@ -624,6 +685,22 @@ mod tests {
                 "Fig. 2 muestra el flujo.".to_owned(),
                 "No. 5 sigue pendiente.".to_owned(),
                 "Art. 12 aplica aquÃ­.".to_owned(),
+            ]
+        );
+    }
+
+    #[test]
+    fn split_paragraph_into_segments_keeps_numbered_headings_together() {
+        let segments = split_paragraph_into_segments(
+            "Chapter 1. Introduction. Dept. 4 remains active. pp. 12-13 cover the scope.",
+        );
+
+        assert_eq!(
+            segments,
+            vec![
+                "Chapter 1. Introduction.".to_owned(),
+                "Dept. 4 remains active.".to_owned(),
+                "pp. 12-13 cover the scope.".to_owned(),
             ]
         );
     }
