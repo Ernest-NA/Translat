@@ -41,7 +41,7 @@ Describe how Translat initializes its local encrypted SQLite database during the
 - The healthcheck command reports the database path, the applied migrations, and whether the initial schema is ready.
 - Project commands persist project metadata and the active project selection through the same encrypted database.
 - Document commands persist imported document metadata plus their project association through the same encrypted database, and the copied local file payload is protected at rest with Windows DPAPI before it is written to disk.
-- Segment commands read the protected stored payload, normalize it minimally, and persist ordered segments against the correct document.
+- Segment commands read the protected stored payload, normalize it minimally, persist ordered segments against the correct document, and expose ordered segment queries for C4 navigation.
 - Rust tests validate first initialization, second initialization without reapplying migrations, the presence of the `projects`, `documents`, and `segments` tables, project persistence across reopen, document persistence across reopen, and persisted segmentation recovery.
 
 ## Current limits

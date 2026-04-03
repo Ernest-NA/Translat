@@ -2,9 +2,7 @@ use rusqlite::{params, Connection};
 
 use crate::documents::DOCUMENT_STATUS_SEGMENTED;
 use crate::persistence::error::PersistenceError;
-use crate::segments::NewSegment;
-#[cfg(test)]
-use crate::segments::SegmentSummary;
+use crate::segments::{NewSegment, SegmentSummary};
 
 pub struct SegmentRepository<'connection> {
     connection: &'connection mut Connection,
@@ -133,7 +131,6 @@ impl<'connection> SegmentRepository<'connection> {
         Ok(())
     }
 
-    #[cfg(test)]
     pub fn list_by_document(
         &mut self,
         document_id: &str,
@@ -173,6 +170,7 @@ impl<'connection> SegmentRepository<'connection> {
                     document_id: row.get(1)?,
                     sequence: row.get(2)?,
                     source_text: row.get(3)?,
+                    target_text: None,
                     source_word_count: row.get(4)?,
                     source_character_count: row.get(5)?,
                     status: row.get(6)?,

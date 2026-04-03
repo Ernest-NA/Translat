@@ -11,7 +11,18 @@ use crate::persistence::documents::{DocumentProcessingRecord, DocumentRepository
 use crate::persistence::projects::ProjectRepository;
 use crate::persistence::secret_store;
 use crate::persistence::segments::SegmentRepository;
-use crate::segments::{NewSegment, ProcessDocumentInput, SEGMENT_STATUS_PENDING_TRANSLATION};
+use crate::segments::{
+    DocumentSegmentsOverview, ListDocumentSegmentsInput, NewSegment, ProcessDocumentInput,
+    SEGMENT_STATUS_PENDING_TRANSLATION,
+};
+
+#[tauri::command]
+pub fn list_document_segments(
+    input: ListDocumentSegmentsInput,
+    database_runtime: State<'_, DatabaseRuntime>,
+) -> Result<DocumentSegmentsOverview, DesktopCommandError> {
+    list_document_segments_with_runtime(input, database_runtime.inner())
+}
 
 #[tauri::command]
 pub fn process_project_document(
@@ -93,6 +104,65 @@ fn process_project_document_with_runtime(
         })?,
         created_at: processing_record.created_at,
         updated_at: processed_at,
+    })
+}
+
+fn list_document_segments_with_runtime(
+    input: ListDocumentSegmentsInput,
+    database_runtime: &DatabaseRuntime,
+) -> Result<DocumentSegmentsOverview, DesktopCommandError> {
+    let project_id = validate_identifier(&input.project_id, "project id")?;
+    let document_id = validate_identifier(&input.document_id, "document id")?;
+    let mut connection = database_runtime.open_connection().map_err(|error| {
+        DesktopCommandError::internal(
+            "The desktop shell could not open the encrypted database for segment listing.",
+            Some(error.to_string()),
+        )
+    })?;
+
+    ensure_project_exists(&mut connection, &project_id)?;
+    ensure_project_is_active(&mut connection, &project_id)?;
+    reconcile_project_document_storage(database_runtime, &mut connection, &project_id)?;
+
+    let processing_record = {
+        let mut document_repository = DocumentRepository::new(&mut connection);
+        document_repository
+            .load_processing_record(&project_id, &document_id)
+            .map_err(|error| {
+                DesktopCommandError::internal(
+                    "The desktop shell could not inspect the selected document for segment navigation.",
+                    Some(error.to_string()),
+                )
+            })?
+            .ok_or_else(|| {
+                DesktopCommandError::validation(
+                    "The selected document does not exist in the active project.",
+                    None,
+                )
+            })?
+    };
+
+    if processing_record.status != DOCUMENT_STATUS_SEGMENTED {
+        return Err(DesktopCommandError::validation(
+            "The selected document must be segmented before its persisted segments can be opened.",
+            None,
+        ));
+    }
+
+    let mut segment_repository = SegmentRepository::new(&mut connection);
+    let segments = segment_repository
+        .list_by_document(&document_id)
+        .map_err(|error| {
+            DesktopCommandError::internal(
+                "The desktop shell could not load the persisted segments for the selected document.",
+                Some(error.to_string()),
+            )
+        })?;
+
+    Ok(DocumentSegmentsOverview {
+        project_id,
+        document_id,
+        segments,
     })
 }
 
@@ -627,7 +697,8 @@ mod tests {
     use tempfile::tempdir;
 
     use super::{
-        build_segments, normalize_document_text, process_project_document_with_runtime,
+        build_segments, list_document_segments_with_runtime, normalize_document_text,
+        process_project_document_with_runtime,
         split_paragraph_into_segments,
     };
     use crate::documents::{
@@ -641,7 +712,10 @@ mod tests {
     use crate::persistence::secret_store::{load_or_create_encryption_key, protect_local_payload};
     use crate::persistence::segments::SegmentRepository;
     use crate::projects::NewProject;
-    use crate::segments::{NewSegment, ProcessDocumentInput, SEGMENT_STATUS_PENDING_TRANSLATION};
+    use crate::segments::{
+        ListDocumentSegmentsInput, NewSegment, ProcessDocumentInput,
+        SEGMENT_STATUS_PENDING_TRANSLATION,
+    };
 
     #[test]
     fn normalize_document_text_canonicalizes_whitespace_and_paragraphs() {
@@ -971,5 +1045,101 @@ mod tests {
         assert_eq!(segments.len(), 2);
         assert_eq!(segments[0].source_text, "Alpha beta.");
         assert_eq!(segments[1].source_text, "Gamma delta.");
+    }
+
+    #[test]
+    fn list_document_segments_returns_ordered_segments_for_segmented_document() {
+        let temporary_directory = tempdir().expect("temp dir should be created");
+        let database_path = temporary_directory.path().join("translat.sqlite3");
+        let encryption_key_path = temporary_directory.path().join("translat.sqlite3.key");
+        let runtime = DatabaseRuntime::new(database_path.clone(), encryption_key_path.clone());
+        let encryption_key = load_or_create_encryption_key(&encryption_key_path)
+            .expect("encryption key should be created");
+
+        bootstrap_database(&database_path, &encryption_key)
+            .expect("database bootstrap should succeed");
+
+        let mut connection = open_database_with_key(&database_path, &encryption_key)
+            .expect("database connection should open");
+
+        let project = NewProject {
+            id: "prj_active_001".to_owned(),
+            name: "Segment project".to_owned(),
+            description: None,
+            created_at: 1_743_517_200,
+            updated_at: 1_743_517_200,
+            last_opened_at: 1_743_517_200,
+        };
+
+        ProjectRepository::new(&mut connection)
+            .create(&project)
+            .expect("project should persist");
+
+        let document = NewDocument {
+            id: "doc_1743517200_test".to_owned(),
+            project_id: project.id.clone(),
+            name: "Segmented.txt".to_owned(),
+            source_kind: DOCUMENT_SOURCE_LOCAL_FILE.to_owned(),
+            format: "txt".to_owned(),
+            mime_type: Some("text/plain".to_owned()),
+            stored_path: "ignored".to_owned(),
+            file_size_bytes: 10,
+            status: DOCUMENT_STATUS_SEGMENTED.to_owned(),
+            created_at: 1_743_517_200,
+            updated_at: 1_743_517_200,
+        };
+
+        DocumentRepository::new(&mut connection)
+            .create(&document)
+            .expect("document should persist");
+
+        SegmentRepository::new(&mut connection)
+            .replace_for_document(
+                &project.id,
+                &document.id,
+                &[
+                    NewSegment {
+                        id: "doc_1743517200_test_seg_00002".to_owned(),
+                        document_id: document.id.clone(),
+                        sequence: 2,
+                        source_text: "Second".to_owned(),
+                        source_word_count: 1,
+                        source_character_count: 6,
+                        status: SEGMENT_STATUS_PENDING_TRANSLATION.to_owned(),
+                        created_at: 1_743_517_201,
+                        updated_at: 1_743_517_201,
+                    },
+                    NewSegment {
+                        id: "doc_1743517200_test_seg_00001".to_owned(),
+                        document_id: document.id.clone(),
+                        sequence: 1,
+                        source_text: "First".to_owned(),
+                        source_word_count: 1,
+                        source_character_count: 5,
+                        status: SEGMENT_STATUS_PENDING_TRANSLATION.to_owned(),
+                        created_at: 1_743_517_201,
+                        updated_at: 1_743_517_201,
+                    },
+                ],
+                1_743_517_201,
+            )
+            .expect("segments should persist");
+
+        drop(connection);
+
+        let overview = list_document_segments_with_runtime(
+            ListDocumentSegmentsInput {
+                project_id: project.id,
+                document_id: document.id,
+            },
+            &runtime,
+        )
+        .expect("segments should load");
+
+        assert_eq!(overview.segments.len(), 2);
+        assert_eq!(overview.segments[0].sequence, 1);
+        assert_eq!(overview.segments[0].source_text, "First");
+        assert_eq!(overview.segments[0].target_text, None);
+        assert_eq!(overview.segments[1].sequence, 2);
     }
 }
