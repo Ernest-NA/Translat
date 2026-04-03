@@ -430,11 +430,9 @@ fn should_split_at_boundary(
     if matches!(
         current_token_lower.as_str(),
         "etc" | "no" | "art" | "cap" | "vol" | "fig" | "aprox"
-    ) && next_token
-        .as_ref()
-        .is_some_and(|(token, _, _): &(&str, usize, bool)| {
-            token.chars().next().is_some_and(char::is_lowercase)
-        })
+    ) && next_meaningful_character_after(characters, lookahead_index).is_some_and(|character| {
+        character.is_lowercase() || character.is_ascii_digit()
+    })
     {
         return false;
     }
@@ -517,6 +515,19 @@ fn next_alphabetic_token_after<'a>(
     Some((&paragraph[start..token_end], token_end, followed_by_period))
 }
 
+fn next_meaningful_character_after(
+    characters: &[(usize, char)],
+    lookahead_index: usize,
+) -> Option<char> {
+    characters
+        .iter()
+        .skip(lookahead_index)
+        .map(|(_, character)| *character)
+        .find(|character| {
+            !character.is_whitespace() && !matches!(character, '"' | '\'' | '(' | '[' | '{')
+        })
+}
+
 fn build_segment_id(document_id: &str, sequence: i64) -> String {
     format!("{document_id}_seg_{sequence:05}")
 }
@@ -597,6 +608,22 @@ mod tests {
             vec![
                 "Dr. Smith reviewed the U.S. draft.".to_owned(),
                 "Luego añadió p. ej. una nota breve.".to_owned(),
+            ]
+        );
+    }
+
+    #[test]
+    fn split_paragraph_into_segments_keeps_numbered_references_together() {
+        let segments = split_paragraph_into_segments(
+            "Fig. 2 muestra el flujo. No. 5 sigue pendiente. Art. 12 aplica aquÃ­.",
+        );
+
+        assert_eq!(
+            segments,
+            vec![
+                "Fig. 2 muestra el flujo.".to_owned(),
+                "No. 5 sigue pendiente.".to_owned(),
+                "Art. 12 aplica aquÃ­.".to_owned(),
             ]
         );
     }
