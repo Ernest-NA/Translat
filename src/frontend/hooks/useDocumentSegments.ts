@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { DocumentSummary, SegmentSummary } from "../../shared/desktop";
+import type {
+  DocumentSectionSummary,
+  DocumentSummary,
+  SegmentSummary,
+} from "../../shared/desktop";
 import { DesktopCommandError, listDocumentSegments } from "../lib/desktop";
 
 export function useDocumentSegments(
@@ -10,6 +14,7 @@ export function useDocumentSegments(
   const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(
     null,
   );
+  const [sections, setSections] = useState<DocumentSectionSummary[]>([]);
   const [segments, setSegments] = useState<SegmentSummary[]>([]);
   const [error, setError] = useState<DesktopCommandError | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -22,12 +27,26 @@ export function useDocumentSegments(
     () => segments.find((segment) => segment.id === selectedSegmentId) ?? null,
     [segments, selectedSegmentId],
   );
+  const selectedSection = useMemo(() => {
+    if (selectedSegment) {
+      return (
+        sections.find(
+          (section) =>
+            selectedSegment.sequence >= section.startSegmentSequence &&
+            selectedSegment.sequence <= section.endSegmentSequence,
+        ) ?? null
+      );
+    }
+
+    return sections[0] ?? null;
+  }, [sections, selectedSegment]);
 
   useEffect(() => {
     void activeProjectId;
     requestIdRef.current += 1;
     setActiveDocumentId(null);
     setSelectedSegmentId(null);
+    setSections([]);
     setSegments([]);
     setError(null);
     setIsLoading(false);
@@ -41,6 +60,7 @@ export function useDocumentSegments(
     if (!documents.some((document) => document.id === activeDocumentId)) {
       setActiveDocumentId(null);
       setSelectedSegmentId(null);
+      setSections([]);
       setSegments([]);
       setError(null);
     }
@@ -57,6 +77,7 @@ export function useDocumentSegments(
 
       setActiveDocumentId(documentId);
       setSelectedSegmentId(null);
+      setSections([]);
       setSegments([]);
       setError(null);
       setIsLoading(true);
@@ -71,6 +92,7 @@ export function useDocumentSegments(
           return;
         }
 
+        setSections(overview.sections);
         setSegments(overview.segments);
         setSelectedSegmentId(overview.segments[0]?.id ?? null);
       } catch (caughtError) {
@@ -100,12 +122,34 @@ export function useDocumentSegments(
     setSelectedSegmentId(segmentId);
   }, []);
 
+  const selectSection = useCallback(
+    (sectionId: string) => {
+      const section = sections.find((candidate) => candidate.id === sectionId);
+
+      if (!section) {
+        return;
+      }
+
+      const firstSegment = segments.find(
+        (segment) =>
+          segment.sequence >= section.startSegmentSequence &&
+          segment.sequence <= section.endSegmentSequence,
+      );
+
+      setSelectedSegmentId(firstSegment?.id ?? null);
+    },
+    [sections, segments],
+  );
+
   return {
     activeDocument,
     error,
     isLoading,
     openDocument,
+    sections,
     segments,
+    selectedSection,
+    selectSection,
     selectedSegment,
     selectedSegmentId,
     selectSegment,

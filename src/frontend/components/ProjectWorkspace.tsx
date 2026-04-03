@@ -1,4 +1,5 @@
 import type {
+  DocumentSectionSummary,
   DocumentSummary,
   ProjectSummary,
   SegmentSummary,
@@ -19,12 +20,15 @@ interface ProjectWorkspaceProps {
   onOpenDocument: (documentId: string) => Promise<void>;
   onImportDocuments: (files: FileList) => Promise<number>;
   onProcessDocument: (documentId: string) => Promise<void>;
+  onSelectSection: (sectionId: string) => void;
   onSelectSegment: (segmentId: string) => void;
   processError: DesktopCommandError | null;
   processingDocumentId: string | null;
   project: ProjectSummary | null;
   segmentError: DesktopCommandError | null;
   segmentLoadingDocumentId: string | null;
+  sections: DocumentSectionSummary[];
+  selectedSection: DocumentSectionSummary | null;
   segments: SegmentSummary[];
   selectedSegment: SegmentSummary | null;
   selectedSegmentId: string | null;
@@ -45,12 +49,15 @@ export function ProjectWorkspace({
   onOpenDocument,
   onImportDocuments,
   onProcessDocument,
+  onSelectSection,
   onSelectSegment,
   processError,
   processingDocumentId,
   project,
   segmentError,
   segmentLoadingDocumentId,
+  sections,
+  selectedSection,
   segments,
   selectedSegment,
   selectedSegmentId,
@@ -80,7 +87,7 @@ export function ProjectWorkspace({
       <h2>{project.name}</h2>
       <p className="surface-card__copy">
         {project.description ??
-          "This project has no description yet. It is ready to receive imported documents and segment them for C4."}
+          "This project has no description yet. It is ready to receive imported documents, segment them, and orient navigation with a minimal document structure."}
       </p>
 
       <dl className="detail-list">
@@ -127,24 +134,27 @@ export function ProjectWorkspace({
         activeDocument={activeDocument}
         error={segmentError}
         isLoading={isLoadingSegments}
+        onSelectSection={onSelectSection}
         onSelectSegment={onSelectSegment}
         project={project}
+        sections={sections}
+        selectedSection={selectedSection}
         segments={segments}
         selectedSegment={selectedSegment}
         selectedSegmentId={selectedSegmentId}
       />
 
       <section className="workspace-readiness">
-        <p className="surface-card__eyebrow">Ready for C4</p>
-        <h3>Segment navigation now runs on persisted C3 output</h3>
+        <p className="surface-card__eyebrow">Ready for C5</p>
+        <h3>Document structure now enriches segment navigation</h3>
         <ul className="readiness-list">
           <li>Imported documents are linked explicitly to this project id.</li>
           <li>
             Segment processing persists ordered source segments per document.
           </li>
           <li>
-            C4 opens segmented documents and lets the user inspect one segment
-            at a time without editing it.
+            C5 persists a minimal section outline and uses it to orient segment
+            navigation without adding editing or reconstruction flows.
           </li>
         </ul>
       </section>
