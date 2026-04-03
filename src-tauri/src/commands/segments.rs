@@ -310,7 +310,7 @@ fn split_paragraph_into_segments(paragraph: &str) -> Vec<String> {
             while let Some((lookahead_index, lookahead_character)) = characters.get(lookahead) {
                 if matches!(
                     lookahead_character,
-                    '.' | '!' | '?' | '"' | '\'' | ')' | ']' | '}' | '”' | '’'
+                    '.' | '!' | '?' | '"' | '\'' | ')' | ']' | '}' | '\u{201D}' | '\u{2019}'
                 ) {
                     end = *lookahead_index + lookahead_character.len_utf8();
                     lookahead += 1;
@@ -381,6 +381,14 @@ fn should_split_at_boundary(
 
     let byte_index = characters[punctuation_index].0;
     let current_meaningful_token = previous_meaningful_token_before(paragraph, byte_index);
+    let next_meaningful_character = next_meaningful_character_after(characters, lookahead_index);
+
+    if current_meaningful_token.is_some_and(|token| {
+        token.chars().any(|character| character.is_ascii_digit())
+    }) && next_meaningful_character.is_some_and(|character| character.is_ascii_digit())
+    {
+        return false;
+    }
     let current_token = match alphabetic_token_before(paragraph, byte_index) {
         Some(token) => token,
         None => return true,
@@ -448,10 +456,10 @@ fn should_split_at_boundary(
                     | "annex"
                     | "appendix"
                     | "capitulo"
-                    | "capítulo"
+                    | "capÃ­tulo"
                     | "apartado"
                     | "seccion"
-                    | "sección"
+                    | "secciÃ³n"
             )
         })
         && next_token
@@ -466,9 +474,8 @@ fn should_split_at_boundary(
     if matches!(
         current_token_lower.as_str(),
         "etc" | "no" | "art" | "cap" | "vol" | "fig" | "aprox" | "pp" | "dept"
-    ) && next_meaningful_character_after(characters, lookahead_index).is_some_and(|character| {
-        character.is_lowercase() || character.is_ascii_digit()
-    })
+    ) && next_meaningful_character
+        .is_some_and(|character| character.is_lowercase() || character.is_ascii_digit())
     {
         return false;
     }
@@ -661,14 +668,14 @@ mod tests {
     #[test]
     fn split_paragraph_into_segments_keeps_common_abbreviations_together() {
         let segments = split_paragraph_into_segments(
-            "Dr. Smith reviewed the U.S. draft. Luego añadió p. ej. una nota breve.",
+            "Dr. Smith reviewed the U.S. draft. Then added p. ej. a brief note.",
         );
 
         assert_eq!(
             segments,
             vec![
                 "Dr. Smith reviewed the U.S. draft.".to_owned(),
-                "Luego añadió p. ej. una nota breve.".to_owned(),
+                "Then added p. ej. a brief note.".to_owned(),
             ]
         );
     }
@@ -676,15 +683,15 @@ mod tests {
     #[test]
     fn split_paragraph_into_segments_keeps_numbered_references_together() {
         let segments = split_paragraph_into_segments(
-            "Fig. 2 muestra el flujo. No. 5 sigue pendiente. Art. 12 aplica aquÃ­.",
+            "Fig. 2 shows the flow. No. 5 remains pending. Art. 12 applies here.",
         );
 
         assert_eq!(
             segments,
             vec![
-                "Fig. 2 muestra el flujo.".to_owned(),
-                "No. 5 sigue pendiente.".to_owned(),
-                "Art. 12 aplica aquÃ­.".to_owned(),
+                "Fig. 2 shows the flow.".to_owned(),
+                "No. 5 remains pending.".to_owned(),
+                "Art. 12 applies here.".to_owned(),
             ]
         );
     }
@@ -701,6 +708,22 @@ mod tests {
                 "Chapter 1. Introduction.".to_owned(),
                 "Dept. 4 remains active.".to_owned(),
                 "pp. 12-13 cover the scope.".to_owned(),
+            ]
+        );
+    }
+
+    #[test]
+    fn split_paragraph_into_segments_keeps_numeric_tokens_together() {
+        let segments = split_paragraph_into_segments(
+            "Version v1.2.3 stays stable. Pi is 3.14 in this note. Date 2026.04.03 remains grouped.",
+        );
+
+        assert_eq!(
+            segments,
+            vec![
+                "Version v1.2.3 stays stable.".to_owned(),
+                "Pi is 3.14 in this note.".to_owned(),
+                "Date 2026.04.03 remains grouped.".to_owned(),
             ]
         );
     }

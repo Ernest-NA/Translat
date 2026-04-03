@@ -394,6 +394,7 @@ impl<'connection> DocumentRepository<'connection> {
         })
     }
 
+    #[cfg(test)]
     pub fn load_summary(
         &mut self,
         project_id: &str,
