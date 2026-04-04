@@ -1,20 +1,35 @@
 import { invoke } from "@tauri-apps/api/core";
 import {
+  type CreateGlossaryEntryInput,
+  type CreateGlossaryInput,
   type CreateProjectInput,
+  type CreateStyleProfileInput,
   DESKTOP_COMMANDS,
   type DesktopCommandErrorPayload,
   type DesktopCommandName,
   type DocumentSegmentsOverview,
   type DocumentSummary,
+  type GlossariesOverview,
+  type GlossaryEntriesOverview,
+  type GlossaryEntrySummary,
+  type GlossarySummary,
   type HealthcheckResponse,
   type ImportDocumentInput,
   type ListDocumentSegmentsInput,
+  type ListGlossaryEntriesInput,
   type ListProjectDocumentsInput,
+  type OpenGlossaryInput,
   type OpenProjectInput,
+  type OpenStyleProfileInput,
   type ProcessDocumentInput,
   type ProjectDocumentsOverview,
   type ProjectSummary,
   type ProjectsOverview,
+  type StyleProfileSummary,
+  type StyleProfilesOverview,
+  type UpdateGlossaryEntryInput,
+  type UpdateGlossaryInput,
+  type UpdateStyleProfileInput,
 } from "../../shared/desktop";
 
 export class DesktopCommandError extends Error {
@@ -97,10 +112,58 @@ export function listProjects() {
   return invokeDesktopCommand<ProjectsOverview>(DESKTOP_COMMANDS.listProjects);
 }
 
+export function listGlossaries() {
+  return invokeDesktopCommand<GlossariesOverview>(
+    DESKTOP_COMMANDS.listGlossaries,
+  );
+}
+
+export function listStyleProfiles() {
+  return invokeDesktopCommand<StyleProfilesOverview>(
+    DESKTOP_COMMANDS.listStyleProfiles,
+  );
+}
+
+export function listGlossaryEntries(input: ListGlossaryEntriesInput) {
+  return invokeDesktopCommand<GlossaryEntriesOverview>(
+    DESKTOP_COMMANDS.listGlossaryEntries,
+    {
+      input,
+    },
+  );
+}
+
 export function createProject(input: CreateProjectInput) {
   return invokeDesktopCommand<ProjectSummary>(DESKTOP_COMMANDS.createProject, {
     input,
   });
+}
+
+export function createGlossary(input: CreateGlossaryInput) {
+  return invokeDesktopCommand<GlossarySummary>(
+    DESKTOP_COMMANDS.createGlossary,
+    {
+      input,
+    },
+  );
+}
+
+export function createStyleProfile(input: CreateStyleProfileInput) {
+  return invokeDesktopCommand<StyleProfileSummary>(
+    DESKTOP_COMMANDS.createStyleProfile,
+    {
+      input,
+    },
+  );
+}
+
+export function createGlossaryEntry(input: CreateGlossaryEntryInput) {
+  return invokeDesktopCommand<GlossaryEntrySummary>(
+    DESKTOP_COMMANDS.createGlossaryEntry,
+    {
+      input,
+    },
+  );
 }
 
 export function listProjectDocuments(input: ListProjectDocumentsInput) {
@@ -143,4 +206,46 @@ export function openProject(input: OpenProjectInput) {
   return invokeDesktopCommand<ProjectSummary>(DESKTOP_COMMANDS.openProject, {
     input,
   });
+}
+
+export function openGlossary(input: OpenGlossaryInput) {
+  return invokeDesktopCommand<GlossarySummary>(DESKTOP_COMMANDS.openGlossary, {
+    input,
+  });
+}
+
+export function openStyleProfile(input: OpenStyleProfileInput) {
+  return invokeDesktopCommand<StyleProfileSummary>(
+    DESKTOP_COMMANDS.openStyleProfile,
+    {
+      input,
+    },
+  );
+}
+
+export function updateGlossary(input: UpdateGlossaryInput) {
+  return invokeDesktopCommand<GlossarySummary>(
+    DESKTOP_COMMANDS.updateGlossary,
+    {
+      input,
+    },
+  );
+}
+
+export function updateStyleProfile(input: UpdateStyleProfileInput) {
+  return invokeDesktopCommand<StyleProfileSummary>(
+    DESKTOP_COMMANDS.updateStyleProfile,
+    {
+      input,
+    },
+  );
+}
+
+export function updateGlossaryEntry(input: UpdateGlossaryEntryInput) {
+  return invokeDesktopCommand<GlossaryEntrySummary>(
+    DESKTOP_COMMANDS.updateGlossaryEntry,
+    {
+      input,
+    },
+  );
 }
