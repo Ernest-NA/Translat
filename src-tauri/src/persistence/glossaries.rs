@@ -311,6 +311,24 @@ impl<'connection> GlossaryRepository<'connection> {
                 )
             })
     }
+
+    pub fn exists(&mut self, glossary_id: &str) -> Result<bool, PersistenceError> {
+        let glossary_count = self
+            .connection
+            .query_row(
+                "SELECT COUNT(*) FROM glossaries WHERE id = ?1",
+                [glossary_id],
+                |row| row.get::<_, i64>(0),
+            )
+            .map_err(|error| {
+                PersistenceError::with_details(
+                    format!("The glossary repository could not inspect glossary {glossary_id}."),
+                    error,
+                )
+            })?;
+
+        Ok(glossary_count == 1)
+    }
 }
 
 fn upsert_active_glossary(

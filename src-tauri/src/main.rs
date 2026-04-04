@@ -4,6 +4,7 @@ mod commands;
 mod documents;
 mod error;
 mod glossaries;
+mod glossary_entries;
 mod persistence;
 mod projects;
 mod sections;
@@ -30,8 +31,11 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::glossaries::create_glossary,
+            commands::glossary_entries::create_glossary_entry,
             commands::glossaries::list_glossaries,
+            commands::glossary_entries::list_glossary_entries,
             commands::glossaries::open_glossary,
+            commands::glossary_entries::update_glossary_entry,
             commands::glossaries::update_glossary,
             commands::documents::import_project_document,
             commands::documents::list_project_documents,
