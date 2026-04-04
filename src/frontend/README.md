@@ -11,6 +11,7 @@ Current scope:
 - persisted glossary creation, listing, opening, editing, and archiving for D1,
 - per-glossary terminology entry creation, listing, editing, and basic variants/forbidden terms for D2,
 - reusable style-profile creation, listing, opening, editing, and archiving for D3,
+- reusable rule-set creation, listing, opening, editing, and per-rule management for D4,
 - reusable frontend wrapper for Tauri command invocation,
 - normalized desktop command errors and healthcheck state handling,
 - and a workspace layout that still stops before segment editing, translation actions, and advanced review flows.

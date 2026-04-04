@@ -3,6 +3,8 @@ import {
   type CreateGlossaryEntryInput,
   type CreateGlossaryInput,
   type CreateProjectInput,
+  type CreateRuleInput,
+  type CreateRuleSetInput,
   type CreateStyleProfileInput,
   DESKTOP_COMMANDS,
   type DesktopCommandErrorPayload,
@@ -18,17 +20,25 @@ import {
   type ListDocumentSegmentsInput,
   type ListGlossaryEntriesInput,
   type ListProjectDocumentsInput,
+  type ListRuleSetRulesInput,
   type OpenGlossaryInput,
   type OpenProjectInput,
+  type OpenRuleSetInput,
   type OpenStyleProfileInput,
   type ProcessDocumentInput,
   type ProjectDocumentsOverview,
   type ProjectSummary,
   type ProjectsOverview,
+  type RuleSetRulesOverview,
+  type RuleSetSummary,
+  type RuleSetsOverview,
+  type RuleSummary,
   type StyleProfileSummary,
   type StyleProfilesOverview,
   type UpdateGlossaryEntryInput,
   type UpdateGlossaryInput,
+  type UpdateRuleInput,
+  type UpdateRuleSetInput,
   type UpdateStyleProfileInput,
 } from "../../shared/desktop";
 
@@ -124,9 +134,22 @@ export function listStyleProfiles() {
   );
 }
 
+export function listRuleSets() {
+  return invokeDesktopCommand<RuleSetsOverview>(DESKTOP_COMMANDS.listRuleSets);
+}
+
 export function listGlossaryEntries(input: ListGlossaryEntriesInput) {
   return invokeDesktopCommand<GlossaryEntriesOverview>(
     DESKTOP_COMMANDS.listGlossaryEntries,
+    {
+      input,
+    },
+  );
+}
+
+export function listRuleSetRules(input: ListRuleSetRulesInput) {
+  return invokeDesktopCommand<RuleSetRulesOverview>(
+    DESKTOP_COMMANDS.listRuleSetRules,
     {
       input,
     },
@@ -155,6 +178,18 @@ export function createStyleProfile(input: CreateStyleProfileInput) {
       input,
     },
   );
+}
+
+export function createRuleSet(input: CreateRuleSetInput) {
+  return invokeDesktopCommand<RuleSetSummary>(DESKTOP_COMMANDS.createRuleSet, {
+    input,
+  });
+}
+
+export function createRule(input: CreateRuleInput) {
+  return invokeDesktopCommand<RuleSummary>(DESKTOP_COMMANDS.createRule, {
+    input,
+  });
 }
 
 export function createGlossaryEntry(input: CreateGlossaryEntryInput) {
@@ -223,6 +258,12 @@ export function openStyleProfile(input: OpenStyleProfileInput) {
   );
 }
 
+export function openRuleSet(input: OpenRuleSetInput) {
+  return invokeDesktopCommand<RuleSetSummary>(DESKTOP_COMMANDS.openRuleSet, {
+    input,
+  });
+}
+
 export function updateGlossary(input: UpdateGlossaryInput) {
   return invokeDesktopCommand<GlossarySummary>(
     DESKTOP_COMMANDS.updateGlossary,
@@ -239,6 +280,18 @@ export function updateStyleProfile(input: UpdateStyleProfileInput) {
       input,
     },
   );
+}
+
+export function updateRuleSet(input: UpdateRuleSetInput) {
+  return invokeDesktopCommand<RuleSetSummary>(DESKTOP_COMMANDS.updateRuleSet, {
+    input,
+  });
+}
+
+export function updateRule(input: UpdateRuleInput) {
+  return invokeDesktopCommand<RuleSummary>(DESKTOP_COMMANDS.updateRule, {
+    input,
+  });
 }
 
 export function updateGlossaryEntry(input: UpdateGlossaryEntryInput) {

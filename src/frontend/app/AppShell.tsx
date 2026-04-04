@@ -5,12 +5,14 @@ import { HealthcheckPanel } from "../components/HealthcheckPanel";
 import { ProjectComposer } from "../components/ProjectComposer";
 import { ProjectList } from "../components/ProjectList";
 import { ProjectWorkspace } from "../components/ProjectWorkspace";
+import { RuleSetsWorkspace } from "../components/RuleSetsWorkspace";
 import { StyleProfilesWorkspace } from "../components/StyleProfilesWorkspace";
 import { useDocumentSegments } from "../hooks/useDocumentSegments";
 import { useGlossariesWorkspace } from "../hooks/useGlossariesWorkspace";
 import { useHealthcheck } from "../hooks/useHealthcheck";
 import { useProjectDocuments } from "../hooks/useProjectDocuments";
 import { useProjectsWorkspace } from "../hooks/useProjectsWorkspace";
+import { useRuleSetsWorkspace } from "../hooks/useRuleSetsWorkspace";
 import { useStyleProfilesWorkspace } from "../hooks/useStyleProfilesWorkspace";
 
 function formatCheckedAt(value?: number) {
@@ -49,6 +51,22 @@ export function AppShell() {
     submitGlossary,
     totalGlossaryCount,
   } = useGlossariesWorkspace();
+  const {
+    activeRuleSet,
+    activeRuleSetCount,
+    archivedRuleSetCount,
+    error: ruleSetError,
+    isCreating: isCreatingRuleSet,
+    isLoading: isLoadingRuleSets,
+    isSaving: isSavingRuleSet,
+    openingRuleSetId,
+    reload: reloadRuleSets,
+    ruleSets,
+    saveRuleSet,
+    selectRuleSet,
+    submitRuleSet,
+    totalRuleSetCount,
+  } = useRuleSetsWorkspace();
   const {
     activeStyleProfile,
     activeStyleProfileCount,
@@ -143,19 +161,26 @@ export function AppShell() {
       <header className="app-shell__header">
         <div>
           <p className="app-shell__eyebrow">Translat</p>
-          <h1>Style profiles, glossaries, and terminology</h1>
+          <h1>Rule sets, style profiles, and terminology</h1>
           <p className="app-shell__lead">
-            D3 adds reusable persisted style profiles on top of the glossary and
-            terminology foundation, while keeping AI integration, complex rules,
-            and project-default associations out of scope.
+            D4 adds reusable persisted rule sets and individual editorial rules
+            on top of the glossary, terminology, and style-profile foundation,
+            while keeping automated execution, AI integration, and project
+            defaults out of scope.
           </p>
         </div>
 
         <div className="app-shell__header-meta">
           <span>{runtimeLabel}</span>
           <span>{projects.length} persisted projects</span>
+          <span>{totalRuleSetCount} persisted rule sets</span>
           <span>{totalStyleProfileCount} persisted style profiles</span>
           <span>{totalGlossaryCount} persisted glossaries</span>
+          <span>
+            {activeRuleSet
+              ? `Open rule set: ${activeRuleSet.name}`
+              : "No open rule set"}
+          </span>
           <span>
             {activeStyleProfile
               ? `Open style profile: ${activeStyleProfile.name}`
@@ -176,6 +201,23 @@ export function AppShell() {
 
       <section className="app-shell__grid">
         <div className="app-shell__primary">
+          <RuleSetsWorkspace
+            activeRuleSet={activeRuleSet}
+            activeRuleSetCount={activeRuleSetCount}
+            archivedRuleSetCount={archivedRuleSetCount}
+            error={ruleSetError}
+            isCreating={isCreatingRuleSet}
+            isLoading={isLoadingRuleSets}
+            isSaving={isSavingRuleSet}
+            onOpenRuleSet={selectRuleSet}
+            onReloadRuleSets={reloadRuleSets}
+            onSubmitRuleSet={submitRuleSet}
+            onUpdateRuleSet={saveRuleSet}
+            openingRuleSetId={openingRuleSetId}
+            ruleSets={ruleSets}
+            totalRuleSetCount={totalRuleSetCount}
+          />
+
           <StyleProfilesWorkspace
             activeStyleProfile={activeStyleProfile}
             activeStyleProfileCount={activeStyleProfileCount}
@@ -255,7 +297,7 @@ export function AppShell() {
 
           <section className="surface-card">
             <p className="surface-card__eyebrow">Command pattern</p>
-            <h2>{DESKTOP_COMMANDS.listStyleProfiles}</h2>
+            <h2>{DESKTOP_COMMANDS.listRuleSets}</h2>
 
             <dl className="detail-list">
               <div>
@@ -271,8 +313,16 @@ export function AppShell() {
                 <dd>{activeGlossary?.name ?? "None"}</dd>
               </div>
               <div>
+                <dt>Open rule set</dt>
+                <dd>{activeRuleSet?.name ?? "None"}</dd>
+              </div>
+              <div>
                 <dt>Open style profile</dt>
                 <dd>{activeStyleProfile?.name ?? "None"}</dd>
+              </div>
+              <div>
+                <dt>Rule-set status</dt>
+                <dd>{activeRuleSet?.status ?? "None"}</dd>
               </div>
               <div>
                 <dt>Style profile status</dt>
@@ -291,6 +341,12 @@ export function AppShell() {
                 <dd>
                   {activeGlossaryCount} active | {archivedGlossaryCount}{" "}
                   archived
+                </dd>
+              </div>
+              <div>
+                <dt>Rule-set totals</dt>
+                <dd>
+                  {activeRuleSetCount} active | {archivedRuleSetCount} archived
                 </dd>
               </div>
               <div>
