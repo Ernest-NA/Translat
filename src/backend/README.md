@@ -22,5 +22,6 @@ Current C1/C2/C3/C4/C5 backend slice in `src-tauri/`:
 - glossary-entry repository wiring for per-glossary create/list/update flows with persisted variants and forbidden terms,
 - style-profile repository wiring for reusable editorial-profile create/list/open/update flows,
 - rule-set and rule repository wiring for reusable editorial constraints with severity and enablement,
+- project repository wiring for persisted default glossary, style-profile, and rule-set associations,
 - desktop commands that expose project, document, segment, and document-structure state to the frontend,
 - and read-side segment queries that can backfill document structure without mutating document text.

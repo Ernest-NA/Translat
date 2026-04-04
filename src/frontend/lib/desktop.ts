@@ -37,6 +37,7 @@ import {
   type StyleProfilesOverview,
   type UpdateGlossaryEntryInput,
   type UpdateGlossaryInput,
+  type UpdateProjectEditorialDefaultsInput,
   type UpdateRuleInput,
   type UpdateRuleSetInput,
   type UpdateStyleProfileInput,
@@ -241,6 +242,17 @@ export function openProject(input: OpenProjectInput) {
   return invokeDesktopCommand<ProjectSummary>(DESKTOP_COMMANDS.openProject, {
     input,
   });
+}
+
+export function updateProjectEditorialDefaults(
+  input: UpdateProjectEditorialDefaultsInput,
+) {
+  return invokeDesktopCommand<ProjectSummary>(
+    DESKTOP_COMMANDS.updateProjectEditorialDefaults,
+    {
+      input,
+    },
+  );
 }
 
 export function openGlossary(input: OpenGlossaryInput) {
