@@ -289,9 +289,12 @@ export function useGlossaryEntries(glossaryId: string | null) {
           requestGlossaryId,
           (currentOverview) => ({
             glossaryId: currentOverview?.glossaryId ?? updatedEntry.glossaryId,
-            entries: (currentOverview?.entries ?? []).map((entry) =>
-              entry.id === updatedEntry.id ? updatedEntry : entry,
-            ),
+            entries: [
+              updatedEntry,
+              ...(currentOverview?.entries ?? []).filter(
+                (entry) => entry.id !== updatedEntry.id,
+              ),
+            ],
           }),
           updatedEntry.id,
         );

@@ -132,6 +132,15 @@ export function GlossaryEntriesPanel({
   async function handleCreateSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
+    if (
+      hasUnsavedEditChanges &&
+      !window.confirm(
+        "You have unsaved terminology changes in the selected entry. Create a new entry and discard them?",
+      )
+    ) {
+      return;
+    }
+
     const wasCreated = await submitEntry({
       sourceTerm: createSourceTerm,
       targetTerm: createTargetTerm,
