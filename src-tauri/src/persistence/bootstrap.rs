@@ -230,7 +230,8 @@ fn inspect_connection(
         && migrations::has_table(connection, "document_sections")?
         && migrations::has_table(connection, "glossaries")?
         && migrations::has_table(connection, "glossary_entries")?
-        && migrations::has_table(connection, "glossary_entry_variants")?;
+        && migrations::has_table(connection, "glossary_entry_variants")?
+        && migrations::has_table(connection, "style_profiles")?;
 
     Ok(DatabaseStatus {
         applied_migrations,
@@ -273,7 +274,8 @@ mod tests {
                 "0004_segments".to_owned(),
                 "0005_document_sections".to_owned(),
                 "0006_glossaries".to_owned(),
-                "0007_glossary_entries".to_owned()
+                "0007_glossary_entries".to_owned(),
+                "0008_style_profiles".to_owned()
             ]
         );
         assert_eq!(
@@ -285,7 +287,8 @@ mod tests {
                 "0004_segments".to_owned(),
                 "0005_document_sections".to_owned(),
                 "0006_glossaries".to_owned(),
-                "0007_glossary_entries".to_owned()
+                "0007_glossary_entries".to_owned(),
+                "0008_style_profiles".to_owned()
             ]
         );
         assert!(bootstrap_report.schema_ready);
@@ -312,7 +315,8 @@ mod tests {
                 "0004_segments".to_owned(),
                 "0005_document_sections".to_owned(),
                 "0006_glossaries".to_owned(),
-                "0007_glossary_entries".to_owned()
+                "0007_glossary_entries".to_owned(),
+                "0008_style_profiles".to_owned()
             ]
         );
         assert!(second_report.schema_ready);
@@ -394,8 +398,15 @@ mod tests {
                 |row| row.get::<_, i64>(0),
             )
             .expect("glossary_entry_variants table should be queryable");
+        let style_profiles_table_count = connection
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'style_profiles'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("style_profiles table should be queryable");
 
-        assert_eq!(migration_count, 7);
+        assert_eq!(migration_count, 8);
         assert_eq!(app_metadata_table_count, 1);
         assert_eq!(projects_table_count, 1);
         assert_eq!(documents_table_count, 1);
@@ -404,7 +415,8 @@ mod tests {
         assert_eq!(glossaries_table_count, 1);
         assert_eq!(glossary_entries_table_count, 1);
         assert_eq!(glossary_entry_variants_table_count, 1);
-        assert_eq!(database_status.migration_count, 7);
+        assert_eq!(style_profiles_table_count, 1);
+        assert_eq!(database_status.migration_count, 8);
         assert_eq!(
             database_status.applied_migrations,
             vec![
@@ -414,7 +426,8 @@ mod tests {
                 "0004_segments".to_owned(),
                 "0005_document_sections".to_owned(),
                 "0006_glossaries".to_owned(),
-                "0007_glossary_entries".to_owned()
+                "0007_glossary_entries".to_owned(),
+                "0008_style_profiles".to_owned()
             ]
         );
         assert!(database_status.schema_ready);

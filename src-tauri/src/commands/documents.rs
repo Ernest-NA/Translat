@@ -97,7 +97,11 @@ fn import_project_document_with_runtime(
 
     ensure_project_exists(&mut connection, &validated_import.project_id)?;
     ensure_project_is_active(&mut connection, &validated_import.project_id)?;
-    reconcile_project_document_storage(database_runtime, &mut connection, &validated_import.project_id)?;
+    reconcile_project_document_storage(
+        database_runtime,
+        &mut connection,
+        &validated_import.project_id,
+    )?;
 
     let stored_document_paths = persist_document_bytes(
         database_runtime,
@@ -200,12 +204,14 @@ fn validate_import_document(
 
     validate_base64_payload_size(normalized_base64_content)?;
 
-    let bytes = STANDARD.decode(normalized_base64_content).map_err(|error| {
-        DesktopCommandError::validation(
-            "The selected document payload could not be decoded.",
-            Some(error.to_string()),
-        )
-    })?;
+    let bytes = STANDARD
+        .decode(normalized_base64_content)
+        .map_err(|error| {
+            DesktopCommandError::validation(
+                "The selected document payload could not be decoded.",
+                Some(error.to_string()),
+            )
+        })?;
 
     if bytes.is_empty() {
         return Err(DesktopCommandError::validation(
@@ -263,9 +269,7 @@ fn normalize_file_name(file_name: &str) -> Result<String, DesktopCommandError> {
     Ok(normalized_file_name)
 }
 
-fn normalize_mime_type(
-    mime_type: Option<String>,
-) -> Result<Option<String>, DesktopCommandError> {
+fn normalize_mime_type(mime_type: Option<String>) -> Result<Option<String>, DesktopCommandError> {
     let normalized_mime_type = mime_type
         .as_deref()
         .map(str::trim)
@@ -313,10 +317,7 @@ fn estimate_base64_decoded_length(base64_content: &str) -> Result<usize, Desktop
         .take(2)
         .count();
     let base_length = full_chunks.checked_mul(3).ok_or_else(|| {
-        DesktopCommandError::validation(
-            "The selected document payload could not be decoded.",
-            None,
-        )
+        DesktopCommandError::validation("The selected document payload could not be decoded.", None)
     })?;
 
     let estimated_length = match remainder {
@@ -406,9 +407,9 @@ fn persist_document_bytes(
         secret_store::protect_local_payload(bytes, "Translat imported document payload").map_err(
             |error| {
                 DesktopCommandError::internal(
-                    "The desktop shell could not protect the imported document payload for local storage.",
-                    Some(error.to_string()),
-                )
+            "The desktop shell could not protect the imported document payload for local storage.",
+            Some(error.to_string()),
+        )
             },
         )?;
 
@@ -648,9 +649,7 @@ fn is_stale_pending_document_payload(path: &Path, now: i64) -> bool {
 }
 
 fn storage_payload_timestamp(path: &Path) -> Option<i64> {
-    let file_name = path
-        .file_name()
-        .and_then(|value| value.to_str())?;
+    let file_name = path.file_name().and_then(|value| value.to_str())?;
     let without_prefix = file_name
         .strip_prefix(PENDING_DOCUMENT_PREFIX)
         .unwrap_or(file_name);
@@ -825,11 +824,9 @@ mod tests {
         validate_base64_payload_size, validate_document_format, validate_project_id,
         ORPHAN_PENDING_GRACE_PERIOD_SECS, PENDING_DOCUMENT_PREFIX,
     };
-    use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
-    use base64::Engine;
     use crate::documents::{
-        ImportDocumentInput, ListProjectDocumentsInput, NewDocument,
-        DOCUMENT_SOURCE_LOCAL_FILE, DOCUMENT_STATUS_IMPORTED, MAX_IMPORTED_DOCUMENT_BYTES,
+        ImportDocumentInput, ListProjectDocumentsInput, NewDocument, DOCUMENT_SOURCE_LOCAL_FILE,
+        DOCUMENT_STATUS_IMPORTED, MAX_IMPORTED_DOCUMENT_BYTES,
     };
     use crate::persistence::bootstrap::{
         bootstrap_database, open_database_with_key, DatabaseRuntime,
@@ -840,6 +837,8 @@ mod tests {
         load_or_create_encryption_key, protect_local_payload, unprotect_local_payload,
     };
     use crate::projects::NewProject;
+    use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
+    use base64::Engine;
     use std::fs;
     use tempfile::tempdir;
 
@@ -949,7 +948,8 @@ mod tests {
             project_directory.join(format!("doc_{stale_timestamp}_ref__source.txt"));
         let orphaned_payload_path =
             project_directory.join(format!("doc_{stale_timestamp}_orphan__source.txt"));
-        fs::write(&referenced_payload_path, b"referenced").expect("referenced payload should write");
+        fs::write(&referenced_payload_path, b"referenced")
+            .expect("referenced payload should write");
         fs::write(&orphaned_payload_path, b"orphaned").expect("orphaned payload should write");
 
         let mut connection = open_database_with_key(&database_path, "translat-test-key-for-c2")
@@ -1010,11 +1010,10 @@ mod tests {
         let project_directory = documents_directory.join("prj_active_001");
         fs::create_dir_all(&project_directory).expect("project directory should exist");
 
-        let pending_payload_path =
-            project_directory.join(format!(
-                "{}doc_{}_test__source.txt",
-                PENDING_DOCUMENT_PREFIX, now
-            ));
+        let pending_payload_path = project_directory.join(format!(
+            "{}doc_{}_test__source.txt",
+            PENDING_DOCUMENT_PREFIX, now
+        ));
         fs::write(&pending_payload_path, b"pending").expect("pending payload should write");
 
         let mut connection = open_database_with_key(&database_path, "translat-test-key-for-c2")
@@ -1056,8 +1055,7 @@ mod tests {
         let project_directory = documents_directory.join("prj_active_001");
         fs::create_dir_all(&project_directory).expect("project directory should exist");
 
-        let recent_payload_path =
-            project_directory.join(format!("doc_{now}_recent__source.txt"));
+        let recent_payload_path = project_directory.join(format!("doc_{now}_recent__source.txt"));
         fs::write(&recent_payload_path, b"recent").expect("recent payload should write");
 
         let mut connection = open_database_with_key(&database_path, "translat-test-key-for-c2")
@@ -1339,7 +1337,10 @@ mod tests {
         assert_eq!(overview.documents.len(), 1);
         assert!(!pending_payload_path.exists());
         assert!(final_payload_path.exists());
-        assert_eq!(repaired_paths, vec![final_payload_path.display().to_string()]);
+        assert_eq!(
+            repaired_paths,
+            vec![final_payload_path.display().to_string()]
+        );
     }
 
     #[test]
@@ -1424,7 +1425,10 @@ mod tests {
         assert_eq!(overview.documents.len(), 1);
         assert!(!pending_payload_path.exists());
         assert!(final_payload_path.exists());
-        assert_eq!(repaired_paths, vec![final_payload_path.display().to_string()]);
+        assert_eq!(
+            repaired_paths,
+            vec![final_payload_path.display().to_string()]
+        );
     }
 
     #[test]
@@ -1442,8 +1446,9 @@ mod tests {
     #[test]
     fn protected_document_payload_round_trips() {
         let plaintext = b"Highly sensitive source content.";
-        let protected_payload = protect_local_payload(plaintext, "Translat imported document payload")
-            .expect("payload should be protected");
+        let protected_payload =
+            protect_local_payload(plaintext, "Translat imported document payload")
+                .expect("payload should be protected");
         let unprotected_payload =
             unprotect_local_payload(&protected_payload).expect("payload should be readable");
 

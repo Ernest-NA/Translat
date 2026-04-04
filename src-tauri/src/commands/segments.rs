@@ -9,8 +9,8 @@ use crate::error::DesktopCommandError;
 use crate::persistence::bootstrap::DatabaseRuntime;
 use crate::persistence::documents::{DocumentProcessingRecord, DocumentRepository};
 use crate::persistence::projects::ProjectRepository;
-use crate::persistence::sections::DocumentSectionRepository;
 use crate::persistence::secret_store;
+use crate::persistence::sections::DocumentSectionRepository;
 use crate::persistence::segments::SegmentRepository;
 use crate::sections::{
     DocumentSectionSummary, NewDocumentSection, DOCUMENT_SECTION_TYPE_CHAPTER,
@@ -186,17 +186,22 @@ fn ensure_document_sections(
     timestamp: i64,
 ) -> Result<Vec<DocumentSectionSummary>, DesktopCommandError> {
     let mut repository = DocumentSectionRepository::new(connection);
-    let existing_sections = repository
-        .list_by_document(&processing_record.id)
-        .map_err(|error| {
-            DesktopCommandError::internal(
-                "The desktop shell could not load the persisted document structure.",
-                Some(error.to_string()),
-            )
-        })?;
+    let existing_sections =
+        repository
+            .list_by_document(&processing_record.id)
+            .map_err(|error| {
+                DesktopCommandError::internal(
+                    "The desktop shell could not load the persisted document structure.",
+                    Some(error.to_string()),
+                )
+            })?;
 
-    let rebuilt_sections =
-        build_document_sections(&processing_record.id, &processing_record.name, segments, timestamp)?;
+    let rebuilt_sections = build_document_sections(
+        &processing_record.id,
+        &processing_record.name,
+        segments,
+        timestamp,
+    )?;
 
     if section_summaries_match(&existing_sections, &rebuilt_sections) {
         return Ok(existing_sections);
@@ -370,14 +375,7 @@ fn detect_structure_marker(segment: &SegmentSummary) -> Option<StructureMarker> 
     } else if let Some(remainder) = strip_structure_keyword(
         &normalized_title,
         &[
-            "section",
-            "sec.",
-            "sec",
-            "annex",
-            "appendix",
-            "seccion",
-            "apartado",
-            "anexo",
+            "section", "sec.", "sec", "annex", "appendix", "seccion", "apartado", "anexo",
             "apendice",
         ],
     ) {
@@ -451,8 +449,10 @@ fn is_heading_identifier(value: &str) -> bool {
     let is_roman = value
         .chars()
         .all(|character| matches!(character, 'i' | 'v' | 'x' | 'l' | 'c' | 'd' | 'm'));
-    let is_single_letter =
-        value.chars().count() == 1 && value.chars().all(|character| character.is_ascii_alphabetic());
+    let is_single_letter = value.chars().count() == 1
+        && value
+            .chars()
+            .all(|character| character.is_ascii_alphabetic());
 
     is_numeric || is_roman || is_single_letter
 }
@@ -648,14 +648,13 @@ fn build_segments(
         .filter(|value| !value.is_empty())
     {
         for source_text in split_paragraph_into_segments(paragraph) {
-            let source_word_count = i64::try_from(source_text.split_whitespace().count()).map_err(
-                |error| {
+            let source_word_count =
+                i64::try_from(source_text.split_whitespace().count()).map_err(|error| {
                     DesktopCommandError::internal(
                         "The desktop shell produced an invalid segment word count.",
                         Some(error.to_string()),
                     )
-                },
-            )?;
+                })?;
             let source_character_count =
                 i64::try_from(source_text.chars().count()).map_err(|error| {
                     DesktopCommandError::internal(
@@ -778,9 +777,9 @@ fn should_split_at_boundary(
     let current_meaningful_token = previous_meaningful_token_before(paragraph, byte_index);
     let next_meaningful_character = next_meaningful_character_after(characters, lookahead_index);
 
-    if current_meaningful_token.is_some_and(|token| {
-        token.chars().any(|character| character.is_ascii_digit())
-    }) && next_meaningful_character.is_some_and(|character| character.is_ascii_digit())
+    if current_meaningful_token
+        .is_some_and(|token| token.chars().any(|character| character.is_ascii_digit()))
+        && next_meaningful_character.is_some_and(|character| character.is_ascii_digit())
     {
         return false;
     }
@@ -797,8 +796,8 @@ fn should_split_at_boundary(
         return false;
     }
 
-    let previous_token_lower = previous_alphabetic_token_before(paragraph, byte_index)
-        .map(|token| token.to_lowercase());
+    let previous_token_lower =
+        previous_alphabetic_token_before(paragraph, byte_index).map(|token| token.to_lowercase());
     let next_token = next_alphabetic_token_after(paragraph, characters, lookahead_index);
     let next_token_lower = next_token
         .as_ref()
@@ -808,11 +807,11 @@ fn should_split_at_boundary(
         && (previous_token_lower
             .as_ref()
             .is_some_and(|token| token.chars().count() == 1)
-            || next_token
-                .as_ref()
-                .is_some_and(|(token, _, followed_by_period): &(&str, usize, bool)| {
+            || next_token.as_ref().is_some_and(
+                |(token, _, followed_by_period): &(&str, usize, bool)| {
                     token.chars().count() == 1 && *followed_by_period
-                }))
+                },
+            ))
     {
         return false;
     }
@@ -825,7 +824,10 @@ fn should_split_at_boundary(
     }
 
     if matches!(
-        (previous_token_lower.as_deref(), current_token_lower.as_str()),
+        (
+            previous_token_lower.as_deref(),
+            current_token_lower.as_str()
+        ),
         (Some("p"), "ej") | (Some("e"), "g") | (Some("i"), "e")
     ) {
         return false;
@@ -838,25 +840,26 @@ fn should_split_at_boundary(
         })
         .map(|token| token.to_lowercase());
 
-    if current_meaningful_token.is_some_and(|token| {
-        token.chars().all(|character| character.is_ascii_digit())
-    })
-        && previous_meaningful_token_lower.as_ref().is_some_and(|token| {
-            matches!(
-                token.as_str(),
-                "chapter"
-                    | "section"
-                    | "sec"
-                    | "part"
-                    | "annex"
-                    | "appendix"
-                    | "capitulo"
-                    | "cap\u{ed}tulo"
-                    | "apartado"
-                    | "seccion"
-                    | "secci\u{f3}n"
-            )
-        })
+    if current_meaningful_token
+        .is_some_and(|token| token.chars().all(|character| character.is_ascii_digit()))
+        && previous_meaningful_token_lower
+            .as_ref()
+            .is_some_and(|token| {
+                matches!(
+                    token.as_str(),
+                    "chapter"
+                        | "section"
+                        | "sec"
+                        | "part"
+                        | "annex"
+                        | "appendix"
+                        | "capitulo"
+                        | "cap\u{ed}tulo"
+                        | "apartado"
+                        | "seccion"
+                        | "secci\u{f3}n"
+                )
+            })
         && next_token
             .as_ref()
             .is_some_and(|(token, _, _): &(&str, usize, bool)| {
@@ -1023,19 +1026,19 @@ mod tests {
 
     use super::{
         build_segments, list_document_segments_with_runtime, normalize_document_text,
-        process_project_document_with_runtime,
-        split_paragraph_into_segments,
+        process_project_document_with_runtime, split_paragraph_into_segments,
     };
     use crate::documents::{
-        NewDocument, DOCUMENT_SOURCE_LOCAL_FILE, DOCUMENT_STATUS_IMPORTED, DOCUMENT_STATUS_SEGMENTED,
+        NewDocument, DOCUMENT_SOURCE_LOCAL_FILE, DOCUMENT_STATUS_IMPORTED,
+        DOCUMENT_STATUS_SEGMENTED,
     };
     use crate::persistence::bootstrap::{
         bootstrap_database, open_database_with_key, DatabaseRuntime,
     };
     use crate::persistence::documents::DocumentRepository;
     use crate::persistence::projects::ProjectRepository;
-    use crate::persistence::sections::DocumentSectionRepository;
     use crate::persistence::secret_store::{load_or_create_encryption_key, protect_local_payload};
+    use crate::persistence::sections::DocumentSectionRepository;
     use crate::persistence::segments::SegmentRepository;
     use crate::projects::NewProject;
     use crate::sections::{
@@ -1598,7 +1601,10 @@ mod tests {
 
         assert_eq!(overview.sections.len(), 1);
         assert_eq!(overview.sections[0].title, "plain.txt");
-        assert_eq!(overview.sections[0].section_type, DOCUMENT_SECTION_TYPE_DOCUMENT);
+        assert_eq!(
+            overview.sections[0].section_type,
+            DOCUMENT_SECTION_TYPE_DOCUMENT
+        );
         assert_eq!(overview.sections[0].start_segment_sequence, 1);
         assert_eq!(overview.sections[0].end_segment_sequence, 2);
     }
@@ -1805,7 +1811,10 @@ mod tests {
         .expect("segments should load");
 
         assert_eq!(overview.sections.len(), 1);
-        assert_eq!(overview.sections[0].section_type, DOCUMENT_SECTION_TYPE_DOCUMENT);
+        assert_eq!(
+            overview.sections[0].section_type,
+            DOCUMENT_SECTION_TYPE_DOCUMENT
+        );
     }
 
     #[test]

@@ -4,3 +4,4 @@ pub mod glossary_entries;
 pub mod healthcheck;
 pub mod projects;
 pub mod segments;
+pub mod style_profiles;
