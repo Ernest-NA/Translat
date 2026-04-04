@@ -20,6 +20,7 @@ export const DESKTOP_COMMANDS = {
   openRuleSet: "open_rule_set",
   openStyleProfile: "open_style_profile",
   processProjectDocument: "process_project_document",
+  updateProjectEditorialDefaults: "update_project_editorial_defaults",
   updateRule: "update_rule",
   updateRuleSet: "update_rule_set",
   updateGlossaryEntry: "update_glossary_entry",
@@ -59,6 +60,9 @@ export interface ProjectSummary {
   id: string;
   name: string;
   description: string | null;
+  defaultGlossaryId: string | null;
+  defaultStyleProfileId: string | null;
+  defaultRuleSetId: string | null;
   createdAt: number;
   updatedAt: number;
   lastOpenedAt: number;
@@ -276,6 +280,13 @@ export interface CreateRuleInput {
 
 export interface OpenProjectInput {
   projectId: string;
+}
+
+export interface UpdateProjectEditorialDefaultsInput {
+  projectId: string;
+  defaultGlossaryId?: string;
+  defaultStyleProfileId?: string;
+  defaultRuleSetId?: string;
 }
 
 export interface OpenGlossaryInput {

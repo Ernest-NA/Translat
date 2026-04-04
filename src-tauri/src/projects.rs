@@ -8,6 +8,9 @@ pub struct ProjectSummary {
     pub id: String,
     pub name: String,
     pub description: Option<String>,
+    pub default_glossary_id: Option<String>,
+    pub default_style_profile_id: Option<String>,
+    pub default_rule_set_id: Option<String>,
     pub created_at: i64,
     pub updated_at: i64,
     pub last_opened_at: i64,
@@ -27,6 +30,15 @@ pub struct CreateProjectInput {
     pub description: Option<String>,
 }
 
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateProjectEditorialDefaultsInput {
+    pub project_id: String,
+    pub default_glossary_id: Option<String>,
+    pub default_style_profile_id: Option<String>,
+    pub default_rule_set_id: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NewProject {
     pub id: String,
@@ -35,4 +47,13 @@ pub struct NewProject {
     pub created_at: i64,
     pub updated_at: i64,
     pub last_opened_at: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectEditorialDefaultsChanges {
+    pub project_id: String,
+    pub default_glossary_id: Option<String>,
+    pub default_style_profile_id: Option<String>,
+    pub default_rule_set_id: Option<String>,
+    pub updated_at: i64,
 }

@@ -1,7 +1,10 @@
 use rusqlite::{params, Connection, OptionalExtension, Row};
 
 use crate::persistence::error::PersistenceError;
-use crate::projects::{NewProject, ProjectSummary, ProjectsOverview, ACTIVE_PROJECT_METADATA_KEY};
+use crate::projects::{
+    NewProject, ProjectEditorialDefaultsChanges, ProjectSummary, ProjectsOverview,
+    ACTIVE_PROJECT_METADATA_KEY,
+};
 
 pub struct ProjectRepository<'connection> {
     connection: &'connection mut Connection,
@@ -27,11 +30,14 @@ impl<'connection> ProjectRepository<'connection> {
                   id,
                   name,
                   description,
+                  default_glossary_id,
+                  default_style_profile_id,
+                  default_rule_set_id,
                   created_at,
                   updated_at,
                   last_opened_at
                 )
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                VALUES (?1, ?2, ?3, NULL, NULL, NULL, ?4, ?5, ?6)
                 "#,
                 params![
                     new_project.id,
@@ -62,6 +68,9 @@ impl<'connection> ProjectRepository<'connection> {
             id: new_project.id.clone(),
             name: new_project.name.clone(),
             description: new_project.description.clone(),
+            default_glossary_id: None,
+            default_style_profile_id: None,
+            default_rule_set_id: None,
             created_at: new_project.created_at,
             updated_at: new_project.updated_at,
             last_opened_at: new_project.last_opened_at,
@@ -77,6 +86,9 @@ impl<'connection> ProjectRepository<'connection> {
                   id,
                   name,
                   description,
+                  default_glossary_id,
+                  default_style_profile_id,
+                  default_rule_set_id,
                   created_at,
                   updated_at,
                   last_opened_at
@@ -155,6 +167,9 @@ impl<'connection> ProjectRepository<'connection> {
                   id,
                   name,
                   description,
+                  default_glossary_id,
+                  default_style_profile_id,
+                  default_rule_set_id,
                   created_at,
                   updated_at,
                   last_opened_at
@@ -186,6 +201,92 @@ impl<'connection> ProjectRepository<'connection> {
             active_project_id: self.active_project_id()?,
             projects: self.list()?,
         })
+    }
+
+    pub fn update_editorial_defaults(
+        &mut self,
+        changes: &ProjectEditorialDefaultsChanges,
+    ) -> Result<ProjectSummary, PersistenceError> {
+        let transaction = self.connection.transaction().map_err(|error| {
+            PersistenceError::with_details(
+                "The project repository could not start the editorial-default update transaction.",
+                error,
+            )
+        })?;
+
+        let updated_rows = transaction
+            .execute(
+                r#"
+                UPDATE projects
+                SET
+                  default_glossary_id = ?2,
+                  default_style_profile_id = ?3,
+                  default_rule_set_id = ?4,
+                  updated_at = ?5
+                WHERE id = ?1
+                "#,
+                params![
+                    changes.project_id,
+                    changes.default_glossary_id,
+                    changes.default_style_profile_id,
+                    changes.default_rule_set_id,
+                    changes.updated_at
+                ],
+            )
+            .map_err(|error| {
+                PersistenceError::with_details(
+                    format!(
+                        "The project repository could not update editorial defaults for project {}.",
+                        changes.project_id
+                    ),
+                    error,
+                )
+            })?;
+
+        if updated_rows == 0 {
+            return Err(PersistenceError::new(format!(
+                "The requested project {} does not exist.",
+                changes.project_id
+            )));
+        }
+
+        let project = transaction
+            .query_row(
+                r#"
+                SELECT
+                  id,
+                  name,
+                  description,
+                  default_glossary_id,
+                  default_style_profile_id,
+                  default_rule_set_id,
+                  created_at,
+                  updated_at,
+                  last_opened_at
+                FROM projects
+                WHERE id = ?1
+                "#,
+                [&changes.project_id],
+                map_project_summary,
+            )
+            .map_err(|error| {
+                PersistenceError::with_details(
+                    format!(
+                        "The project repository could not reload project {} after updating editorial defaults.",
+                        changes.project_id
+                    ),
+                    error,
+                )
+            })?;
+
+        transaction.commit().map_err(|error| {
+            PersistenceError::with_details(
+                "The project repository could not commit the editorial-default update transaction.",
+                error,
+            )
+        })?;
+
+        Ok(project)
     }
 
     pub fn active_project_id(&mut self) -> Result<Option<String>, PersistenceError> {
@@ -254,19 +355,23 @@ fn map_project_summary(row: &Row<'_>) -> rusqlite::Result<ProjectSummary> {
         id: row.get(0)?,
         name: row.get(1)?,
         description: row.get(2)?,
-        created_at: row.get(3)?,
-        updated_at: row.get(4)?,
-        last_opened_at: row.get(5)?,
+        default_glossary_id: row.get(3)?,
+        default_style_profile_id: row.get(4)?,
+        default_rule_set_id: row.get(5)?,
+        created_at: row.get(6)?,
+        updated_at: row.get(7)?,
+        last_opened_at: row.get(8)?,
     })
 }
 
 #[cfg(test)]
 mod tests {
+    use rusqlite::params;
     use super::ProjectRepository;
     use tempfile::tempdir;
 
     use crate::persistence::bootstrap::{bootstrap_database, open_database_with_key};
-    use crate::projects::NewProject;
+    use crate::projects::{NewProject, ProjectEditorialDefaultsChanges};
 
     const TEST_DATABASE_KEY: &str = "translat-test-key-for-c1";
 
@@ -339,5 +444,130 @@ mod tests {
         assert_eq!(overview.projects.len(), 1);
         assert_eq!(overview.projects[0].last_opened_at, reopened_at);
         assert_eq!(overview.projects[0].updated_at, created_at);
+    }
+
+    #[test]
+    fn editorial_defaults_update_and_survive_reopen() {
+        let temporary_directory = tempdir().expect("temp dir should be created");
+        let database_path = temporary_directory.path().join("translat.sqlite3");
+        let created_at = 1_743_517_200_i64;
+        let updated_at = created_at + 120;
+
+        bootstrap_database(&database_path, TEST_DATABASE_KEY)
+            .expect("database bootstrap should succeed");
+
+        {
+            let mut connection = open_database_with_key(&database_path, TEST_DATABASE_KEY)
+                .expect("database connection should open");
+            let mut repository = ProjectRepository::new(&mut connection);
+
+            repository
+                .create(&sample_project(created_at))
+                .expect("project should be created");
+            drop(repository);
+
+            connection
+                .execute(
+                    r#"
+                    INSERT INTO glossaries (
+                      id,
+                      name,
+                      description,
+                      project_id,
+                      status,
+                      created_at,
+                      updated_at,
+                      last_opened_at
+                    )
+                    VALUES (?1, ?2, NULL, NULL, 'active', ?3, ?3, ?3)
+                    "#,
+                    params!["gls_default_001", "Clinical core", created_at],
+                )
+                .expect("glossary should be inserted");
+            connection
+                .execute(
+                    r#"
+                    INSERT INTO style_profiles (
+                      id,
+                      name,
+                      description,
+                      tone,
+                      formality,
+                      treatment_preference,
+                      consistency_instructions,
+                      editorial_notes,
+                      status,
+                      created_at,
+                      updated_at,
+                      last_opened_at
+                    )
+                    VALUES (?1, ?2, NULL, 'technical', 'formal', 'usted', NULL, NULL, 'active', ?3, ?3, ?3)
+                    "#,
+                    params!["stp_default_001", "Clinical style", created_at],
+                )
+                .expect("style profile should be inserted");
+            connection
+                .execute(
+                    r#"
+                    INSERT INTO rule_sets (
+                      id,
+                      name,
+                      description,
+                      status,
+                      created_at,
+                      updated_at,
+                      last_opened_at
+                    )
+                    VALUES (?1, ?2, NULL, 'active', ?3, ?3, ?3)
+                    "#,
+                    params!["rset_default_001", "Clinical rules", created_at],
+                )
+                .expect("rule set should be inserted");
+
+            let mut repository = ProjectRepository::new(&mut connection);
+            let updated_project = repository
+                .update_editorial_defaults(&ProjectEditorialDefaultsChanges {
+                    project_id: "prj_test_001".to_owned(),
+                    default_glossary_id: Some("gls_default_001".to_owned()),
+                    default_style_profile_id: Some("stp_default_001".to_owned()),
+                    default_rule_set_id: Some("rset_default_001".to_owned()),
+                    updated_at,
+                })
+                .expect("project defaults should update");
+
+            assert_eq!(
+                updated_project.default_glossary_id.as_deref(),
+                Some("gls_default_001")
+            );
+            assert_eq!(
+                updated_project.default_style_profile_id.as_deref(),
+                Some("stp_default_001")
+            );
+            assert_eq!(
+                updated_project.default_rule_set_id.as_deref(),
+                Some("rset_default_001")
+            );
+            assert_eq!(updated_project.updated_at, updated_at);
+        }
+
+        let mut connection = open_database_with_key(&database_path, TEST_DATABASE_KEY)
+            .expect("database connection should reopen");
+        let mut repository = ProjectRepository::new(&mut connection);
+        let overview = repository
+            .load_overview()
+            .expect("project overview should reload");
+
+        assert_eq!(
+            overview.projects[0].default_glossary_id.as_deref(),
+            Some("gls_default_001")
+        );
+        assert_eq!(
+            overview.projects[0].default_style_profile_id.as_deref(),
+            Some("stp_default_001")
+        );
+        assert_eq!(
+            overview.projects[0].default_rule_set_id.as_deref(),
+            Some("rset_default_001")
+        );
     }
 }

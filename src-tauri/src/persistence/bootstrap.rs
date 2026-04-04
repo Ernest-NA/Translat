@@ -278,7 +278,8 @@ mod tests {
                 "0006_glossaries".to_owned(),
                 "0007_glossary_entries".to_owned(),
                 "0008_style_profiles".to_owned(),
-                "0009_rule_sets".to_owned()
+                "0009_rule_sets".to_owned(),
+                "0010_project_editorial_defaults".to_owned()
             ]
         );
         assert_eq!(
@@ -292,7 +293,8 @@ mod tests {
                 "0006_glossaries".to_owned(),
                 "0007_glossary_entries".to_owned(),
                 "0008_style_profiles".to_owned(),
-                "0009_rule_sets".to_owned()
+                "0009_rule_sets".to_owned(),
+                "0010_project_editorial_defaults".to_owned()
             ]
         );
         assert!(bootstrap_report.schema_ready);
@@ -321,7 +323,8 @@ mod tests {
                 "0006_glossaries".to_owned(),
                 "0007_glossary_entries".to_owned(),
                 "0008_style_profiles".to_owned(),
-                "0009_rule_sets".to_owned()
+                "0009_rule_sets".to_owned(),
+                "0010_project_editorial_defaults".to_owned()
             ]
         );
         assert!(second_report.schema_ready);
@@ -425,7 +428,7 @@ mod tests {
             )
             .expect("rules table should be queryable");
 
-        assert_eq!(migration_count, 9);
+        assert_eq!(migration_count, 10);
         assert_eq!(app_metadata_table_count, 1);
         assert_eq!(projects_table_count, 1);
         assert_eq!(documents_table_count, 1);
@@ -437,7 +440,7 @@ mod tests {
         assert_eq!(style_profiles_table_count, 1);
         assert_eq!(rule_sets_table_count, 1);
         assert_eq!(rules_table_count, 1);
-        assert_eq!(database_status.migration_count, 9);
+        assert_eq!(database_status.migration_count, 10);
         assert_eq!(
             database_status.applied_migrations,
             vec![
@@ -449,7 +452,8 @@ mod tests {
                 "0006_glossaries".to_owned(),
                 "0007_glossary_entries".to_owned(),
                 "0008_style_profiles".to_owned(),
-                "0009_rule_sets".to_owned()
+                "0009_rule_sets".to_owned(),
+                "0010_project_editorial_defaults".to_owned()
             ]
         );
         assert!(database_status.schema_ready);

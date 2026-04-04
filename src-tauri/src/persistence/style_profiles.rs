@@ -335,6 +335,27 @@ impl<'connection> StyleProfileRepository<'connection> {
         })
     }
 
+    pub fn exists(&mut self, style_profile_id: &str) -> Result<bool, PersistenceError> {
+        let row = self
+            .connection
+            .query_row(
+                "SELECT 1 FROM style_profiles WHERE id = ?1 LIMIT 1",
+                [style_profile_id],
+                |row| row.get::<_, i64>(0),
+            )
+            .optional()
+            .map_err(|error| {
+                PersistenceError::with_details(
+                    format!(
+                        "The style-profile repository could not inspect style profile {style_profile_id}."
+                    ),
+                    error,
+                )
+            })?;
+
+        Ok(row.is_some())
+    }
+
     fn active_style_profile_id(&mut self) -> Result<Option<String>, PersistenceError> {
         self.connection
             .query_row(

@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useRef, useState } from "react";
 import { DESKTOP_COMMANDS } from "../../shared/desktop";
 import { GlossaryWorkspace } from "../components/GlossaryWorkspace";
 import { HealthcheckPanel } from "../components/HealthcheckPanel";
@@ -30,8 +30,10 @@ export function AppShell() {
     error: projectError,
     isCreating,
     isLoading: isLoadingProjects,
+    isSavingEditorialDefaults,
     openingProjectId,
     projects,
+    saveProjectEditorialDefaults,
     selectProject,
     submitProject,
   } = useProjectsWorkspace();
@@ -108,7 +110,68 @@ export function AppShell() {
   } = useDocumentSegments(activeProject?.id ?? null, documents);
   const { error, healthcheck, isLoading, retry } = useHealthcheck();
   const activeProjectIdRef = useRef<string | null>(activeProject?.id ?? null);
+  const [hasUnsavedProjectDefaults, setHasUnsavedProjectDefaults] =
+    useState(false);
   activeProjectIdRef.current = activeProject?.id ?? null;
+
+  const activeProjectDefaultGlossary =
+    glossaries.find(
+      (glossary) => glossary.id === activeProject?.defaultGlossaryId,
+    ) ?? null;
+  const activeProjectDefaultStyleProfile =
+    styleProfiles.find(
+      (styleProfile) =>
+        styleProfile.id === activeProject?.defaultStyleProfileId,
+    ) ?? null;
+  const activeProjectDefaultRuleSet =
+    ruleSets.find(
+      (ruleSet) => ruleSet.id === activeProject?.defaultRuleSetId,
+    ) ?? null;
+
+  const confirmDiscardProjectDefaults = useCallback(
+    (action: "create" | "switch") => {
+      if (!hasUnsavedProjectDefaults) {
+        return true;
+      }
+
+      if (action === "create") {
+        return window.confirm(
+          "You have unsaved project editorial defaults. Create a new project and discard them?",
+        );
+      }
+
+      return window.confirm(
+        "You have unsaved project editorial defaults. Open another project and discard them?",
+      );
+    },
+    [hasUnsavedProjectDefaults],
+  );
+
+  const handleSubmitProject = useCallback(
+    async (input: { description?: string; name: string }) => {
+      if (!confirmDiscardProjectDefaults("create")) {
+        return false;
+      }
+
+      return submitProject(input);
+    },
+    [confirmDiscardProjectDefaults, submitProject],
+  );
+
+  const handleSelectProject = useCallback(
+    async (projectId: string) => {
+      if (projectId === activeProject?.id) {
+        return true;
+      }
+
+      if (!confirmDiscardProjectDefaults("switch")) {
+        return false;
+      }
+
+      return selectProject(projectId);
+    },
+    [activeProject?.id, confirmDiscardProjectDefaults, selectProject],
+  );
 
   const handleImportDocuments = useCallback(
     async (files: FileList): Promise<number> => {
@@ -161,12 +224,12 @@ export function AppShell() {
       <header className="app-shell__header">
         <div>
           <p className="app-shell__eyebrow">Translat</p>
-          <h1>Rule sets, style profiles, and terminology</h1>
+          <h1>Project editorial defaults</h1>
           <p className="app-shell__lead">
-            D4 adds reusable persisted rule sets and individual editorial rules
-            on top of the glossary, terminology, and style-profile foundation,
-            while keeping automated execution, AI integration, and project
-            defaults out of scope.
+            D5 consolidates the editorial baseline of each project by letting it
+            persist one default glossary, one default style profile, and one
+            default rule set, while keeping AI usage, precedence logic, and
+            automatic orchestration out of scope.
           </p>
         </div>
 
@@ -195,6 +258,21 @@ export function AppShell() {
             {activeProject
               ? `${documents.length} project documents`
               : "No active project"}
+          </span>
+          <span>
+            {activeProjectDefaultGlossary
+              ? `Project default glossary: ${activeProjectDefaultGlossary.name}`
+              : "Project default glossary: none"}
+          </span>
+          <span>
+            {activeProjectDefaultStyleProfile
+              ? `Project default style: ${activeProjectDefaultStyleProfile.name}`
+              : "Project default style: none"}
+          </span>
+          <span>
+            {activeProjectDefaultRuleSet
+              ? `Project default rules: ${activeProjectDefaultRuleSet.name}`
+              : "Project default rules: none"}
           </span>
         </div>
       </header>
@@ -259,15 +337,21 @@ export function AppShell() {
             isImportingDocuments={isImporting}
             isLoadingDocuments={isLoadingDocuments}
             isLoadingSegments={isLoadingSegments}
+            isSavingEditorialDefaults={isSavingEditorialDefaults}
             loadError={loadError}
+            glossaries={glossaries}
+            onDirtyChange={setHasUnsavedProjectDefaults}
             onOpenDocument={openDocument}
             onImportDocuments={handleImportDocuments}
             onProcessDocument={handleProcessDocument}
+            onSaveEditorialDefaults={saveProjectEditorialDefaults}
             onSelectSection={selectSection}
             onSelectSegment={selectSegment}
             processError={processError}
             processingDocumentId={processingDocumentId}
             project={activeProject}
+            projectError={projectError}
+            ruleSets={ruleSets}
             segmentError={segmentError}
             segmentLoadingDocumentId={
               isLoadingSegments ? (activeDocument?.id ?? null) : null
@@ -277,6 +361,7 @@ export function AppShell() {
             segments={segments}
             selectedSegment={selectedSegment}
             selectedSegmentId={selectedSegmentId}
+            styleProfiles={styleProfiles}
           />
         </div>
 
@@ -284,20 +369,20 @@ export function AppShell() {
           <ProjectComposer
             error={projectError}
             isCreating={isCreating}
-            onSubmit={submitProject}
+            onSubmit={handleSubmitProject}
           />
 
           <ProjectList
             activeProjectId={activeProject?.id ?? null}
             isLoading={isLoadingProjects}
-            onOpen={selectProject}
+            onOpen={handleSelectProject}
             openingProjectId={openingProjectId}
             projects={projects}
           />
 
           <section className="surface-card">
             <p className="surface-card__eyebrow">Command pattern</p>
-            <h2>{DESKTOP_COMMANDS.listRuleSets}</h2>
+            <h2>{DESKTOP_COMMANDS.updateProjectEditorialDefaults}</h2>
 
             <dl className="detail-list">
               <div>
@@ -335,6 +420,18 @@ export function AppShell() {
               <div>
                 <dt>Open project</dt>
                 <dd>{activeProject?.name ?? "None"}</dd>
+              </div>
+              <div>
+                <dt>Project default glossary</dt>
+                <dd>{activeProjectDefaultGlossary?.name ?? "None"}</dd>
+              </div>
+              <div>
+                <dt>Project default style</dt>
+                <dd>{activeProjectDefaultStyleProfile?.name ?? "None"}</dd>
+              </div>
+              <div>
+                <dt>Project default rules</dt>
+                <dd>{activeProjectDefaultRuleSet?.name ?? "None"}</dd>
               </div>
               <div>
                 <dt>Glossary totals</dt>

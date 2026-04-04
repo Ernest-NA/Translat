@@ -430,6 +430,16 @@ select {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.project-defaults-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.project-editorial-defaults {
+  margin-top: 24px;
+}
+
 .rule-form-grid {
   display: grid;
   gap: 16px;
@@ -747,6 +757,7 @@ select {
 
   .glossary-entry-grid,
   .glossary-entry-form-grid,
+  .project-defaults-grid,
   .rule-form-grid,
   .style-profile-form-grid {
     grid-template-columns: 1fr;
