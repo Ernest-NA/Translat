@@ -75,7 +75,9 @@ export function ProjectWorkspace({
         <ul className="readiness-list">
           <li>Projects are persisted in the encrypted SQLite database.</li>
           <li>The active project selection survives app restarts.</li>
-          <li>C2 and C3 both work against the explicitly open project.</li>
+          <li>
+            Documents and glossaries both hang off explicit project context.
+          </li>
         </ul>
       </section>
     );
@@ -145,16 +147,20 @@ export function ProjectWorkspace({
       />
 
       <section className="workspace-readiness">
-        <p className="surface-card__eyebrow">Ready for C5</p>
-        <h3>Document structure now enriches segment navigation</h3>
+        <p className="surface-card__eyebrow">Project foundation</p>
+        <h3>Document workflow remains available alongside D1 glossaries</h3>
         <ul className="readiness-list">
           <li>Imported documents are linked explicitly to this project id.</li>
           <li>
             Segment processing persists ordered source segments per document.
           </li>
           <li>
-            C5 persists a minimal section outline and uses it to orient segment
-            navigation without adding editing or reconstruction flows.
+            Section outlines keep segment navigation usable without adding
+            editing or reconstruction flows.
+          </li>
+          <li>
+            D1 glossary linkage stays manual and optional. No project default is
+            introduced here.
           </li>
         </ul>
       </section>

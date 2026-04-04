@@ -74,17 +74,12 @@ pub fn load_existing_encryption_key(key_path: &Path) -> Result<String, Persisten
     })
 }
 
-pub fn protect_local_payload(
-    plaintext: &[u8],
-    purpose: &str,
-) -> Result<Vec<u8>, PersistenceError> {
+pub fn protect_local_payload(plaintext: &[u8], purpose: &str) -> Result<Vec<u8>, PersistenceError> {
     protect_bytes(plaintext, purpose, "local payload")
 }
 
 #[allow(dead_code)]
-pub fn unprotect_local_payload(
-    ciphertext: &[u8],
-) -> Result<Vec<u8>, PersistenceError> {
+pub fn unprotect_local_payload(ciphertext: &[u8]) -> Result<Vec<u8>, PersistenceError> {
     unprotect_bytes(ciphertext, "local payload")
 }
 
@@ -267,6 +262,8 @@ mod tests {
         assert_eq!(encryption_key.len(), 43);
         assert!(encryption_key
             .chars()
-            .all(|character| character.is_ascii_alphanumeric() || character == '-' || character == '_'));
+            .all(|character| character.is_ascii_alphanumeric()
+                || character == '-'
+                || character == '_'));
     }
 }

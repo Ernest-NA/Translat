@@ -1,13 +1,19 @@
 import { useCallback, useRef } from "react";
 import { DESKTOP_COMMANDS } from "../../shared/desktop";
+import { GlossaryWorkspace } from "../components/GlossaryWorkspace";
 import { HealthcheckPanel } from "../components/HealthcheckPanel";
 import { ProjectComposer } from "../components/ProjectComposer";
 import { ProjectList } from "../components/ProjectList";
 import { ProjectWorkspace } from "../components/ProjectWorkspace";
+import { RuleSetsWorkspace } from "../components/RuleSetsWorkspace";
+import { StyleProfilesWorkspace } from "../components/StyleProfilesWorkspace";
 import { useDocumentSegments } from "../hooks/useDocumentSegments";
+import { useGlossariesWorkspace } from "../hooks/useGlossariesWorkspace";
 import { useHealthcheck } from "../hooks/useHealthcheck";
 import { useProjectDocuments } from "../hooks/useProjectDocuments";
 import { useProjectsWorkspace } from "../hooks/useProjectsWorkspace";
+import { useRuleSetsWorkspace } from "../hooks/useRuleSetsWorkspace";
+import { useStyleProfilesWorkspace } from "../hooks/useStyleProfilesWorkspace";
 
 function formatCheckedAt(value?: number) {
   if (!value) {
@@ -29,6 +35,53 @@ export function AppShell() {
     selectProject,
     submitProject,
   } = useProjectsWorkspace();
+  const {
+    activeGlossary,
+    activeGlossaryCount,
+    archivedGlossaryCount,
+    error: glossaryError,
+    glossaries,
+    isCreating: isCreatingGlossary,
+    isLoading: isLoadingGlossaries,
+    isSaving: isSavingGlossary,
+    openingGlossaryId,
+    reload: reloadGlossaries,
+    saveGlossary,
+    selectGlossary,
+    submitGlossary,
+    totalGlossaryCount,
+  } = useGlossariesWorkspace();
+  const {
+    activeRuleSet,
+    activeRuleSetCount,
+    archivedRuleSetCount,
+    error: ruleSetError,
+    isCreating: isCreatingRuleSet,
+    isLoading: isLoadingRuleSets,
+    isSaving: isSavingRuleSet,
+    openingRuleSetId,
+    reload: reloadRuleSets,
+    ruleSets,
+    saveRuleSet,
+    selectRuleSet,
+    submitRuleSet,
+    totalRuleSetCount,
+  } = useRuleSetsWorkspace();
+  const {
+    activeStyleProfile,
+    activeStyleProfileCount,
+    archivedStyleProfileCount,
+    error: styleProfileError,
+    isCreating: isCreatingStyleProfile,
+    isLoading: isLoadingStyleProfiles,
+    isSaving: isSavingStyleProfile,
+    openingStyleProfileId,
+    saveStyleProfile,
+    selectStyleProfile,
+    styleProfiles,
+    submitStyleProfile,
+    totalStyleProfileCount,
+  } = useStyleProfilesWorkspace();
   const {
     documents,
     importError,
@@ -108,32 +161,97 @@ export function AppShell() {
       <header className="app-shell__header">
         <div>
           <p className="app-shell__eyebrow">Translat</p>
-          <h1>Document structure and segments</h1>
+          <h1>Rule sets, style profiles, and terminology</h1>
           <p className="app-shell__lead">
-            C5 adds a minimal persisted section outline on top of segmented
-            documents so the workspace can orient segment navigation with a
-            stable document structure.
+            D4 adds reusable persisted rule sets and individual editorial rules
+            on top of the glossary, terminology, and style-profile foundation,
+            while keeping automated execution, AI integration, and project
+            defaults out of scope.
           </p>
         </div>
 
         <div className="app-shell__header-meta">
           <span>{runtimeLabel}</span>
           <span>{projects.length} persisted projects</span>
+          <span>{totalRuleSetCount} persisted rule sets</span>
+          <span>{totalStyleProfileCount} persisted style profiles</span>
+          <span>{totalGlossaryCount} persisted glossaries</span>
           <span>
-            {activeProject
-              ? `${documents.length} documents in workspace`
-              : "No active project"}
+            {activeRuleSet
+              ? `Open rule set: ${activeRuleSet.name}`
+              : "No open rule set"}
           </span>
           <span>
-            {activeDocument
-              ? `${sections.length} sections | ${segments.length} segments`
-              : "No open document"}
+            {activeStyleProfile
+              ? `Open style profile: ${activeStyleProfile.name}`
+              : "No open style profile"}
+          </span>
+          <span>
+            {activeGlossary
+              ? `Open glossary: ${activeGlossary.name}`
+              : "No open glossary"}
+          </span>
+          <span>
+            {activeProject
+              ? `${documents.length} project documents`
+              : "No active project"}
           </span>
         </div>
       </header>
 
       <section className="app-shell__grid">
         <div className="app-shell__primary">
+          <RuleSetsWorkspace
+            activeRuleSet={activeRuleSet}
+            activeRuleSetCount={activeRuleSetCount}
+            archivedRuleSetCount={archivedRuleSetCount}
+            error={ruleSetError}
+            isCreating={isCreatingRuleSet}
+            isLoading={isLoadingRuleSets}
+            isSaving={isSavingRuleSet}
+            onOpenRuleSet={selectRuleSet}
+            onReloadRuleSets={reloadRuleSets}
+            onSubmitRuleSet={submitRuleSet}
+            onUpdateRuleSet={saveRuleSet}
+            openingRuleSetId={openingRuleSetId}
+            ruleSets={ruleSets}
+            totalRuleSetCount={totalRuleSetCount}
+          />
+
+          <StyleProfilesWorkspace
+            activeStyleProfile={activeStyleProfile}
+            activeStyleProfileCount={activeStyleProfileCount}
+            archivedStyleProfileCount={archivedStyleProfileCount}
+            error={styleProfileError}
+            isCreating={isCreatingStyleProfile}
+            isLoading={isLoadingStyleProfiles}
+            isSaving={isSavingStyleProfile}
+            onOpenStyleProfile={selectStyleProfile}
+            onSubmitStyleProfile={submitStyleProfile}
+            onUpdateStyleProfile={saveStyleProfile}
+            openingStyleProfileId={openingStyleProfileId}
+            styleProfiles={styleProfiles}
+            totalStyleProfileCount={totalStyleProfileCount}
+          />
+
+          <GlossaryWorkspace
+            activeGlossary={activeGlossary}
+            activeGlossaryCount={activeGlossaryCount}
+            archivedGlossaryCount={archivedGlossaryCount}
+            error={glossaryError}
+            glossaries={glossaries}
+            isCreating={isCreatingGlossary}
+            isLoading={isLoadingGlossaries}
+            isSaving={isSavingGlossary}
+            onOpenGlossary={selectGlossary}
+            onSubmitGlossary={submitGlossary}
+            onUpdateGlossary={saveGlossary}
+            openingGlossaryId={openingGlossaryId}
+            onReloadGlossaries={reloadGlossaries}
+            projects={projects}
+            totalGlossaryCount={totalGlossaryCount}
+          />
+
           <ProjectWorkspace
             activeDocument={activeDocument}
             documents={documents}
@@ -160,36 +278,6 @@ export function AppShell() {
             selectedSegment={selectedSegment}
             selectedSegmentId={selectedSegmentId}
           />
-
-          <section className="surface-card surface-card--split">
-            <div>
-              <p className="surface-card__eyebrow">C5 scope</p>
-              <h2>
-                Orient segment navigation with a persisted section outline.
-              </h2>
-              <p className="surface-card__copy">
-                This slice stays focused on adding a conservative document
-                structure layer over persisted segments without introducing
-                editing, translation, QA, or AI actions.
-              </p>
-            </div>
-
-            <ul className="capability-list">
-              <li>
-                Segmented documents expose persisted sections alongside their
-                ordered segments.
-              </li>
-              <li>
-                The outline degrades gracefully to a single document-level
-                section when no clearer structure is detected.
-              </li>
-              <li>
-                The selected segment still shows sequence, state, source text,
-                and current target text when present.
-              </li>
-              <li>Editing, translation, AI, and history remain outside C5.</li>
-            </ul>
-          </section>
         </div>
 
         <aside className="app-shell__sidebar">
@@ -209,7 +297,7 @@ export function AppShell() {
 
           <section className="surface-card">
             <p className="surface-card__eyebrow">Command pattern</p>
-            <h2>{DESKTOP_COMMANDS.listDocumentSegments}</h2>
+            <h2>{DESKTOP_COMMANDS.listRuleSets}</h2>
 
             <dl className="detail-list">
               <div>
@@ -221,12 +309,52 @@ export function AppShell() {
                 <dd>{formatCheckedAt(healthcheck?.checkedAt)}</dd>
               </div>
               <div>
+                <dt>Open glossary</dt>
+                <dd>{activeGlossary?.name ?? "None"}</dd>
+              </div>
+              <div>
+                <dt>Open rule set</dt>
+                <dd>{activeRuleSet?.name ?? "None"}</dd>
+              </div>
+              <div>
+                <dt>Open style profile</dt>
+                <dd>{activeStyleProfile?.name ?? "None"}</dd>
+              </div>
+              <div>
+                <dt>Rule-set status</dt>
+                <dd>{activeRuleSet?.status ?? "None"}</dd>
+              </div>
+              <div>
+                <dt>Style profile status</dt>
+                <dd>{activeStyleProfile?.status ?? "None"}</dd>
+              </div>
+              <div>
+                <dt>Glossary status</dt>
+                <dd>{activeGlossary?.status ?? "None"}</dd>
+              </div>
+              <div>
                 <dt>Open project</dt>
                 <dd>{activeProject?.name ?? "None"}</dd>
               </div>
               <div>
-                <dt>Imported docs</dt>
-                <dd>{activeProject ? documents.length : 0}</dd>
+                <dt>Glossary totals</dt>
+                <dd>
+                  {activeGlossaryCount} active | {archivedGlossaryCount}{" "}
+                  archived
+                </dd>
+              </div>
+              <div>
+                <dt>Rule-set totals</dt>
+                <dd>
+                  {activeRuleSetCount} active | {archivedRuleSetCount} archived
+                </dd>
+              </div>
+              <div>
+                <dt>Style profile totals</dt>
+                <dd>
+                  {activeStyleProfileCount} active | {archivedStyleProfileCount}{" "}
+                  archived
+                </dd>
               </div>
               <div>
                 <dt>Open document</dt>

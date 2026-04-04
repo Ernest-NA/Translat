@@ -374,9 +374,7 @@ impl<'connection> DocumentRepository<'connection> {
             .execute("DELETE FROM documents WHERE id = ?1", [document_id])
             .map_err(|error| {
                 PersistenceError::with_details(
-                    format!(
-                        "The document repository could not delete document {document_id}."
-                    ),
+                    format!("The document repository could not delete document {document_id}."),
                     error,
                 )
             })?;
@@ -458,9 +456,7 @@ mod tests {
     use tempfile::tempdir;
 
     use super::DocumentRepository;
-    use crate::documents::{
-        NewDocument, DOCUMENT_SOURCE_LOCAL_FILE, DOCUMENT_STATUS_IMPORTED,
-    };
+    use crate::documents::{NewDocument, DOCUMENT_SOURCE_LOCAL_FILE, DOCUMENT_STATUS_IMPORTED};
     use crate::persistence::bootstrap::{bootstrap_database, open_database_with_key};
     use crate::persistence::projects::ProjectRepository;
     use crate::projects::NewProject;
@@ -548,7 +544,11 @@ mod tests {
                     .create(&sample_project("prj_docs_001", "Project one", created_at))
                     .expect("first project should be created");
                 project_repository
-                    .create(&sample_project("prj_docs_002", "Project two", created_at + 1))
+                    .create(&sample_project(
+                        "prj_docs_002",
+                        "Project two",
+                        created_at + 1,
+                    ))
                     .expect("second project should be created");
             }
 

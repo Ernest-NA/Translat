@@ -1,12 +1,30 @@
 export const DESKTOP_COMMANDS = {
+  createGlossary: "create_glossary",
+  createGlossaryEntry: "create_glossary_entry",
   createProject: "create_project",
+  createRule: "create_rule",
+  createRuleSet: "create_rule_set",
+  createStyleProfile: "create_style_profile",
   healthcheck: "healthcheck",
   importProjectDocument: "import_project_document",
+  listGlossaryEntries: "list_glossary_entries",
+  listGlossaries: "list_glossaries",
   listProjects: "list_projects",
   listProjectDocuments: "list_project_documents",
+  listRuleSetRules: "list_rule_set_rules",
+  listRuleSets: "list_rule_sets",
+  listStyleProfiles: "list_style_profiles",
   listDocumentSegments: "list_document_segments",
+  openGlossary: "open_glossary",
   openProject: "open_project",
+  openRuleSet: "open_rule_set",
+  openStyleProfile: "open_style_profile",
   processProjectDocument: "process_project_document",
+  updateRule: "update_rule",
+  updateRuleSet: "update_rule_set",
+  updateGlossaryEntry: "update_glossary_entry",
+  updateGlossary: "update_glossary",
+  updateStyleProfile: "update_style_profile",
 } as const;
 
 export type DesktopCommandName =
@@ -49,6 +67,112 @@ export interface ProjectSummary {
 export interface ProjectsOverview {
   activeProjectId: string | null;
   projects: ProjectSummary[];
+}
+
+export type GlossaryStatus = "active" | "archived";
+export type GlossaryEntryStatus = "active" | "archived";
+export type RuleSetStatus = "active" | "archived";
+export type RuleType = "consistency" | "preference" | "restriction";
+export type RuleSeverity = "low" | "medium" | "high";
+export type StyleProfileStatus = "active" | "archived";
+export type StyleProfileTone = "neutral" | "direct" | "warm" | "technical";
+export type StyleProfileFormality =
+  | "formal"
+  | "neutral"
+  | "semi_formal"
+  | "informal";
+export type StyleProfileTreatmentPreference =
+  | "usted"
+  | "tuteo"
+  | "impersonal"
+  | "mixed";
+
+export interface GlossarySummary {
+  id: string;
+  name: string;
+  description: string | null;
+  projectId: string | null;
+  status: GlossaryStatus;
+  createdAt: number;
+  updatedAt: number;
+  lastOpenedAt: number;
+}
+
+export interface GlossariesOverview {
+  activeGlossaryId: string | null;
+  glossaries: GlossarySummary[];
+}
+
+export interface GlossaryEntrySummary {
+  id: string;
+  glossaryId: string;
+  sourceTerm: string;
+  targetTerm: string;
+  contextNote: string | null;
+  status: GlossaryEntryStatus;
+  createdAt: number;
+  updatedAt: number;
+  sourceVariants: string[];
+  targetVariants: string[];
+  forbiddenTerms: string[];
+}
+
+export interface GlossaryEntriesOverview {
+  glossaryId: string;
+  entries: GlossaryEntrySummary[];
+}
+
+export interface StyleProfileSummary {
+  id: string;
+  name: string;
+  description: string | null;
+  tone: StyleProfileTone;
+  formality: StyleProfileFormality;
+  treatmentPreference: StyleProfileTreatmentPreference;
+  consistencyInstructions: string | null;
+  editorialNotes: string | null;
+  status: StyleProfileStatus;
+  createdAt: number;
+  updatedAt: number;
+  lastOpenedAt: number;
+}
+
+export interface StyleProfilesOverview {
+  activeStyleProfileId: string | null;
+  styleProfiles: StyleProfileSummary[];
+}
+
+export interface RuleSetSummary {
+  id: string;
+  name: string;
+  description: string | null;
+  status: RuleSetStatus;
+  createdAt: number;
+  updatedAt: number;
+  lastOpenedAt: number;
+}
+
+export interface RuleSetsOverview {
+  activeRuleSetId: string | null;
+  ruleSets: RuleSetSummary[];
+}
+
+export interface RuleSummary {
+  id: string;
+  ruleSetId: string;
+  ruleType: RuleType;
+  severity: RuleSeverity;
+  name: string;
+  description: string | null;
+  guidance: string;
+  isEnabled: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface RuleSetRulesOverview {
+  ruleSetId: string;
+  rules: RuleSummary[];
 }
 
 export interface DocumentSummary {
@@ -109,8 +233,119 @@ export interface CreateProjectInput {
   description?: string;
 }
 
+export interface CreateGlossaryInput {
+  name: string;
+  description?: string;
+  projectId?: string;
+}
+
+export interface CreateGlossaryEntryInput {
+  glossaryId: string;
+  sourceTerm: string;
+  targetTerm: string;
+  contextNote?: string;
+  sourceVariants?: string[];
+  targetVariants?: string[];
+  forbiddenTerms?: string[];
+}
+
+export interface CreateStyleProfileInput {
+  name: string;
+  description?: string;
+  tone: StyleProfileTone;
+  formality: StyleProfileFormality;
+  treatmentPreference: StyleProfileTreatmentPreference;
+  consistencyInstructions?: string;
+  editorialNotes?: string;
+}
+
+export interface CreateRuleSetInput {
+  name: string;
+  description?: string;
+}
+
+export interface CreateRuleInput {
+  ruleSetId: string;
+  ruleType: RuleType;
+  severity: RuleSeverity;
+  name: string;
+  description?: string;
+  guidance: string;
+  isEnabled: boolean;
+}
+
 export interface OpenProjectInput {
   projectId: string;
+}
+
+export interface OpenGlossaryInput {
+  glossaryId: string;
+}
+
+export interface OpenStyleProfileInput {
+  styleProfileId: string;
+}
+
+export interface OpenRuleSetInput {
+  ruleSetId: string;
+}
+
+export interface ListGlossaryEntriesInput {
+  glossaryId: string;
+}
+
+export interface ListRuleSetRulesInput {
+  ruleSetId: string;
+}
+
+export interface UpdateGlossaryInput {
+  glossaryId: string;
+  name: string;
+  description?: string;
+  projectId?: string;
+  status: GlossaryStatus;
+}
+
+export interface UpdateGlossaryEntryInput {
+  glossaryEntryId: string;
+  glossaryId: string;
+  sourceTerm: string;
+  targetTerm: string;
+  contextNote?: string;
+  sourceVariants?: string[];
+  targetVariants?: string[];
+  forbiddenTerms?: string[];
+  status: GlossaryEntryStatus;
+}
+
+export interface UpdateStyleProfileInput {
+  styleProfileId: string;
+  name: string;
+  description?: string;
+  tone: StyleProfileTone;
+  formality: StyleProfileFormality;
+  treatmentPreference: StyleProfileTreatmentPreference;
+  consistencyInstructions?: string;
+  editorialNotes?: string;
+  status: StyleProfileStatus;
+}
+
+export interface UpdateRuleSetInput {
+  ruleSetId: string;
+  name: string;
+  description?: string;
+  status: RuleSetStatus;
+}
+
+export interface UpdateRuleInput {
+  ruleId: string;
+  ruleSetId: string;
+  ruleType: RuleType;
+  severity: RuleSeverity;
+  name: string;
+  description?: string;
+  guidance: string;
+  isEnabled: boolean;
 }
 
 export interface ListProjectDocumentsInput {

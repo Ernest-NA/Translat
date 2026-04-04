@@ -17,12 +17,16 @@ impl Migration {
             ("0003", "documents") => "0003_documents",
             ("0004", "segments") => "0004_segments",
             ("0005", "document_sections") => "0005_document_sections",
+            ("0006", "glossaries") => "0006_glossaries",
+            ("0007", "glossary_entries") => "0007_glossary_entries",
+            ("0008", "style_profiles") => "0008_style_profiles",
+            ("0009", "rule_sets") => "0009_rule_sets",
             _ => self.version,
         }
     }
 }
 
-const MIGRATIONS: [Migration; 5] = [
+const MIGRATIONS: [Migration; 9] = [
     Migration {
         version: "0001",
         name: "initial_schema",
@@ -47,6 +51,26 @@ const MIGRATIONS: [Migration; 5] = [
         version: "0005",
         name: "document_sections",
         sql: include_str!("../../migrations/0005_document_sections.sql"),
+    },
+    Migration {
+        version: "0006",
+        name: "glossaries",
+        sql: include_str!("../../migrations/0006_glossaries.sql"),
+    },
+    Migration {
+        version: "0007",
+        name: "glossary_entries",
+        sql: include_str!("../../migrations/0007_glossary_entries.sql"),
+    },
+    Migration {
+        version: "0008",
+        name: "style_profiles",
+        sql: include_str!("../../migrations/0008_style_profiles.sql"),
+    },
+    Migration {
+        version: "0009",
+        name: "rule_sets",
+        sql: include_str!("../../migrations/0009_rule_sets.sql"),
     },
 ];
 
