@@ -31,6 +31,12 @@ function formatTimestamp(timestamp: number) {
   return new Date(timestamp * 1000).toLocaleString();
 }
 
+function normalizeOptionalText(value: string) {
+  const normalizedValue = value.trim();
+
+  return normalizedValue.length > 0 ? normalizedValue : undefined;
+}
+
 export function RuleSetsWorkspace({
   activeRuleSet,
   activeRuleSetCount,
@@ -131,8 +137,8 @@ export function RuleSetsWorkspace({
 
     const ruleSetUpdate: UpdateRuleSetInput = {
       ruleSetId: activeRuleSet.id,
-      name: draftName,
-      description: draftDescription || undefined,
+      name: draftName.trim(),
+      description: normalizeOptionalText(draftDescription),
       status: draftStatus,
     };
 
@@ -169,8 +175,8 @@ export function RuleSetsWorkspace({
 
     const ruleSetUpdate: UpdateRuleSetInput = {
       ruleSetId: activeRuleSet.id,
-      name: draftName,
-      description: draftDescription || undefined,
+      name: draftName.trim(),
+      description: normalizeOptionalText(draftDescription),
       status: activeRuleSet.status === "active" ? "archived" : "active",
     };
 

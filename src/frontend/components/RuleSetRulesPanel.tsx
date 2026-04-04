@@ -81,7 +81,16 @@ export function RuleSetRulesPanel({
 
   useEffect(() => {
     const nextRevision = activeRule
-      ? `${activeRule.id}:${activeRule.updatedAt}`
+      ? JSON.stringify([
+          activeRule.id,
+          activeRule.updatedAt,
+          activeRule.name,
+          activeRule.ruleType,
+          activeRule.severity,
+          activeRule.description ?? "",
+          activeRule.guidance,
+          activeRule.isEnabled,
+        ])
       : null;
 
     if (previousRuleRevisionRef.current === nextRevision) {
