@@ -41,6 +41,7 @@ export function AppShell() {
     isLoading: isLoadingGlossaries,
     isSaving: isSavingGlossary,
     openingGlossaryId,
+    reload: reloadGlossaries,
     saveGlossary,
     selectGlossary,
     submitGlossary,
@@ -125,11 +126,12 @@ export function AppShell() {
       <header className="app-shell__header">
         <div>
           <p className="app-shell__eyebrow">Translat</p>
-          <h1>Reusable glossary management</h1>
+          <h1>Glossary terminology and variants</h1>
           <p className="app-shell__lead">
-            D1 adds persisted glossary containers with optional project linkage,
-            archivado lógico y una vista de detalle editable, while keeping the
-            existing C1-C5 project and document foundation intact.
+            D2 extends persisted glossaries with CRUD for terminology entries,
+            source and target terms, and basic variants or forbidden terms,
+            while keeping AI, automatic matching, and project defaults out of
+            scope.
           </p>
         </div>
 
@@ -165,6 +167,7 @@ export function AppShell() {
             onSubmitGlossary={submitGlossary}
             onUpdateGlossary={saveGlossary}
             openingGlossaryId={openingGlossaryId}
+            onReloadGlossaries={reloadGlossaries}
             projects={projects}
             totalGlossaryCount={totalGlossaryCount}
           />
@@ -214,7 +217,7 @@ export function AppShell() {
 
           <section className="surface-card">
             <p className="surface-card__eyebrow">Command pattern</p>
-            <h2>{DESKTOP_COMMANDS.listGlossaries}</h2>
+            <h2>{DESKTOP_COMMANDS.listGlossaryEntries}</h2>
 
             <dl className="detail-list">
               <div>

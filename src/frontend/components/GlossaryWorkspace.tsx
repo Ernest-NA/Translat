@@ -6,6 +6,7 @@ import type {
   UpdateGlossaryInput,
 } from "../../shared/desktop";
 import type { DesktopCommandError } from "../lib/desktop";
+import { GlossaryEntriesPanel } from "./GlossaryEntriesPanel";
 
 interface GlossaryWorkspaceProps {
   activeGlossary: GlossarySummary | null;
@@ -24,6 +25,7 @@ interface GlossaryWorkspaceProps {
   }) => Promise<boolean>;
   onUpdateGlossary: (input: UpdateGlossaryInput) => Promise<boolean>;
   openingGlossaryId: string | null;
+  onReloadGlossaries: () => Promise<void>;
   projects: ProjectSummary[];
   totalGlossaryCount: number;
 }
@@ -49,6 +51,7 @@ export function GlossaryWorkspace({
   onSubmitGlossary,
   onUpdateGlossary,
   openingGlossaryId,
+  onReloadGlossaries,
   projects,
   totalGlossaryCount,
 }: GlossaryWorkspaceProps) {
@@ -59,12 +62,14 @@ export function GlossaryWorkspace({
   const [draftName, setDraftName] = useState("");
   const [draftProjectId, setDraftProjectId] = useState("");
   const [draftStatus, setDraftStatus] = useState<GlossaryStatus>("active");
+  const [hasUnsavedEntryChanges, setHasUnsavedEntryChanges] = useState(false);
 
   useEffect(() => {
     setDraftName(activeGlossary?.name ?? "");
     setDraftDescription(activeGlossary?.description ?? "");
     setDraftProjectId(activeGlossary?.projectId ?? "");
     setDraftStatus(activeGlossary?.status ?? "active");
+    setHasUnsavedEntryChanges(false);
   }, [activeGlossary]);
 
   const projectNames = useMemo(() => projectLabelById(projects), [projects]);
@@ -125,9 +130,9 @@ export function GlossaryWorkspace({
     }
 
     if (
-      isDirty &&
+      (isDirty || hasUnsavedEntryChanges) &&
       !window.confirm(
-        "You have unsaved glossary changes. Open another glossary and discard them?",
+        "You have unsaved glossary or terminology changes. Open another glossary and discard them?",
       )
     ) {
       return;
@@ -155,11 +160,11 @@ export function GlossaryWorkspace({
       <div className="surface-card__heading">
         <div>
           <p className="surface-card__eyebrow">Glossaries</p>
-          <h2>Reusable terminology containers</h2>
+          <h2>Persisted containers plus terminology entries</h2>
           <p className="surface-card__copy">
-            D1 adds persisted glossaries with optional project linkage,
-            archivado lógico y un detalle editable listo para que D2 gestione
-            entradas terminológicas dentro de cada contenedor.
+            D2 keeps the D1 glossary container intact and adds CRUD for source
+            and target terminology, basic variants, and forbidden terms without
+            mixing in AI behavior or project defaults.
           </p>
         </div>
 
@@ -182,10 +187,10 @@ export function GlossaryWorkspace({
       <div className="glossary-grid">
         <section className="workspace-panel">
           <p className="surface-card__eyebrow">Create glossary</p>
-          <h3>Persist a reusable editorial asset.</h3>
+          <h3>Persist a reusable editorial container</h3>
           <p className="surface-card__copy">
-            Keep the metadata intentionally small. D1 only defines the
-            container, not the terminology entries that will arrive in D2.
+            Keep the metadata intentionally small. The glossary remains the
+            explicit owner of all D2 terminology entries.
           </p>
 
           <form className="project-form" onSubmit={handleCreateSubmit}>
@@ -227,7 +232,7 @@ export function GlossaryWorkspace({
                 disabled={isCreating}
                 maxLength={1000}
                 onChange={(event) => setCreateDescription(event.target.value)}
-                placeholder="Optional editorial framing for future D2 entries."
+                placeholder="Optional editorial framing for the termbase."
                 rows={4}
                 value={createDescription}
               />
@@ -274,7 +279,7 @@ export function GlossaryWorkspace({
           {!isLoading && glossaries.length === 0 ? (
             <p className="surface-card__copy">
               No glossary exists yet. Create the first reusable container to
-              leave D2 a real persisted base.
+              leave D2 with a persisted terminology home.
             </p>
           ) : null}
 
@@ -302,7 +307,7 @@ export function GlossaryWorkspace({
 
                       <p>
                         {glossary.description ??
-                          "No description yet. This glossary is ready for future D2 entries."}
+                          "No description yet. This glossary is ready for persisted terminology."}
                       </p>
 
                       <dl className="project-list__meta">
@@ -358,117 +363,127 @@ export function GlossaryWorkspace({
         {!activeGlossary ? (
           <div className="glossary-empty-state">
             <p className="surface-card__copy">
-              Select a glossary from the list to edit its basic metadata, move
-              it between active and archived state, or prepare it for D2.
+              Select a glossary from the list to edit its metadata and manage
+              the terminology entries that belong to it.
             </p>
 
             <ul className="readiness-list">
-              <li>The glossary remains independent from its future entries.</li>
+              <li>The glossary remains independent from project defaults.</li>
               <li>
                 Project linkage is optional and never assigned by default.
               </li>
-              <li>Archivado funciona como borrado lógico para el MVP.</li>
+              <li>
+                Archiving continues to act as the glossary-level soft delete.
+              </li>
             </ul>
           </div>
         ) : (
-          <form className="project-form" onSubmit={handleUpdateSubmit}>
-            <label className="field-group">
-              <span>Glossary name</span>
-              <input
-                className="field-control"
-                disabled={isSaving}
-                maxLength={120}
-                onChange={(event) => setDraftName(event.target.value)}
-                required
-                value={draftName}
-              />
-            </label>
+          <>
+            <form className="project-form" onSubmit={handleUpdateSubmit}>
+              <label className="field-group">
+                <span>Glossary name</span>
+                <input
+                  className="field-control"
+                  disabled={isSaving}
+                  maxLength={120}
+                  onChange={(event) => setDraftName(event.target.value)}
+                  required
+                  value={draftName}
+                />
+              </label>
 
-            <label className="field-group">
-              <span>Project scope</span>
-              <select
-                className="field-control"
-                disabled={isSaving}
-                onChange={(event) => setDraftProjectId(event.target.value)}
-                value={draftProjectId}
-              >
-                <option value="">Reusable across projects</option>
-                {projects.map((project) => (
-                  <option key={project.id} value={project.id}>
-                    {project.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+              <label className="field-group">
+                <span>Project scope</span>
+                <select
+                  className="field-control"
+                  disabled={isSaving}
+                  onChange={(event) => setDraftProjectId(event.target.value)}
+                  value={draftProjectId}
+                >
+                  <option value="">Reusable across projects</option>
+                  {projects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
 
-            <label className="field-group">
-              <span>Status</span>
-              <select
-                className="field-control"
-                disabled={isSaving}
-                onChange={(event) =>
-                  setDraftStatus(event.target.value as GlossaryStatus)
-                }
-                value={draftStatus}
-              >
-                <option value="active">Active</option>
-                <option value="archived">Archived</option>
-              </select>
-            </label>
+              <label className="field-group">
+                <span>Status</span>
+                <select
+                  className="field-control"
+                  disabled={isSaving}
+                  onChange={(event) =>
+                    setDraftStatus(event.target.value as GlossaryStatus)
+                  }
+                  value={draftStatus}
+                >
+                  <option value="active">Active</option>
+                  <option value="archived">Archived</option>
+                </select>
+              </label>
 
-            <label className="field-group">
-              <span>Description</span>
-              <textarea
-                className="field-control field-control--textarea"
-                disabled={isSaving}
-                maxLength={1000}
-                onChange={(event) => setDraftDescription(event.target.value)}
-                rows={5}
-                value={draftDescription}
-              />
-            </label>
+              <label className="field-group">
+                <span>Description</span>
+                <textarea
+                  className="field-control field-control--textarea"
+                  disabled={isSaving}
+                  maxLength={1000}
+                  onChange={(event) => setDraftDescription(event.target.value)}
+                  rows={5}
+                  value={draftDescription}
+                />
+              </label>
 
-            <dl className="detail-list">
-              <div>
-                <dt>Glossary ID</dt>
-                <dd>{activeGlossary.id}</dd>
+              <dl className="detail-list">
+                <div>
+                  <dt>Glossary ID</dt>
+                  <dd>{activeGlossary.id}</dd>
+                </div>
+                <div>
+                  <dt>Created</dt>
+                  <dd>{formatTimestamp(activeGlossary.createdAt)}</dd>
+                </div>
+                <div>
+                  <dt>Opened</dt>
+                  <dd>{formatTimestamp(activeGlossary.lastOpenedAt)}</dd>
+                </div>
+                <div>
+                  <dt>Updated</dt>
+                  <dd>{formatTimestamp(activeGlossary.updatedAt)}</dd>
+                </div>
+              </dl>
+
+              <div className="project-form__footer">
+                <button
+                  className="app-shell__button"
+                  disabled={isSaving}
+                  type="submit"
+                >
+                  {isSaving ? "Saving glossary..." : "Save glossary"}
+                </button>
+
+                <span className="project-form__hint">
+                  {isDirty
+                    ? "You have unsaved changes in this glossary."
+                    : "Entries and variants remain explicitly attached to this glossary."}
+                </span>
               </div>
-              <div>
-                <dt>Created</dt>
-                <dd>{formatTimestamp(activeGlossary.createdAt)}</dd>
-              </div>
-              <div>
-                <dt>Opened</dt>
-                <dd>{formatTimestamp(activeGlossary.lastOpenedAt)}</dd>
-              </div>
-              <div>
-                <dt>Updated</dt>
-                <dd>{formatTimestamp(activeGlossary.updatedAt)}</dd>
-              </div>
-            </dl>
 
-            <div className="project-form__footer">
-              <button
-                className="app-shell__button"
-                disabled={isSaving}
-                type="submit"
-              >
-                {isSaving ? "Saving glossary..." : "Save glossary"}
-              </button>
+              {error ? (
+                <p className="form-error" role="alert">
+                  {error.message}
+                </p>
+              ) : null}
+            </form>
 
-              <span className="project-form__hint">
-                {isDirty
-                  ? "You have unsaved changes in this glossary."
-                  : "D2 will consume this container to store entries and variants."}
-              </span>
-            </div>
-
-            {error ? (
-              <p className="form-error" role="alert">
-                {error.message}
-              </p>
-            ) : null}
-          </form>
+            <GlossaryEntriesPanel
+              glossary={activeGlossary}
+              onDirtyChange={setHasUnsavedEntryChanges}
+              onEntriesChanged={onReloadGlossaries}
+            />
+          </>
         )}
       </section>
     </section>

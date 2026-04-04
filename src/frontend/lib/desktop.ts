@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import {
+  type CreateGlossaryEntryInput,
   type CreateGlossaryInput,
   type CreateProjectInput,
   DESKTOP_COMMANDS,
@@ -8,10 +9,13 @@ import {
   type DocumentSegmentsOverview,
   type DocumentSummary,
   type GlossariesOverview,
+  type GlossaryEntriesOverview,
+  type GlossaryEntrySummary,
   type GlossarySummary,
   type HealthcheckResponse,
   type ImportDocumentInput,
   type ListDocumentSegmentsInput,
+  type ListGlossaryEntriesInput,
   type ListProjectDocumentsInput,
   type OpenGlossaryInput,
   type OpenProjectInput,
@@ -19,6 +23,7 @@ import {
   type ProjectDocumentsOverview,
   type ProjectSummary,
   type ProjectsOverview,
+  type UpdateGlossaryEntryInput,
   type UpdateGlossaryInput,
 } from "../../shared/desktop";
 
@@ -108,6 +113,15 @@ export function listGlossaries() {
   );
 }
 
+export function listGlossaryEntries(input: ListGlossaryEntriesInput) {
+  return invokeDesktopCommand<GlossaryEntriesOverview>(
+    DESKTOP_COMMANDS.listGlossaryEntries,
+    {
+      input,
+    },
+  );
+}
+
 export function createProject(input: CreateProjectInput) {
   return invokeDesktopCommand<ProjectSummary>(DESKTOP_COMMANDS.createProject, {
     input,
@@ -117,6 +131,15 @@ export function createProject(input: CreateProjectInput) {
 export function createGlossary(input: CreateGlossaryInput) {
   return invokeDesktopCommand<GlossarySummary>(
     DESKTOP_COMMANDS.createGlossary,
+    {
+      input,
+    },
+  );
+}
+
+export function createGlossaryEntry(input: CreateGlossaryEntryInput) {
+  return invokeDesktopCommand<GlossaryEntrySummary>(
+    DESKTOP_COMMANDS.createGlossaryEntry,
     {
       input,
     },
@@ -174,6 +197,15 @@ export function openGlossary(input: OpenGlossaryInput) {
 export function updateGlossary(input: UpdateGlossaryInput) {
   return invokeDesktopCommand<GlossarySummary>(
     DESKTOP_COMMANDS.updateGlossary,
+    {
+      input,
+    },
+  );
+}
+
+export function updateGlossaryEntry(input: UpdateGlossaryEntryInput) {
+  return invokeDesktopCommand<GlossaryEntrySummary>(
+    DESKTOP_COMMANDS.updateGlossaryEntry,
     {
       input,
     },
