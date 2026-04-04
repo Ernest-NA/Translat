@@ -227,7 +227,8 @@ fn inspect_connection(
         && migrations::has_table(connection, "projects")?
         && migrations::has_table(connection, "documents")?
         && migrations::has_table(connection, "segments")?
-        && migrations::has_table(connection, "document_sections")?;
+        && migrations::has_table(connection, "document_sections")?
+        && migrations::has_table(connection, "glossaries")?;
 
     Ok(DatabaseStatus {
         applied_migrations,
@@ -268,7 +269,8 @@ mod tests {
                 "0002_projects".to_owned(),
                 "0003_documents".to_owned(),
                 "0004_segments".to_owned(),
-                "0005_document_sections".to_owned()
+                "0005_document_sections".to_owned(),
+                "0006_glossaries".to_owned()
             ]
         );
         assert_eq!(
@@ -278,7 +280,8 @@ mod tests {
                 "0002_projects".to_owned(),
                 "0003_documents".to_owned(),
                 "0004_segments".to_owned(),
-                "0005_document_sections".to_owned()
+                "0005_document_sections".to_owned(),
+                "0006_glossaries".to_owned()
             ]
         );
         assert!(bootstrap_report.schema_ready);
@@ -303,7 +306,8 @@ mod tests {
                 "0002_projects".to_owned(),
                 "0003_documents".to_owned(),
                 "0004_segments".to_owned(),
-                "0005_document_sections".to_owned()
+                "0005_document_sections".to_owned(),
+                "0006_glossaries".to_owned()
             ]
         );
         assert!(second_report.schema_ready);
@@ -364,13 +368,22 @@ mod tests {
             )
             .expect("document_sections table should be queryable");
 
-        assert_eq!(migration_count, 5);
+        let glossaries_table_count = connection
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'glossaries'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("glossaries table should be queryable");
+
+        assert_eq!(migration_count, 6);
         assert_eq!(app_metadata_table_count, 1);
         assert_eq!(projects_table_count, 1);
         assert_eq!(documents_table_count, 1);
         assert_eq!(segments_table_count, 1);
         assert_eq!(document_sections_table_count, 1);
-        assert_eq!(database_status.migration_count, 5);
+        assert_eq!(glossaries_table_count, 1);
+        assert_eq!(database_status.migration_count, 6);
         assert_eq!(
             database_status.applied_migrations,
             vec![
@@ -378,7 +391,8 @@ mod tests {
                 "0002_projects".to_owned(),
                 "0003_documents".to_owned(),
                 "0004_segments".to_owned(),
-                "0005_document_sections".to_owned()
+                "0005_document_sections".to_owned(),
+                "0006_glossaries".to_owned()
             ]
         );
         assert!(database_status.schema_ready);

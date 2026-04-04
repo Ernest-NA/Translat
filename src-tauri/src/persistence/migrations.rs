@@ -17,12 +17,13 @@ impl Migration {
             ("0003", "documents") => "0003_documents",
             ("0004", "segments") => "0004_segments",
             ("0005", "document_sections") => "0005_document_sections",
+            ("0006", "glossaries") => "0006_glossaries",
             _ => self.version,
         }
     }
 }
 
-const MIGRATIONS: [Migration; 5] = [
+const MIGRATIONS: [Migration; 6] = [
     Migration {
         version: "0001",
         name: "initial_schema",
@@ -47,6 +48,11 @@ const MIGRATIONS: [Migration; 5] = [
         version: "0005",
         name: "document_sections",
         sql: include_str!("../../migrations/0005_document_sections.sql"),
+    },
+    Migration {
+        version: "0006",
+        name: "glossaries",
+        sql: include_str!("../../migrations/0006_glossaries.sql"),
     },
 ];
 

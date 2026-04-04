@@ -1,20 +1,25 @@
 import { invoke } from "@tauri-apps/api/core";
 import {
+  type CreateGlossaryInput,
   type CreateProjectInput,
   DESKTOP_COMMANDS,
   type DesktopCommandErrorPayload,
   type DesktopCommandName,
   type DocumentSegmentsOverview,
   type DocumentSummary,
+  type GlossariesOverview,
+  type GlossarySummary,
   type HealthcheckResponse,
   type ImportDocumentInput,
   type ListDocumentSegmentsInput,
   type ListProjectDocumentsInput,
+  type OpenGlossaryInput,
   type OpenProjectInput,
   type ProcessDocumentInput,
   type ProjectDocumentsOverview,
   type ProjectSummary,
   type ProjectsOverview,
+  type UpdateGlossaryInput,
 } from "../../shared/desktop";
 
 export class DesktopCommandError extends Error {
@@ -97,10 +102,25 @@ export function listProjects() {
   return invokeDesktopCommand<ProjectsOverview>(DESKTOP_COMMANDS.listProjects);
 }
 
+export function listGlossaries() {
+  return invokeDesktopCommand<GlossariesOverview>(
+    DESKTOP_COMMANDS.listGlossaries,
+  );
+}
+
 export function createProject(input: CreateProjectInput) {
   return invokeDesktopCommand<ProjectSummary>(DESKTOP_COMMANDS.createProject, {
     input,
   });
+}
+
+export function createGlossary(input: CreateGlossaryInput) {
+  return invokeDesktopCommand<GlossarySummary>(
+    DESKTOP_COMMANDS.createGlossary,
+    {
+      input,
+    },
+  );
 }
 
 export function listProjectDocuments(input: ListProjectDocumentsInput) {
@@ -143,4 +163,19 @@ export function openProject(input: OpenProjectInput) {
   return invokeDesktopCommand<ProjectSummary>(DESKTOP_COMMANDS.openProject, {
     input,
   });
+}
+
+export function openGlossary(input: OpenGlossaryInput) {
+  return invokeDesktopCommand<GlossarySummary>(DESKTOP_COMMANDS.openGlossary, {
+    input,
+  });
+}
+
+export function updateGlossary(input: UpdateGlossaryInput) {
+  return invokeDesktopCommand<GlossarySummary>(
+    DESKTOP_COMMANDS.updateGlossary,
+    {
+      input,
+    },
+  );
 }

@@ -199,6 +199,34 @@ select {
   overflow-wrap: anywhere;
 }
 
+.glossary-metrics {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0;
+}
+
+.glossary-metrics div {
+  min-width: 0;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.glossary-metrics dt {
+  margin-bottom: 4px;
+  color: rgba(239, 242, 245, 0.56);
+  font-size: 0.76rem;
+  text-transform: uppercase;
+}
+
+.glossary-metrics dd {
+  margin: 0;
+  color: #f2f5f8;
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
 .project-form {
   display: grid;
   gap: 16px;
@@ -338,6 +366,13 @@ select {
   margin-top: 24px;
 }
 
+.glossary-grid {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 24px;
+}
+
 .workspace-panel {
   min-width: 0;
   padding: 22px;
@@ -350,6 +385,27 @@ select {
   display: grid;
   gap: 14px;
   margin-top: 18px;
+}
+
+.glossary-list {
+  display: grid;
+  gap: 12px;
+  margin: 18px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.glossary-list__item {
+  min-height: 100%;
+}
+
+.glossary-detail {
+  margin-top: 20px;
+}
+
+.glossary-empty-state {
+  display: grid;
+  gap: 18px;
 }
 
 .document-list {
@@ -632,6 +688,10 @@ select {
     grid-template-columns: 1fr;
   }
 
+  .glossary-grid {
+    grid-template-columns: 1fr;
+  }
+
   .app-shell__header {
     flex-direction: column;
   }
@@ -653,6 +713,10 @@ select {
   }
 
   .detail-list {
+    grid-template-columns: 1fr;
+  }
+
+  .glossary-metrics {
     grid-template-columns: 1fr;
   }
 
