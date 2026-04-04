@@ -63,6 +63,8 @@ export function useRuleSetsWorkspace() {
   const [openingRuleSetId, setOpeningRuleSetId] = useState<string | null>(null);
   const latestReloadRequestRef = useRef(0);
   const localStateVersionRef = useRef(0);
+  const selectionIntentVersionRef = useRef(0);
+  const latestOpenRequestVersionRef = useRef(0);
 
   const applyLocalOverview = useCallback(
     (
@@ -120,13 +122,19 @@ export function useRuleSetsWorkspace() {
 
   const submitRuleSet = useCallback(
     async (input: CreateRuleSetInput): Promise<boolean> => {
+      const selectionIntentVersion = selectionIntentVersionRef.current + 1;
+
+      selectionIntentVersionRef.current = selectionIntentVersion;
       setIsCreating(true);
       setError(null);
 
       try {
         const createdRuleSet = await createRuleSet(input);
         applyLocalOverview((currentOverview) => ({
-          activeRuleSetId: createdRuleSet.id,
+          activeRuleSetId:
+            selectionIntentVersion === selectionIntentVersionRef.current
+              ? createdRuleSet.id
+              : currentOverview.activeRuleSetId,
           ruleSets: [
             createdRuleSet,
             ...currentOverview.ruleSets.filter(
@@ -136,14 +144,16 @@ export function useRuleSetsWorkspace() {
         }));
         return true;
       } catch (caughtError) {
-        setError(
-          caughtError instanceof DesktopCommandError
-            ? caughtError
-            : buildUnexpectedError(
-                "create_rule_set",
-                "The desktop shell could not create the rule set.",
-              ),
-        );
+        if (selectionIntentVersion === selectionIntentVersionRef.current) {
+          setError(
+            caughtError instanceof DesktopCommandError
+              ? caughtError
+              : buildUnexpectedError(
+                  "create_rule_set",
+                  "The desktop shell could not create the rule set.",
+                ),
+          );
+        }
         return false;
       } finally {
         setIsCreating(false);
@@ -154,13 +164,20 @@ export function useRuleSetsWorkspace() {
 
   const selectRuleSet = useCallback(
     async (ruleSetId: string): Promise<boolean> => {
+      const selectionIntentVersion = selectionIntentVersionRef.current + 1;
+
+      selectionIntentVersionRef.current = selectionIntentVersion;
+      latestOpenRequestVersionRef.current = selectionIntentVersion;
       setOpeningRuleSetId(ruleSetId);
       setError(null);
 
       try {
         const openedRuleSet = await openRuleSet({ ruleSetId });
         applyLocalOverview((currentOverview) => ({
-          activeRuleSetId: openedRuleSet.id,
+          activeRuleSetId:
+            selectionIntentVersion === selectionIntentVersionRef.current
+              ? openedRuleSet.id
+              : currentOverview.activeRuleSetId,
           ruleSets: [
             openedRuleSet,
             ...currentOverview.ruleSets.filter(
@@ -170,17 +187,21 @@ export function useRuleSetsWorkspace() {
         }));
         return true;
       } catch (caughtError) {
-        setError(
-          caughtError instanceof DesktopCommandError
-            ? caughtError
-            : buildUnexpectedError(
-                "open_rule_set",
-                "The desktop shell could not open the rule set.",
-              ),
-        );
+        if (selectionIntentVersion === selectionIntentVersionRef.current) {
+          setError(
+            caughtError instanceof DesktopCommandError
+              ? caughtError
+              : buildUnexpectedError(
+                  "open_rule_set",
+                  "The desktop shell could not open the rule set.",
+                ),
+          );
+        }
         return false;
       } finally {
-        setOpeningRuleSetId(null);
+        if (selectionIntentVersion === latestOpenRequestVersionRef.current) {
+          setOpeningRuleSetId(null);
+        }
       }
     },
     [applyLocalOverview],
@@ -188,27 +209,35 @@ export function useRuleSetsWorkspace() {
 
   const saveRuleSet = useCallback(
     async (input: UpdateRuleSetInput): Promise<boolean> => {
+      const selectionIntentVersion = selectionIntentVersionRef.current + 1;
+
+      selectionIntentVersionRef.current = selectionIntentVersion;
       setIsSaving(true);
       setError(null);
 
       try {
         const updatedRuleSet = await updateRuleSet(input);
         applyLocalOverview((currentOverview) => ({
-          activeRuleSetId: updatedRuleSet.id,
+          activeRuleSetId:
+            selectionIntentVersion === selectionIntentVersionRef.current
+              ? updatedRuleSet.id
+              : currentOverview.activeRuleSetId,
           ruleSets: currentOverview.ruleSets.map((ruleSet) =>
             ruleSet.id === updatedRuleSet.id ? updatedRuleSet : ruleSet,
           ),
         }));
         return true;
       } catch (caughtError) {
-        setError(
-          caughtError instanceof DesktopCommandError
-            ? caughtError
-            : buildUnexpectedError(
-                "update_rule_set",
-                "The desktop shell could not save the rule set.",
-              ),
-        );
+        if (selectionIntentVersion === selectionIntentVersionRef.current) {
+          setError(
+            caughtError instanceof DesktopCommandError
+              ? caughtError
+              : buildUnexpectedError(
+                  "update_rule_set",
+                  "The desktop shell could not save the rule set.",
+                ),
+          );
+        }
         return false;
       } finally {
         setIsSaving(false);

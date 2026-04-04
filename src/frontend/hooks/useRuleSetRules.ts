@@ -95,8 +95,11 @@ export function useRuleSetRules(ruleSetId: string | null) {
   const localStateVersionRef = useRef(0);
   const activeRuleSetIdRef = useRef(ruleSetId);
   const previousRuleSetIdRef = useRef<string | null>(null);
+  const selectedRuleIdRef = useRef<string | null>(null);
+  const selectionIntentVersionRef = useRef(0);
 
   activeRuleSetIdRef.current = ruleSetId;
+  selectedRuleIdRef.current = selectedRuleId;
 
   useEffect(() => {
     if (previousRuleSetIdRef.current === ruleSetId) {
@@ -106,6 +109,8 @@ export function useRuleSetRules(ruleSetId: string | null) {
     previousRuleSetIdRef.current = ruleSetId;
     latestReloadRequestRef.current += 1;
     localStateVersionRef.current += 1;
+    selectionIntentVersionRef.current += 1;
+    selectedRuleIdRef.current = null;
     setSelectedRuleId(null);
     setError(null);
     setIsCreating(false);
@@ -141,14 +146,18 @@ export function useRuleSetRules(ruleSetId: string | null) {
         );
         const resolvedSelectedRuleId =
           nextSelectedRuleId ??
-          preferredSelectedRuleId(normalizedOverview.rules, selectedRuleId);
+          preferredSelectedRuleId(
+            normalizedOverview.rules,
+            selectedRuleIdRef.current,
+          );
 
+        selectedRuleIdRef.current = resolvedSelectedRuleId;
         setSelectedRuleId(resolvedSelectedRuleId);
 
         return normalizedOverview;
       });
     },
-    [selectedRuleId],
+    [],
   );
 
   const reportMutationError = useCallback(
@@ -195,12 +204,15 @@ export function useRuleSetRules(ruleSetId: string | null) {
       const normalizedOverview = normalizeOverview(nextOverview);
 
       setOverview(normalizedOverview);
-      setSelectedRuleId((currentSelectedRuleId) =>
-        preferredSelectedRuleId(
+      setSelectedRuleId((currentSelectedRuleId) => {
+        const resolvedSelectedRuleId = preferredSelectedRuleId(
           normalizedOverview.rules,
           currentSelectedRuleId,
-        ),
-      );
+        );
+
+        selectedRuleIdRef.current = resolvedSelectedRuleId;
+        return resolvedSelectedRuleId;
+      });
     } catch (caughtError) {
       if (reloadRequestId === latestReloadRequestRef.current) {
         setError(
@@ -230,6 +242,7 @@ export function useRuleSetRules(ruleSetId: string | null) {
       }
 
       const requestRuleSetId = ruleSetId;
+      const selectionIntentVersion = selectionIntentVersionRef.current;
 
       setIsCreating(true);
       setError(null);
@@ -251,7 +264,9 @@ export function useRuleSetRules(ruleSetId: string | null) {
               ),
             ],
           }),
-          createdRule.id,
+          selectionIntentVersion === selectionIntentVersionRef.current
+            ? createdRule.id
+            : selectedRuleIdRef.current,
         );
 
         return true;
@@ -276,6 +291,7 @@ export function useRuleSetRules(ruleSetId: string | null) {
   const saveRule = useCallback(
     async (input: UpdateRuleInput): Promise<boolean> => {
       const requestRuleSetId = input.ruleSetId;
+      const selectionIntentVersion = selectionIntentVersionRef.current;
 
       setIsSaving(true);
       setError(null);
@@ -294,7 +310,9 @@ export function useRuleSetRules(ruleSetId: string | null) {
               ),
             ],
           }),
-          updatedRule.id,
+          selectionIntentVersion === selectionIntentVersionRef.current
+            ? updatedRule.id
+            : selectedRuleIdRef.current,
         );
 
         return true;
@@ -343,7 +361,11 @@ export function useRuleSetRules(ruleSetId: string | null) {
     reload,
     rules: overview?.rules ?? [],
     saveRule,
-    selectRule: setSelectedRuleId,
+    selectRule: useCallback((ruleId: string | null) => {
+      selectionIntentVersionRef.current += 1;
+      selectedRuleIdRef.current = ruleId;
+      setSelectedRuleId(ruleId);
+    }, []),
     selectedRuleId,
     submitRule,
     totalRuleCount: overview?.rules.length ?? 0,

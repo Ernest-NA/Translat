@@ -102,6 +102,15 @@ export function RuleSetsWorkspace({
   async function handleCreateSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
+    if (
+      (isDirty || hasUnsavedRuleChanges) &&
+      !window.confirm(
+        "You have unsaved rule-set or rule changes. Create a new rule set and discard them?",
+      )
+    ) {
+      return;
+    }
+
     const wasCreated = await onSubmitRuleSet({
       description: createDescription || undefined,
       name: createName,
