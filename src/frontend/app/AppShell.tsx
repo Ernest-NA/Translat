@@ -1,10 +1,12 @@
 import { useCallback, useRef } from "react";
 import { DESKTOP_COMMANDS } from "../../shared/desktop";
+import { GlossaryWorkspace } from "../components/GlossaryWorkspace";
 import { HealthcheckPanel } from "../components/HealthcheckPanel";
 import { ProjectComposer } from "../components/ProjectComposer";
 import { ProjectList } from "../components/ProjectList";
 import { ProjectWorkspace } from "../components/ProjectWorkspace";
 import { useDocumentSegments } from "../hooks/useDocumentSegments";
+import { useGlossariesWorkspace } from "../hooks/useGlossariesWorkspace";
 import { useHealthcheck } from "../hooks/useHealthcheck";
 import { useProjectDocuments } from "../hooks/useProjectDocuments";
 import { useProjectsWorkspace } from "../hooks/useProjectsWorkspace";
@@ -29,6 +31,22 @@ export function AppShell() {
     selectProject,
     submitProject,
   } = useProjectsWorkspace();
+  const {
+    activeGlossary,
+    activeGlossaryCount,
+    archivedGlossaryCount,
+    error: glossaryError,
+    glossaries,
+    isCreating: isCreatingGlossary,
+    isLoading: isLoadingGlossaries,
+    isSaving: isSavingGlossary,
+    openingGlossaryId,
+    reload: reloadGlossaries,
+    saveGlossary,
+    selectGlossary,
+    submitGlossary,
+    totalGlossaryCount,
+  } = useGlossariesWorkspace();
   const {
     documents,
     importError,
@@ -108,32 +126,52 @@ export function AppShell() {
       <header className="app-shell__header">
         <div>
           <p className="app-shell__eyebrow">Translat</p>
-          <h1>Document structure and segments</h1>
+          <h1>Glossary terminology and variants</h1>
           <p className="app-shell__lead">
-            C5 adds a minimal persisted section outline on top of segmented
-            documents so the workspace can orient segment navigation with a
-            stable document structure.
+            D2 extends persisted glossaries with CRUD for terminology entries,
+            source and target terms, and basic variants or forbidden terms,
+            while keeping AI, automatic matching, and project defaults out of
+            scope.
           </p>
         </div>
 
         <div className="app-shell__header-meta">
           <span>{runtimeLabel}</span>
           <span>{projects.length} persisted projects</span>
+          <span>{totalGlossaryCount} persisted glossaries</span>
           <span>
-            {activeProject
-              ? `${documents.length} documents in workspace`
-              : "No active project"}
+            {activeGlossary
+              ? `Open glossary: ${activeGlossary.name}`
+              : "No open glossary"}
           </span>
           <span>
-            {activeDocument
-              ? `${sections.length} sections | ${segments.length} segments`
-              : "No open document"}
+            {activeProject
+              ? `${documents.length} project documents`
+              : "No active project"}
           </span>
         </div>
       </header>
 
       <section className="app-shell__grid">
         <div className="app-shell__primary">
+          <GlossaryWorkspace
+            activeGlossary={activeGlossary}
+            activeGlossaryCount={activeGlossaryCount}
+            archivedGlossaryCount={archivedGlossaryCount}
+            error={glossaryError}
+            glossaries={glossaries}
+            isCreating={isCreatingGlossary}
+            isLoading={isLoadingGlossaries}
+            isSaving={isSavingGlossary}
+            onOpenGlossary={selectGlossary}
+            onSubmitGlossary={submitGlossary}
+            onUpdateGlossary={saveGlossary}
+            openingGlossaryId={openingGlossaryId}
+            onReloadGlossaries={reloadGlossaries}
+            projects={projects}
+            totalGlossaryCount={totalGlossaryCount}
+          />
+
           <ProjectWorkspace
             activeDocument={activeDocument}
             documents={documents}
@@ -160,36 +198,6 @@ export function AppShell() {
             selectedSegment={selectedSegment}
             selectedSegmentId={selectedSegmentId}
           />
-
-          <section className="surface-card surface-card--split">
-            <div>
-              <p className="surface-card__eyebrow">C5 scope</p>
-              <h2>
-                Orient segment navigation with a persisted section outline.
-              </h2>
-              <p className="surface-card__copy">
-                This slice stays focused on adding a conservative document
-                structure layer over persisted segments without introducing
-                editing, translation, QA, or AI actions.
-              </p>
-            </div>
-
-            <ul className="capability-list">
-              <li>
-                Segmented documents expose persisted sections alongside their
-                ordered segments.
-              </li>
-              <li>
-                The outline degrades gracefully to a single document-level
-                section when no clearer structure is detected.
-              </li>
-              <li>
-                The selected segment still shows sequence, state, source text,
-                and current target text when present.
-              </li>
-              <li>Editing, translation, AI, and history remain outside C5.</li>
-            </ul>
-          </section>
         </div>
 
         <aside className="app-shell__sidebar">
@@ -209,7 +217,7 @@ export function AppShell() {
 
           <section className="surface-card">
             <p className="surface-card__eyebrow">Command pattern</p>
-            <h2>{DESKTOP_COMMANDS.listDocumentSegments}</h2>
+            <h2>{DESKTOP_COMMANDS.listGlossaryEntries}</h2>
 
             <dl className="detail-list">
               <div>
@@ -221,12 +229,23 @@ export function AppShell() {
                 <dd>{formatCheckedAt(healthcheck?.checkedAt)}</dd>
               </div>
               <div>
+                <dt>Open glossary</dt>
+                <dd>{activeGlossary?.name ?? "None"}</dd>
+              </div>
+              <div>
+                <dt>Glossary status</dt>
+                <dd>{activeGlossary?.status ?? "None"}</dd>
+              </div>
+              <div>
                 <dt>Open project</dt>
                 <dd>{activeProject?.name ?? "None"}</dd>
               </div>
               <div>
-                <dt>Imported docs</dt>
-                <dd>{activeProject ? documents.length : 0}</dd>
+                <dt>Glossary totals</dt>
+                <dd>
+                  {activeGlossaryCount} active | {archivedGlossaryCount}{" "}
+                  archived
+                </dd>
               </div>
               <div>
                 <dt>Open document</dt>

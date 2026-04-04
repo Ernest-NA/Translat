@@ -1,8 +1,10 @@
 pub mod bootstrap;
 pub mod documents;
 pub mod error;
+pub mod glossaries;
+pub mod glossary_entries;
 pub mod migrations;
 pub mod projects;
-pub mod sections;
 pub mod secret_store;
+pub mod sections;
 pub mod segments;

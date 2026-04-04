@@ -1,12 +1,19 @@
 export const DESKTOP_COMMANDS = {
+  createGlossary: "create_glossary",
+  createGlossaryEntry: "create_glossary_entry",
   createProject: "create_project",
   healthcheck: "healthcheck",
   importProjectDocument: "import_project_document",
+  listGlossaryEntries: "list_glossary_entries",
+  listGlossaries: "list_glossaries",
   listProjects: "list_projects",
   listProjectDocuments: "list_project_documents",
   listDocumentSegments: "list_document_segments",
+  openGlossary: "open_glossary",
   openProject: "open_project",
   processProjectDocument: "process_project_document",
+  updateGlossaryEntry: "update_glossary_entry",
+  updateGlossary: "update_glossary",
 } as const;
 
 export type DesktopCommandName =
@@ -49,6 +56,44 @@ export interface ProjectSummary {
 export interface ProjectsOverview {
   activeProjectId: string | null;
   projects: ProjectSummary[];
+}
+
+export type GlossaryStatus = "active" | "archived";
+export type GlossaryEntryStatus = "active" | "archived";
+
+export interface GlossarySummary {
+  id: string;
+  name: string;
+  description: string | null;
+  projectId: string | null;
+  status: GlossaryStatus;
+  createdAt: number;
+  updatedAt: number;
+  lastOpenedAt: number;
+}
+
+export interface GlossariesOverview {
+  activeGlossaryId: string | null;
+  glossaries: GlossarySummary[];
+}
+
+export interface GlossaryEntrySummary {
+  id: string;
+  glossaryId: string;
+  sourceTerm: string;
+  targetTerm: string;
+  contextNote: string | null;
+  status: GlossaryEntryStatus;
+  createdAt: number;
+  updatedAt: number;
+  sourceVariants: string[];
+  targetVariants: string[];
+  forbiddenTerms: string[];
+}
+
+export interface GlossaryEntriesOverview {
+  glossaryId: string;
+  entries: GlossaryEntrySummary[];
 }
 
 export interface DocumentSummary {
@@ -109,8 +154,52 @@ export interface CreateProjectInput {
   description?: string;
 }
 
+export interface CreateGlossaryInput {
+  name: string;
+  description?: string;
+  projectId?: string;
+}
+
+export interface CreateGlossaryEntryInput {
+  glossaryId: string;
+  sourceTerm: string;
+  targetTerm: string;
+  contextNote?: string;
+  sourceVariants?: string[];
+  targetVariants?: string[];
+  forbiddenTerms?: string[];
+}
+
 export interface OpenProjectInput {
   projectId: string;
+}
+
+export interface OpenGlossaryInput {
+  glossaryId: string;
+}
+
+export interface ListGlossaryEntriesInput {
+  glossaryId: string;
+}
+
+export interface UpdateGlossaryInput {
+  glossaryId: string;
+  name: string;
+  description?: string;
+  projectId?: string;
+  status: GlossaryStatus;
+}
+
+export interface UpdateGlossaryEntryInput {
+  glossaryEntryId: string;
+  glossaryId: string;
+  sourceTerm: string;
+  targetTerm: string;
+  contextNote?: string;
+  sourceVariants?: string[];
+  targetVariants?: string[];
+  forbiddenTerms?: string[];
+  status: GlossaryEntryStatus;
 }
 
 export interface ListProjectDocumentsInput {
