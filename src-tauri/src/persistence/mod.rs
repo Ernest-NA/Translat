@@ -5,6 +5,7 @@ pub mod glossaries;
 pub mod glossary_entries;
 pub mod migrations;
 pub mod projects;
+pub mod rule_sets;
 pub mod secret_store;
 pub mod sections;
 pub mod segments;
