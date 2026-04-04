@@ -9,6 +9,7 @@ mod persistence;
 mod projects;
 mod sections;
 mod segments;
+mod style_profiles;
 
 use tauri::Manager;
 
@@ -32,11 +33,15 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             commands::glossaries::create_glossary,
             commands::glossary_entries::create_glossary_entry,
+            commands::style_profiles::create_style_profile,
             commands::glossaries::list_glossaries,
             commands::glossary_entries::list_glossary_entries,
+            commands::style_profiles::list_style_profiles,
             commands::glossaries::open_glossary,
+            commands::style_profiles::open_style_profile,
             commands::glossary_entries::update_glossary_entry,
             commands::glossaries::update_glossary,
+            commands::style_profiles::update_style_profile,
             commands::documents::import_project_document,
             commands::documents::list_project_documents,
             commands::healthcheck::healthcheck,

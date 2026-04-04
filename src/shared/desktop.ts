@@ -2,18 +2,22 @@ export const DESKTOP_COMMANDS = {
   createGlossary: "create_glossary",
   createGlossaryEntry: "create_glossary_entry",
   createProject: "create_project",
+  createStyleProfile: "create_style_profile",
   healthcheck: "healthcheck",
   importProjectDocument: "import_project_document",
   listGlossaryEntries: "list_glossary_entries",
   listGlossaries: "list_glossaries",
   listProjects: "list_projects",
   listProjectDocuments: "list_project_documents",
+  listStyleProfiles: "list_style_profiles",
   listDocumentSegments: "list_document_segments",
   openGlossary: "open_glossary",
   openProject: "open_project",
+  openStyleProfile: "open_style_profile",
   processProjectDocument: "process_project_document",
   updateGlossaryEntry: "update_glossary_entry",
   updateGlossary: "update_glossary",
+  updateStyleProfile: "update_style_profile",
 } as const;
 
 export type DesktopCommandName =
@@ -60,6 +64,18 @@ export interface ProjectsOverview {
 
 export type GlossaryStatus = "active" | "archived";
 export type GlossaryEntryStatus = "active" | "archived";
+export type StyleProfileStatus = "active" | "archived";
+export type StyleProfileTone = "neutral" | "direct" | "warm" | "technical";
+export type StyleProfileFormality =
+  | "formal"
+  | "neutral"
+  | "semi_formal"
+  | "informal";
+export type StyleProfileTreatmentPreference =
+  | "usted"
+  | "tuteo"
+  | "impersonal"
+  | "mixed";
 
 export interface GlossarySummary {
   id: string;
@@ -94,6 +110,26 @@ export interface GlossaryEntrySummary {
 export interface GlossaryEntriesOverview {
   glossaryId: string;
   entries: GlossaryEntrySummary[];
+}
+
+export interface StyleProfileSummary {
+  id: string;
+  name: string;
+  description: string | null;
+  tone: StyleProfileTone;
+  formality: StyleProfileFormality;
+  treatmentPreference: StyleProfileTreatmentPreference;
+  consistencyInstructions: string | null;
+  editorialNotes: string | null;
+  status: StyleProfileStatus;
+  createdAt: number;
+  updatedAt: number;
+  lastOpenedAt: number;
+}
+
+export interface StyleProfilesOverview {
+  activeStyleProfileId: string | null;
+  styleProfiles: StyleProfileSummary[];
 }
 
 export interface DocumentSummary {
@@ -170,12 +206,26 @@ export interface CreateGlossaryEntryInput {
   forbiddenTerms?: string[];
 }
 
+export interface CreateStyleProfileInput {
+  name: string;
+  description?: string;
+  tone: StyleProfileTone;
+  formality: StyleProfileFormality;
+  treatmentPreference: StyleProfileTreatmentPreference;
+  consistencyInstructions?: string;
+  editorialNotes?: string;
+}
+
 export interface OpenProjectInput {
   projectId: string;
 }
 
 export interface OpenGlossaryInput {
   glossaryId: string;
+}
+
+export interface OpenStyleProfileInput {
+  styleProfileId: string;
 }
 
 export interface ListGlossaryEntriesInput {
@@ -200,6 +250,18 @@ export interface UpdateGlossaryEntryInput {
   targetVariants?: string[];
   forbiddenTerms?: string[];
   status: GlossaryEntryStatus;
+}
+
+export interface UpdateStyleProfileInput {
+  styleProfileId: string;
+  name: string;
+  description?: string;
+  tone: StyleProfileTone;
+  formality: StyleProfileFormality;
+  treatmentPreference: StyleProfileTreatmentPreference;
+  consistencyInstructions?: string;
+  editorialNotes?: string;
+  status: StyleProfileStatus;
 }
 
 export interface ListProjectDocumentsInput {

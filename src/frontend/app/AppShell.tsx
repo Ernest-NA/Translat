@@ -5,11 +5,13 @@ import { HealthcheckPanel } from "../components/HealthcheckPanel";
 import { ProjectComposer } from "../components/ProjectComposer";
 import { ProjectList } from "../components/ProjectList";
 import { ProjectWorkspace } from "../components/ProjectWorkspace";
+import { StyleProfilesWorkspace } from "../components/StyleProfilesWorkspace";
 import { useDocumentSegments } from "../hooks/useDocumentSegments";
 import { useGlossariesWorkspace } from "../hooks/useGlossariesWorkspace";
 import { useHealthcheck } from "../hooks/useHealthcheck";
 import { useProjectDocuments } from "../hooks/useProjectDocuments";
 import { useProjectsWorkspace } from "../hooks/useProjectsWorkspace";
+import { useStyleProfilesWorkspace } from "../hooks/useStyleProfilesWorkspace";
 
 function formatCheckedAt(value?: number) {
   if (!value) {
@@ -47,6 +49,21 @@ export function AppShell() {
     submitGlossary,
     totalGlossaryCount,
   } = useGlossariesWorkspace();
+  const {
+    activeStyleProfile,
+    activeStyleProfileCount,
+    archivedStyleProfileCount,
+    error: styleProfileError,
+    isCreating: isCreatingStyleProfile,
+    isLoading: isLoadingStyleProfiles,
+    isSaving: isSavingStyleProfile,
+    openingStyleProfileId,
+    saveStyleProfile,
+    selectStyleProfile,
+    styleProfiles,
+    submitStyleProfile,
+    totalStyleProfileCount,
+  } = useStyleProfilesWorkspace();
   const {
     documents,
     importError,
@@ -126,19 +143,24 @@ export function AppShell() {
       <header className="app-shell__header">
         <div>
           <p className="app-shell__eyebrow">Translat</p>
-          <h1>Glossary terminology and variants</h1>
+          <h1>Style profiles, glossaries, and terminology</h1>
           <p className="app-shell__lead">
-            D2 extends persisted glossaries with CRUD for terminology entries,
-            source and target terms, and basic variants or forbidden terms,
-            while keeping AI, automatic matching, and project defaults out of
-            scope.
+            D3 adds reusable persisted style profiles on top of the glossary and
+            terminology foundation, while keeping AI integration, complex rules,
+            and project-default associations out of scope.
           </p>
         </div>
 
         <div className="app-shell__header-meta">
           <span>{runtimeLabel}</span>
           <span>{projects.length} persisted projects</span>
+          <span>{totalStyleProfileCount} persisted style profiles</span>
           <span>{totalGlossaryCount} persisted glossaries</span>
+          <span>
+            {activeStyleProfile
+              ? `Open style profile: ${activeStyleProfile.name}`
+              : "No open style profile"}
+          </span>
           <span>
             {activeGlossary
               ? `Open glossary: ${activeGlossary.name}`
@@ -154,6 +176,22 @@ export function AppShell() {
 
       <section className="app-shell__grid">
         <div className="app-shell__primary">
+          <StyleProfilesWorkspace
+            activeStyleProfile={activeStyleProfile}
+            activeStyleProfileCount={activeStyleProfileCount}
+            archivedStyleProfileCount={archivedStyleProfileCount}
+            error={styleProfileError}
+            isCreating={isCreatingStyleProfile}
+            isLoading={isLoadingStyleProfiles}
+            isSaving={isSavingStyleProfile}
+            onOpenStyleProfile={selectStyleProfile}
+            onSubmitStyleProfile={submitStyleProfile}
+            onUpdateStyleProfile={saveStyleProfile}
+            openingStyleProfileId={openingStyleProfileId}
+            styleProfiles={styleProfiles}
+            totalStyleProfileCount={totalStyleProfileCount}
+          />
+
           <GlossaryWorkspace
             activeGlossary={activeGlossary}
             activeGlossaryCount={activeGlossaryCount}
@@ -217,7 +255,7 @@ export function AppShell() {
 
           <section className="surface-card">
             <p className="surface-card__eyebrow">Command pattern</p>
-            <h2>{DESKTOP_COMMANDS.listGlossaryEntries}</h2>
+            <h2>{DESKTOP_COMMANDS.listStyleProfiles}</h2>
 
             <dl className="detail-list">
               <div>
@@ -233,6 +271,14 @@ export function AppShell() {
                 <dd>{activeGlossary?.name ?? "None"}</dd>
               </div>
               <div>
+                <dt>Open style profile</dt>
+                <dd>{activeStyleProfile?.name ?? "None"}</dd>
+              </div>
+              <div>
+                <dt>Style profile status</dt>
+                <dd>{activeStyleProfile?.status ?? "None"}</dd>
+              </div>
+              <div>
                 <dt>Glossary status</dt>
                 <dd>{activeGlossary?.status ?? "None"}</dd>
               </div>
@@ -244,6 +290,13 @@ export function AppShell() {
                 <dt>Glossary totals</dt>
                 <dd>
                   {activeGlossaryCount} active | {archivedGlossaryCount}{" "}
+                  archived
+                </dd>
+              </div>
+              <div>
+                <dt>Style profile totals</dt>
+                <dd>
+                  {activeStyleProfileCount} active | {archivedStyleProfileCount}{" "}
                   archived
                 </dd>
               </div>

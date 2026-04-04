@@ -8,3 +8,4 @@ pub mod projects;
 pub mod secret_store;
 pub mod sections;
 pub mod segments;
+pub mod style_profiles;

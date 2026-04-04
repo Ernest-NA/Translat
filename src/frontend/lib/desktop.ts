@@ -3,6 +3,7 @@ import {
   type CreateGlossaryEntryInput,
   type CreateGlossaryInput,
   type CreateProjectInput,
+  type CreateStyleProfileInput,
   DESKTOP_COMMANDS,
   type DesktopCommandErrorPayload,
   type DesktopCommandName,
@@ -19,12 +20,16 @@ import {
   type ListProjectDocumentsInput,
   type OpenGlossaryInput,
   type OpenProjectInput,
+  type OpenStyleProfileInput,
   type ProcessDocumentInput,
   type ProjectDocumentsOverview,
   type ProjectSummary,
   type ProjectsOverview,
+  type StyleProfileSummary,
+  type StyleProfilesOverview,
   type UpdateGlossaryEntryInput,
   type UpdateGlossaryInput,
+  type UpdateStyleProfileInput,
 } from "../../shared/desktop";
 
 export class DesktopCommandError extends Error {
@@ -113,6 +118,12 @@ export function listGlossaries() {
   );
 }
 
+export function listStyleProfiles() {
+  return invokeDesktopCommand<StyleProfilesOverview>(
+    DESKTOP_COMMANDS.listStyleProfiles,
+  );
+}
+
 export function listGlossaryEntries(input: ListGlossaryEntriesInput) {
   return invokeDesktopCommand<GlossaryEntriesOverview>(
     DESKTOP_COMMANDS.listGlossaryEntries,
@@ -131,6 +142,15 @@ export function createProject(input: CreateProjectInput) {
 export function createGlossary(input: CreateGlossaryInput) {
   return invokeDesktopCommand<GlossarySummary>(
     DESKTOP_COMMANDS.createGlossary,
+    {
+      input,
+    },
+  );
+}
+
+export function createStyleProfile(input: CreateStyleProfileInput) {
+  return invokeDesktopCommand<StyleProfileSummary>(
+    DESKTOP_COMMANDS.createStyleProfile,
     {
       input,
     },
@@ -194,9 +214,27 @@ export function openGlossary(input: OpenGlossaryInput) {
   });
 }
 
+export function openStyleProfile(input: OpenStyleProfileInput) {
+  return invokeDesktopCommand<StyleProfileSummary>(
+    DESKTOP_COMMANDS.openStyleProfile,
+    {
+      input,
+    },
+  );
+}
+
 export function updateGlossary(input: UpdateGlossaryInput) {
   return invokeDesktopCommand<GlossarySummary>(
     DESKTOP_COMMANDS.updateGlossary,
+    {
+      input,
+    },
+  );
+}
+
+export function updateStyleProfile(input: UpdateStyleProfileInput) {
+  return invokeDesktopCommand<StyleProfileSummary>(
+    DESKTOP_COMMANDS.updateStyleProfile,
     {
       input,
     },

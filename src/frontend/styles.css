@@ -424,6 +424,12 @@ select {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.style-profile-form-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .glossary-entry-list__target {
   margin: 10px 0 0;
   color: #f2f5f8;
@@ -734,7 +740,8 @@ select {
   }
 
   .glossary-entry-grid,
-  .glossary-entry-form-grid {
+  .glossary-entry-form-grid,
+  .style-profile-form-grid {
     grid-template-columns: 1fr;
   }
 
