@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   CreateGlossaryInput,
   GlossariesOverview,
@@ -63,25 +63,58 @@ export function useGlossariesWorkspace() {
   const [openingGlossaryId, setOpeningGlossaryId] = useState<string | null>(
     null,
   );
+  const latestReloadRequestRef = useRef(0);
+  const localStateVersionRef = useRef(0);
+
+  const applyLocalOverview = useCallback(
+    (
+      updateOverview: (
+        currentOverview: GlossariesOverview,
+      ) => GlossariesOverview,
+    ) => {
+      localStateVersionRef.current += 1;
+      setOverview((currentOverview) =>
+        normalizeOverview(updateOverview(currentOverview)),
+      );
+    },
+    [],
+  );
 
   const reload = useCallback(async () => {
+    const reloadRequestId = latestReloadRequestRef.current + 1;
+    const localStateVersionAtStart = localStateVersionRef.current;
+
+    latestReloadRequestRef.current = reloadRequestId;
     setIsLoading(true);
     setError(null);
 
     try {
       const nextOverview = await listGlossaries();
+
+      if (reloadRequestId !== latestReloadRequestRef.current) {
+        return;
+      }
+
+      if (localStateVersionAtStart !== localStateVersionRef.current) {
+        return;
+      }
+
       setOverview(normalizeOverview(nextOverview));
     } catch (caughtError) {
-      setError(
-        caughtError instanceof DesktopCommandError
-          ? caughtError
-          : buildUnexpectedError(
-              "list_glossaries",
-              "The desktop shell returned an unknown glossary error.",
-            ),
-      );
+      if (reloadRequestId === latestReloadRequestRef.current) {
+        setError(
+          caughtError instanceof DesktopCommandError
+            ? caughtError
+            : buildUnexpectedError(
+                "list_glossaries",
+                "The desktop shell returned an unknown glossary error.",
+              ),
+        );
+      }
     } finally {
-      setIsLoading(false);
+      if (reloadRequestId === latestReloadRequestRef.current) {
+        setIsLoading(false);
+      }
     }
   }, []);
 
@@ -96,17 +129,15 @@ export function useGlossariesWorkspace() {
 
       try {
         const createdGlossary = await createGlossary(input);
-        setOverview((currentOverview) =>
-          normalizeOverview({
-            activeGlossaryId: createdGlossary.id,
-            glossaries: [
-              createdGlossary,
-              ...currentOverview.glossaries.filter(
-                (glossary) => glossary.id !== createdGlossary.id,
-              ),
-            ],
-          }),
-        );
+        applyLocalOverview((currentOverview) => ({
+          activeGlossaryId: createdGlossary.id,
+          glossaries: [
+            createdGlossary,
+            ...currentOverview.glossaries.filter(
+              (glossary) => glossary.id !== createdGlossary.id,
+            ),
+          ],
+        }));
         return true;
       } catch (caughtError) {
         setError(
@@ -122,7 +153,7 @@ export function useGlossariesWorkspace() {
         setIsCreating(false);
       }
     },
-    [],
+    [applyLocalOverview],
   );
 
   const selectGlossary = useCallback(
@@ -132,17 +163,15 @@ export function useGlossariesWorkspace() {
 
       try {
         const openedGlossary = await openGlossary({ glossaryId });
-        setOverview((currentOverview) =>
-          normalizeOverview({
-            activeGlossaryId: openedGlossary.id,
-            glossaries: [
-              openedGlossary,
-              ...currentOverview.glossaries.filter(
-                (glossary) => glossary.id !== openedGlossary.id,
-              ),
-            ],
-          }),
-        );
+        applyLocalOverview((currentOverview) => ({
+          activeGlossaryId: openedGlossary.id,
+          glossaries: [
+            openedGlossary,
+            ...currentOverview.glossaries.filter(
+              (glossary) => glossary.id !== openedGlossary.id,
+            ),
+          ],
+        }));
         return true;
       } catch (caughtError) {
         setError(
@@ -158,7 +187,7 @@ export function useGlossariesWorkspace() {
         setOpeningGlossaryId(null);
       }
     },
-    [],
+    [applyLocalOverview],
   );
 
   const saveGlossary = useCallback(
@@ -168,14 +197,12 @@ export function useGlossariesWorkspace() {
 
       try {
         const updatedGlossary = await updateGlossary(input);
-        setOverview((currentOverview) =>
-          normalizeOverview({
-            activeGlossaryId: updatedGlossary.id,
-            glossaries: currentOverview.glossaries.map((glossary) =>
-              glossary.id === updatedGlossary.id ? updatedGlossary : glossary,
-            ),
-          }),
-        );
+        applyLocalOverview((currentOverview) => ({
+          activeGlossaryId: updatedGlossary.id,
+          glossaries: currentOverview.glossaries.map((glossary) =>
+            glossary.id === updatedGlossary.id ? updatedGlossary : glossary,
+          ),
+        }));
         return true;
       } catch (caughtError) {
         setError(
@@ -191,7 +218,7 @@ export function useGlossariesWorkspace() {
         setIsSaving(false);
       }
     },
-    [],
+    [applyLocalOverview],
   );
 
   const activeGlossary = useMemo(
