@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { RuleSeverity, RuleSummary, RuleType } from "../../shared/desktop";
 import { useRuleSetRules } from "../hooks/useRuleSetRules";
 import type { DesktopCommandError } from "../lib/desktop";
@@ -141,7 +141,7 @@ export function RuleSetRulesPanel({
 
   const hasUnsavedChanges = isCreateDirty || isEditDirty;
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     onDirtyChange?.(hasUnsavedChanges);
   }, [hasUnsavedChanges, onDirtyChange]);
 
