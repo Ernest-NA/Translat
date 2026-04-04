@@ -1,12 +1,16 @@
 export const DESKTOP_COMMANDS = {
+  createGlossary: "create_glossary",
   createProject: "create_project",
   healthcheck: "healthcheck",
   importProjectDocument: "import_project_document",
+  listGlossaries: "list_glossaries",
   listProjects: "list_projects",
   listProjectDocuments: "list_project_documents",
   listDocumentSegments: "list_document_segments",
+  openGlossary: "open_glossary",
   openProject: "open_project",
   processProjectDocument: "process_project_document",
+  updateGlossary: "update_glossary",
 } as const;
 
 export type DesktopCommandName =
@@ -49,6 +53,24 @@ export interface ProjectSummary {
 export interface ProjectsOverview {
   activeProjectId: string | null;
   projects: ProjectSummary[];
+}
+
+export type GlossaryStatus = "active" | "archived";
+
+export interface GlossarySummary {
+  id: string;
+  name: string;
+  description: string | null;
+  projectId: string | null;
+  status: GlossaryStatus;
+  createdAt: number;
+  updatedAt: number;
+  lastOpenedAt: number;
+}
+
+export interface GlossariesOverview {
+  activeGlossaryId: string | null;
+  glossaries: GlossarySummary[];
 }
 
 export interface DocumentSummary {
@@ -109,8 +131,26 @@ export interface CreateProjectInput {
   description?: string;
 }
 
+export interface CreateGlossaryInput {
+  name: string;
+  description?: string;
+  projectId?: string;
+}
+
 export interface OpenProjectInput {
   projectId: string;
+}
+
+export interface OpenGlossaryInput {
+  glossaryId: string;
+}
+
+export interface UpdateGlossaryInput {
+  glossaryId: string;
+  name: string;
+  description?: string;
+  projectId?: string;
+  status: GlossaryStatus;
 }
 
 export interface ListProjectDocumentsInput {
