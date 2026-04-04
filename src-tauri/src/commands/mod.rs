@@ -1,4 +1,8 @@
 pub mod documents;
+pub mod glossaries;
+pub mod glossary_entries;
 pub mod healthcheck;
 pub mod projects;
+pub mod rule_sets;
 pub mod segments;
+pub mod style_profiles;

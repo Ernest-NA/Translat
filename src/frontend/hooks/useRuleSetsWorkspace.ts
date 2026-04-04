@@ -1,20 +1,25 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
-  CreateProjectInput,
-  ProjectSummary,
-  ProjectsOverview,
-  UpdateProjectEditorialDefaultsInput,
+  CreateRuleSetInput,
+  RuleSetStatus,
+  RuleSetSummary,
+  RuleSetsOverview,
+  UpdateRuleSetInput,
 } from "../../shared/desktop";
 import {
-  createProject,
+  createRuleSet,
   DesktopCommandError,
-  listProjects,
-  openProject,
-  updateProjectEditorialDefaults,
+  listRuleSets,
+  openRuleSet,
+  updateRuleSet,
 } from "../lib/desktop";
 
-function sortProjects(projects: ProjectSummary[]) {
-  return [...projects].sort((left, right) => {
+function sortRuleSets(ruleSets: RuleSetSummary[]) {
+  return [...ruleSets].sort((left, right) => {
+    if (left.status !== right.status) {
+      return left.status === "active" ? -1 : 1;
+    }
+
     if (left.lastOpenedAt !== right.lastOpenedAt) {
       return right.lastOpenedAt - left.lastOpenedAt;
     }
@@ -29,12 +34,10 @@ function sortProjects(projects: ProjectSummary[]) {
   });
 }
 
-function normalizeProjectsOverview(
-  overview: ProjectsOverview,
-): ProjectsOverview {
+function normalizeOverview(overview: RuleSetsOverview): RuleSetsOverview {
   return {
-    activeProjectId: overview.activeProjectId,
-    projects: sortProjects(overview.projects),
+    activeRuleSetId: overview.activeRuleSetId,
+    ruleSets: sortRuleSets(overview.ruleSets),
   };
 }
 
@@ -48,17 +51,16 @@ function buildUnexpectedError(
   });
 }
 
-export function useProjectsWorkspace() {
-  const [overview, setOverview] = useState<ProjectsOverview>({
-    activeProjectId: null,
-    projects: [],
+export function useRuleSetsWorkspace() {
+  const [overview, setOverview] = useState<RuleSetsOverview>({
+    activeRuleSetId: null,
+    ruleSets: [],
   });
   const [error, setError] = useState<DesktopCommandError | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
-  const [isSavingEditorialDefaults, setIsSavingEditorialDefaults] =
-    useState(false);
-  const [openingProjectId, setOpeningProjectId] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [openingRuleSetId, setOpeningRuleSetId] = useState<string | null>(null);
   const latestReloadRequestRef = useRef(0);
   const localStateVersionRef = useRef(0);
   const selectionIntentVersionRef = useRef(0);
@@ -66,11 +68,11 @@ export function useProjectsWorkspace() {
 
   const applyLocalOverview = useCallback(
     (
-      updateOverview: (currentOverview: ProjectsOverview) => ProjectsOverview,
+      updateOverview: (currentOverview: RuleSetsOverview) => RuleSetsOverview,
     ) => {
       localStateVersionRef.current += 1;
       setOverview((currentOverview) =>
-        normalizeProjectsOverview(updateOverview(currentOverview)),
+        normalizeOverview(updateOverview(currentOverview)),
       );
     },
     [],
@@ -85,7 +87,7 @@ export function useProjectsWorkspace() {
     setError(null);
 
     try {
-      const nextOverview = await listProjects();
+      const nextOverview = await listRuleSets();
 
       if (reloadRequestId !== latestReloadRequestRef.current) {
         return;
@@ -95,15 +97,15 @@ export function useProjectsWorkspace() {
         return;
       }
 
-      setOverview(normalizeProjectsOverview(nextOverview));
+      setOverview(normalizeOverview(nextOverview));
     } catch (caughtError) {
       if (reloadRequestId === latestReloadRequestRef.current) {
         setError(
           caughtError instanceof DesktopCommandError
             ? caughtError
             : buildUnexpectedError(
-                "list_projects",
-                "The desktop shell returned an unknown project error.",
+                "list_rule_sets",
+                "The desktop shell returned an unknown rule-set error.",
               ),
         );
       }
@@ -118,8 +120,8 @@ export function useProjectsWorkspace() {
     void reload();
   }, [reload]);
 
-  const submitProject = useCallback(
-    async (input: CreateProjectInput): Promise<boolean> => {
+  const submitRuleSet = useCallback(
+    async (input: CreateRuleSetInput): Promise<boolean> => {
       const selectionIntentVersion = selectionIntentVersionRef.current + 1;
 
       selectionIntentVersionRef.current = selectionIntentVersion;
@@ -127,16 +129,16 @@ export function useProjectsWorkspace() {
       setError(null);
 
       try {
-        const createdProject = await createProject(input);
+        const createdRuleSet = await createRuleSet(input);
         applyLocalOverview((currentOverview) => ({
-          activeProjectId:
+          activeRuleSetId:
             selectionIntentVersion === selectionIntentVersionRef.current
-              ? createdProject.id
-              : currentOverview.activeProjectId,
-          projects: [
-            createdProject,
-            ...currentOverview.projects.filter(
-              (project) => project.id !== createdProject.id,
+              ? createdRuleSet.id
+              : currentOverview.activeRuleSetId,
+          ruleSets: [
+            createdRuleSet,
+            ...currentOverview.ruleSets.filter(
+              (ruleSet) => ruleSet.id !== createdRuleSet.id,
             ),
           ],
         }));
@@ -147,8 +149,8 @@ export function useProjectsWorkspace() {
             caughtError instanceof DesktopCommandError
               ? caughtError
               : buildUnexpectedError(
-                  "create_project",
-                  "The desktop shell could not create the project.",
+                  "create_rule_set",
+                  "The desktop shell could not create the rule set.",
                 ),
           );
         }
@@ -160,26 +162,26 @@ export function useProjectsWorkspace() {
     [applyLocalOverview],
   );
 
-  const selectProject = useCallback(
-    async (projectId: string): Promise<boolean> => {
+  const selectRuleSet = useCallback(
+    async (ruleSetId: string): Promise<boolean> => {
       const selectionIntentVersion = selectionIntentVersionRef.current + 1;
 
       selectionIntentVersionRef.current = selectionIntentVersion;
       latestOpenRequestVersionRef.current = selectionIntentVersion;
-      setOpeningProjectId(projectId);
+      setOpeningRuleSetId(ruleSetId);
       setError(null);
 
       try {
-        const openedProject = await openProject({ projectId });
+        const openedRuleSet = await openRuleSet({ ruleSetId });
         applyLocalOverview((currentOverview) => ({
-          activeProjectId:
+          activeRuleSetId:
             selectionIntentVersion === selectionIntentVersionRef.current
-              ? openedProject.id
-              : currentOverview.activeProjectId,
-          projects: [
-            openedProject,
-            ...currentOverview.projects.filter(
-              (project) => project.id !== openedProject.id,
+              ? openedRuleSet.id
+              : currentOverview.activeRuleSetId,
+          ruleSets: [
+            openedRuleSet,
+            ...currentOverview.ruleSets.filter(
+              (ruleSet) => ruleSet.id !== openedRuleSet.id,
             ),
           ],
         }));
@@ -190,38 +192,38 @@ export function useProjectsWorkspace() {
             caughtError instanceof DesktopCommandError
               ? caughtError
               : buildUnexpectedError(
-                  "open_project",
-                  "The desktop shell could not open the project.",
+                  "open_rule_set",
+                  "The desktop shell could not open the rule set.",
                 ),
           );
         }
         return false;
       } finally {
         if (selectionIntentVersion === latestOpenRequestVersionRef.current) {
-          setOpeningProjectId(null);
+          setOpeningRuleSetId(null);
         }
       }
     },
     [applyLocalOverview],
   );
 
-  const saveProjectEditorialDefaults = useCallback(
-    async (input: UpdateProjectEditorialDefaultsInput): Promise<boolean> => {
+  const saveRuleSet = useCallback(
+    async (input: UpdateRuleSetInput): Promise<boolean> => {
       const selectionIntentVersion = selectionIntentVersionRef.current + 1;
 
       selectionIntentVersionRef.current = selectionIntentVersion;
-      setIsSavingEditorialDefaults(true);
+      setIsSaving(true);
       setError(null);
 
       try {
-        const updatedProject = await updateProjectEditorialDefaults(input);
+        const updatedRuleSet = await updateRuleSet(input);
         applyLocalOverview((currentOverview) => ({
-          activeProjectId:
+          activeRuleSetId:
             selectionIntentVersion === selectionIntentVersionRef.current
-              ? updatedProject.id
-              : currentOverview.activeProjectId,
-          projects: currentOverview.projects.map((project) =>
-            project.id === updatedProject.id ? updatedProject : project,
+              ? updatedRuleSet.id
+              : currentOverview.activeRuleSetId,
+          ruleSets: currentOverview.ruleSets.map((ruleSet) =>
+            ruleSet.id === updatedRuleSet.id ? updatedRuleSet : ruleSet,
           ),
         }));
         return true;
@@ -231,38 +233,64 @@ export function useProjectsWorkspace() {
             caughtError instanceof DesktopCommandError
               ? caughtError
               : buildUnexpectedError(
-                  "update_project_editorial_defaults",
-                  "The desktop shell could not save the project editorial defaults.",
+                  "update_rule_set",
+                  "The desktop shell could not save the rule set.",
                 ),
           );
         }
         return false;
       } finally {
-        setIsSavingEditorialDefaults(false);
+        setIsSaving(false);
       }
     },
     [applyLocalOverview],
   );
 
-  const activeProject = useMemo(
+  const activeRuleSet = useMemo(
     () =>
-      overview.projects.find(
-        (project) => project.id === overview.activeProjectId,
+      overview.ruleSets.find(
+        (ruleSet) => ruleSet.id === overview.activeRuleSetId,
       ) ?? null,
-    [overview.activeProjectId, overview.projects],
+    [overview.activeRuleSetId, overview.ruleSets],
+  );
+
+  const counts = useMemo(
+    () => ({
+      active: overview.ruleSets.filter((ruleSet) => ruleSet.status === "active")
+        .length,
+      archived: overview.ruleSets.filter(
+        (ruleSet) => ruleSet.status === "archived",
+      ).length,
+    }),
+    [overview.ruleSets],
+  );
+
+  const setRuleSetStatus = useCallback(
+    async (ruleSet: RuleSetSummary, status: RuleSetStatus): Promise<boolean> =>
+      saveRuleSet({
+        ruleSetId: ruleSet.id,
+        name: ruleSet.name,
+        description: ruleSet.description ?? undefined,
+        status,
+      }),
+    [saveRuleSet],
   );
 
   return {
-    activeProject,
+    activeRuleSet,
+    activeRuleSetCount: counts.active,
+    archivedRuleSetCount: counts.archived,
     error,
     isCreating,
     isLoading,
-    isSavingEditorialDefaults,
-    openingProjectId,
-    projects: overview.projects,
+    isSaving,
+    openingRuleSetId,
     reload,
-    saveProjectEditorialDefaults,
-    selectProject,
-    submitProject,
+    ruleSets: overview.ruleSets,
+    saveRuleSet,
+    selectRuleSet,
+    setRuleSetStatus,
+    submitRuleSet,
+    totalRuleSetCount: overview.ruleSets.length,
   };
 }

@@ -227,7 +227,13 @@ fn inspect_connection(
         && migrations::has_table(connection, "projects")?
         && migrations::has_table(connection, "documents")?
         && migrations::has_table(connection, "segments")?
-        && migrations::has_table(connection, "document_sections")?;
+        && migrations::has_table(connection, "document_sections")?
+        && migrations::has_table(connection, "glossaries")?
+        && migrations::has_table(connection, "glossary_entries")?
+        && migrations::has_table(connection, "glossary_entry_variants")?
+        && migrations::has_table(connection, "style_profiles")?
+        && migrations::has_table(connection, "rule_sets")?
+        && migrations::has_table(connection, "rules")?;
 
     Ok(DatabaseStatus {
         applied_migrations,
@@ -268,7 +274,12 @@ mod tests {
                 "0002_projects".to_owned(),
                 "0003_documents".to_owned(),
                 "0004_segments".to_owned(),
-                "0005_document_sections".to_owned()
+                "0005_document_sections".to_owned(),
+                "0006_glossaries".to_owned(),
+                "0007_glossary_entries".to_owned(),
+                "0008_style_profiles".to_owned(),
+                "0009_rule_sets".to_owned(),
+                "0010_project_editorial_defaults".to_owned()
             ]
         );
         assert_eq!(
@@ -278,7 +289,12 @@ mod tests {
                 "0002_projects".to_owned(),
                 "0003_documents".to_owned(),
                 "0004_segments".to_owned(),
-                "0005_document_sections".to_owned()
+                "0005_document_sections".to_owned(),
+                "0006_glossaries".to_owned(),
+                "0007_glossary_entries".to_owned(),
+                "0008_style_profiles".to_owned(),
+                "0009_rule_sets".to_owned(),
+                "0010_project_editorial_defaults".to_owned()
             ]
         );
         assert!(bootstrap_report.schema_ready);
@@ -303,7 +319,12 @@ mod tests {
                 "0002_projects".to_owned(),
                 "0003_documents".to_owned(),
                 "0004_segments".to_owned(),
-                "0005_document_sections".to_owned()
+                "0005_document_sections".to_owned(),
+                "0006_glossaries".to_owned(),
+                "0007_glossary_entries".to_owned(),
+                "0008_style_profiles".to_owned(),
+                "0009_rule_sets".to_owned(),
+                "0010_project_editorial_defaults".to_owned()
             ]
         );
         assert!(second_report.schema_ready);
@@ -364,13 +385,62 @@ mod tests {
             )
             .expect("document_sections table should be queryable");
 
-        assert_eq!(migration_count, 5);
+        let glossaries_table_count = connection
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'glossaries'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("glossaries table should be queryable");
+        let glossary_entries_table_count = connection
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'glossary_entries'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("glossary_entries table should be queryable");
+        let glossary_entry_variants_table_count = connection
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'glossary_entry_variants'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("glossary_entry_variants table should be queryable");
+        let style_profiles_table_count = connection
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'style_profiles'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("style_profiles table should be queryable");
+        let rule_sets_table_count = connection
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'rule_sets'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("rule_sets table should be queryable");
+        let rules_table_count = connection
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'rules'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("rules table should be queryable");
+
+        assert_eq!(migration_count, 10);
         assert_eq!(app_metadata_table_count, 1);
         assert_eq!(projects_table_count, 1);
         assert_eq!(documents_table_count, 1);
         assert_eq!(segments_table_count, 1);
         assert_eq!(document_sections_table_count, 1);
-        assert_eq!(database_status.migration_count, 5);
+        assert_eq!(glossaries_table_count, 1);
+        assert_eq!(glossary_entries_table_count, 1);
+        assert_eq!(glossary_entry_variants_table_count, 1);
+        assert_eq!(style_profiles_table_count, 1);
+        assert_eq!(rule_sets_table_count, 1);
+        assert_eq!(rules_table_count, 1);
+        assert_eq!(database_status.migration_count, 10);
         assert_eq!(
             database_status.applied_migrations,
             vec![
@@ -378,7 +448,12 @@ mod tests {
                 "0002_projects".to_owned(),
                 "0003_documents".to_owned(),
                 "0004_segments".to_owned(),
-                "0005_document_sections".to_owned()
+                "0005_document_sections".to_owned(),
+                "0006_glossaries".to_owned(),
+                "0007_glossary_entries".to_owned(),
+                "0008_style_profiles".to_owned(),
+                "0009_rule_sets".to_owned(),
+                "0010_project_editorial_defaults".to_owned()
             ]
         );
         assert!(database_status.schema_ready);
