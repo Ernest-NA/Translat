@@ -17,10 +17,6 @@ interface GlossaryWorkspaceProps {
   isLoading: boolean;
   isSaving: boolean;
   onOpenGlossary: (glossaryId: string) => Promise<boolean>;
-  onSetGlossaryStatus: (
-    glossary: GlossarySummary,
-    status: GlossaryStatus,
-  ) => Promise<boolean>;
   onSubmitGlossary: (input: {
     description?: string;
     name: string;
@@ -50,7 +46,6 @@ export function GlossaryWorkspace({
   isLoading,
   isSaving,
   onOpenGlossary,
-  onSetGlossaryStatus,
   onSubmitGlossary,
   onUpdateGlossary,
   openingGlossaryId,
@@ -73,6 +68,24 @@ export function GlossaryWorkspace({
   }, [activeGlossary]);
 
   const projectNames = useMemo(() => projectLabelById(projects), [projects]);
+  const isDirty = useMemo(() => {
+    if (!activeGlossary) {
+      return false;
+    }
+
+    return (
+      draftName !== activeGlossary.name ||
+      draftDescription !== (activeGlossary.description ?? "") ||
+      draftProjectId !== (activeGlossary.projectId ?? "") ||
+      draftStatus !== activeGlossary.status
+    );
+  }, [
+    activeGlossary,
+    draftDescription,
+    draftName,
+    draftProjectId,
+    draftStatus,
+  ]);
 
   async function handleCreateSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -103,6 +116,37 @@ export function GlossaryWorkspace({
       description: draftDescription || undefined,
       projectId: draftProjectId || undefined,
       status: draftStatus,
+    });
+  }
+
+  async function handleOpenGlossary(glossaryId: string) {
+    if (glossaryId === activeGlossary?.id) {
+      return;
+    }
+
+    if (
+      isDirty &&
+      !window.confirm(
+        "You have unsaved glossary changes. Open another glossary and discard them?",
+      )
+    ) {
+      return;
+    }
+
+    await onOpenGlossary(glossaryId);
+  }
+
+  async function handleToggleStatus() {
+    if (!activeGlossary) {
+      return;
+    }
+
+    await onUpdateGlossary({
+      glossaryId: activeGlossary.id,
+      name: draftName,
+      description: draftDescription || undefined,
+      projectId: draftProjectId || undefined,
+      status: activeGlossary.status === "active" ? "archived" : "active",
     });
   }
 
@@ -248,7 +292,7 @@ export function GlossaryWorkspace({
                       className="project-list__item glossary-list__item"
                       data-active={isActive}
                       disabled={isOpening}
-                      onClick={() => void onOpenGlossary(glossary.id)}
+                      onClick={() => void handleOpenGlossary(glossary.id)}
                       type="button"
                     >
                       <div className="project-list__item-heading">
@@ -301,12 +345,7 @@ export function GlossaryWorkspace({
             <button
               className="document-action-button"
               disabled={isSaving}
-              onClick={() =>
-                void onSetGlossaryStatus(
-                  activeGlossary,
-                  activeGlossary.status === "active" ? "archived" : "active",
-                )
-              }
+              onClick={() => void handleToggleStatus()}
               type="button"
             >
               {activeGlossary.status === "active"
@@ -418,7 +457,9 @@ export function GlossaryWorkspace({
               </button>
 
               <span className="project-form__hint">
-                D2 will consume this container to store entries and variants.
+                {isDirty
+                  ? "You have unsaved changes in this glossary."
+                  : "D2 will consume this container to store entries and variants."}
               </span>
             </div>
 

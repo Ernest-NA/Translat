@@ -43,7 +43,6 @@ export function AppShell() {
     openingGlossaryId,
     saveGlossary,
     selectGlossary,
-    setGlossaryStatus,
     submitGlossary,
     totalGlossaryCount,
   } = useGlossariesWorkspace();
@@ -163,7 +162,6 @@ export function AppShell() {
             isLoading={isLoadingGlossaries}
             isSaving={isSavingGlossary}
             onOpenGlossary={selectGlossary}
-            onSetGlossaryStatus={setGlossaryStatus}
             onSubmitGlossary={submitGlossary}
             onUpdateGlossary={saveGlossary}
             openingGlossaryId={openingGlossaryId}
