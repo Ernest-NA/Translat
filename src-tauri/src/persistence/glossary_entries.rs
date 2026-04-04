@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use rusqlite::{params, params_from_iter, Connection, Row};
+use rusqlite::{params, Connection, Row};
 
 use crate::glossary_entries::{
     GlossaryEntriesOverview, GlossaryEntryChanges, GlossaryEntrySummary, NewGlossaryEntry,
@@ -108,7 +108,7 @@ impl<'connection> GlossaryEntryRepository<'connection> {
         glossary_id: &str,
     ) -> Result<Vec<GlossaryEntrySummary>, PersistenceError> {
         let entry_rows = load_entry_rows(self.connection, glossary_id)?;
-        let entry_variants = load_variants(self.connection, &entry_rows)?;
+        let entry_variants = load_variants(self.connection, glossary_id)?;
 
         Ok(entry_rows
             .into_iter()
@@ -249,7 +249,7 @@ fn load_entry(
                 error,
             )
         })?;
-    let entry_variants = load_variants(connection, std::slice::from_ref(&entry_row))?;
+    let entry_variants = load_variants(connection, glossary_id)?;
 
     Ok(map_entry_summary(entry_row, &entry_variants))
 }
@@ -317,40 +317,37 @@ fn load_entry_rows(
 
 fn load_variants(
     connection: &Connection,
-    entry_rows: &[GlossaryEntryRow],
+    glossary_id: &str,
 ) -> Result<HashMap<String, EntryVariants>, PersistenceError> {
-    if entry_rows.is_empty() {
-        return Ok(HashMap::new());
-    }
-
-    let placeholder_sql = vec!["?"; entry_rows.len()].join(", ");
-    let query = format!(
-        r#"
+    let mut statement = connection
+        .prepare(
+            r#"
         SELECT
-          glossary_entry_id,
-          variant_type,
-          variant_text
+          glossary_entry_variants.glossary_entry_id,
+          glossary_entry_variants.variant_type,
+          glossary_entry_variants.variant_text
         FROM glossary_entry_variants
-        WHERE glossary_entry_id IN ({placeholder_sql})
+        INNER JOIN glossary_entries
+          ON glossary_entries.id = glossary_entry_variants.glossary_entry_id
+        WHERE glossary_entries.glossary_id = ?1
         ORDER BY
-          glossary_entry_id ASC,
-          CASE variant_type
+          glossary_entry_variants.glossary_entry_id ASC,
+          CASE glossary_entry_variants.variant_type
             WHEN 'source' THEN 0
             WHEN 'target' THEN 1
             ELSE 2
           END ASC,
-          variant_text COLLATE NOCASE ASC
-        "#
-    );
-    let entry_ids = entry_rows.iter().map(|entry| entry.id.as_str());
-    let mut statement = connection.prepare(&query).map_err(|error| {
-        PersistenceError::with_details(
-            "The glossary entry repository could not prepare the variants listing query.",
-            error,
+          glossary_entry_variants.variant_text COLLATE NOCASE ASC
+        "#,
         )
-    })?;
+        .map_err(|error| {
+            PersistenceError::with_details(
+                "The glossary entry repository could not prepare the variants listing query.",
+                error,
+            )
+        })?;
     let rows = statement
-        .query_map(params_from_iter(entry_ids), |row| {
+        .query_map([glossary_id], |row| {
             Ok((
                 row.get::<_, String>(0)?,
                 row.get::<_, String>(1)?,
@@ -496,6 +493,7 @@ fn map_entry_row(row: &Row<'_>) -> rusqlite::Result<GlossaryEntryRow> {
 #[cfg(test)]
 mod tests {
     use super::GlossaryEntryRepository;
+    use rusqlite::params;
     use tempfile::tempdir;
 
     use crate::glossaries::{NewGlossary, GLOSSARY_STATUS_ACTIVE};
@@ -660,5 +658,71 @@ mod tests {
             vec!["evento serio".to_owned()]
         );
         assert_eq!(overview.entries[0].updated_at, updated_at);
+    }
+
+    #[test]
+    fn list_entries_supports_large_glossaries() {
+        let temporary_directory = tempdir().expect("temp dir should be created");
+        let database_path = temporary_directory.path().join("translat.sqlite3");
+        let now = 1_775_401_200_i64;
+
+        bootstrap_database(&database_path, TEST_DATABASE_KEY)
+            .expect("database bootstrap should succeed");
+
+        let mut connection = open_database_with_key(&database_path, TEST_DATABASE_KEY)
+            .expect("database connection should open");
+        ProjectRepository::new(&mut connection)
+            .create(&sample_project(now))
+            .expect("project should be created");
+        GlossaryRepository::new(&mut connection)
+            .create(&sample_glossary(now))
+            .expect("glossary should be created");
+
+        let transaction = connection
+            .transaction()
+            .expect("bulk entry transaction should start");
+
+        for index in 0..1_050 {
+            transaction
+                .execute(
+                    r#"
+                    INSERT INTO glossary_entries (
+                      id,
+                      glossary_id,
+                      source_term,
+                      target_term,
+                      context_note,
+                      status,
+                      created_at,
+                      updated_at
+                    )
+                    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+                    "#,
+                    params![
+                        format!("gle_bulk_{index:04}"),
+                        "gls_test_001",
+                        format!("source term {index:04}"),
+                        format!("target term {index:04}"),
+                        Option::<String>::None,
+                        GLOSSARY_ENTRY_STATUS_ACTIVE,
+                        now,
+                        now
+                    ],
+                )
+                .expect("bulk glossary entry should be inserted");
+        }
+
+        transaction
+            .commit()
+            .expect("bulk entry transaction should commit");
+
+        let mut repository = GlossaryEntryRepository::new(&mut connection);
+        let overview = repository
+            .load_overview("gls_test_001")
+            .expect("large glossary entry overview should load");
+
+        assert_eq!(overview.entries.len(), 1_050);
+        assert_eq!(overview.entries[0].source_term, "source term 0000");
+        assert_eq!(overview.entries[1_049].source_term, "source term 1049");
     }
 }

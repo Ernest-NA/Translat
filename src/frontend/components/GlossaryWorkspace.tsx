@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   GlossaryStatus,
   GlossarySummary,
@@ -63,13 +63,22 @@ export function GlossaryWorkspace({
   const [draftProjectId, setDraftProjectId] = useState("");
   const [draftStatus, setDraftStatus] = useState<GlossaryStatus>("active");
   const [hasUnsavedEntryChanges, setHasUnsavedEntryChanges] = useState(false);
+  const previousGlossaryIdRef = useRef<string | null>(null);
 
   useEffect(() => {
+    const nextGlossaryId = activeGlossary?.id ?? null;
+    const hasGlossaryChanged = previousGlossaryIdRef.current !== nextGlossaryId;
+
     setDraftName(activeGlossary?.name ?? "");
     setDraftDescription(activeGlossary?.description ?? "");
     setDraftProjectId(activeGlossary?.projectId ?? "");
     setDraftStatus(activeGlossary?.status ?? "active");
-    setHasUnsavedEntryChanges(false);
+
+    if (hasGlossaryChanged) {
+      setHasUnsavedEntryChanges(false);
+    }
+
+    previousGlossaryIdRef.current = nextGlossaryId;
   }, [activeGlossary]);
 
   const projectNames = useMemo(() => projectLabelById(projects), [projects]);

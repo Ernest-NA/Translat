@@ -82,7 +82,25 @@ export function GlossaryEntriesPanel({
     setDraftStatus(activeEntry?.status ?? "active");
   }, [activeEntry]);
 
-  const isDirty = useMemo(() => {
+  const hasUnsavedCreateDraft = useMemo(
+    () =>
+      createSourceTerm.trim().length > 0 ||
+      createTargetTerm.trim().length > 0 ||
+      createContextNote.trim().length > 0 ||
+      parseTerms(createSourceVariants).length > 0 ||
+      parseTerms(createTargetVariants).length > 0 ||
+      parseTerms(createForbiddenTerms).length > 0,
+    [
+      createContextNote,
+      createForbiddenTerms,
+      createSourceTerm,
+      createSourceVariants,
+      createTargetTerm,
+      createTargetVariants,
+    ],
+  );
+
+  const hasUnsavedEditChanges = useMemo(() => {
     if (!activeEntry) {
       return false;
     }
@@ -108,8 +126,8 @@ export function GlossaryEntriesPanel({
   ]);
 
   useEffect(() => {
-    onDirtyChange?.(isDirty);
-  }, [isDirty, onDirtyChange]);
+    onDirtyChange?.(hasUnsavedCreateDraft || hasUnsavedEditChanges);
+  }, [hasUnsavedCreateDraft, hasUnsavedEditChanges, onDirtyChange]);
 
   async function handleCreateSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -164,7 +182,7 @@ export function GlossaryEntriesPanel({
     }
 
     if (
-      isDirty &&
+      hasUnsavedEditChanges &&
       !window.confirm(
         "You have unsaved terminology changes. Open another entry and discard them?",
       )
@@ -567,7 +585,7 @@ export function GlossaryEntriesPanel({
               </button>
 
               <span className="project-form__hint">
-                {isDirty
+                {hasUnsavedEditChanges
                   ? "You have unsaved terminology changes."
                   : "Entry changes remain scoped to this glossary only."}
               </span>
