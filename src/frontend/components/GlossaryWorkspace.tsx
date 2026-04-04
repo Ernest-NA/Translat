@@ -64,12 +64,23 @@ export function GlossaryWorkspace({
   const [draftStatus, setDraftStatus] = useState<GlossaryStatus>("active");
   const [hasUnsavedEntryChanges, setHasUnsavedEntryChanges] = useState(false);
   const previousGlossaryIdRef = useRef<string | null>(null);
+  const pendingGlossarySyncRef = useRef<UpdateGlossaryInput | null>(null);
 
   useEffect(() => {
     const nextGlossaryId = activeGlossary?.id ?? null;
     const hasGlossaryChanged = previousGlossaryIdRef.current !== nextGlossaryId;
+    const pendingGlossarySync = pendingGlossarySyncRef.current;
+    const matchesPendingGlossarySync =
+      !!activeGlossary &&
+      pendingGlossarySync?.glossaryId === activeGlossary.id &&
+      pendingGlossarySync.name === activeGlossary.name &&
+      (pendingGlossarySync.description ?? "") ===
+        (activeGlossary.description ?? "") &&
+      (pendingGlossarySync.projectId ?? "") ===
+        (activeGlossary.projectId ?? "") &&
+      pendingGlossarySync.status === activeGlossary.status;
 
-    if (!hasGlossaryChanged) {
+    if (!hasGlossaryChanged && !matchesPendingGlossarySync) {
       return;
     }
 
@@ -77,7 +88,14 @@ export function GlossaryWorkspace({
     setDraftDescription(activeGlossary?.description ?? "");
     setDraftProjectId(activeGlossary?.projectId ?? "");
     setDraftStatus(activeGlossary?.status ?? "active");
-    setHasUnsavedEntryChanges(false);
+
+    if (hasGlossaryChanged) {
+      setHasUnsavedEntryChanges(false);
+    }
+
+    if (matchesPendingGlossarySync) {
+      pendingGlossarySyncRef.current = null;
+    }
 
     previousGlossaryIdRef.current = nextGlossaryId;
   }, [activeGlossary]);
@@ -125,13 +143,21 @@ export function GlossaryWorkspace({
       return;
     }
 
-    await onUpdateGlossary({
+    const glossaryUpdate: UpdateGlossaryInput = {
       glossaryId: activeGlossary.id,
       name: draftName,
       description: draftDescription || undefined,
       projectId: draftProjectId || undefined,
       status: draftStatus,
-    });
+    };
+
+    pendingGlossarySyncRef.current = glossaryUpdate;
+
+    const wasUpdated = await onUpdateGlossary(glossaryUpdate);
+
+    if (!wasUpdated) {
+      pendingGlossarySyncRef.current = null;
+    }
   }
 
   async function handleOpenGlossary(glossaryId: string) {
@@ -156,13 +182,21 @@ export function GlossaryWorkspace({
       return;
     }
 
-    await onUpdateGlossary({
+    const glossaryUpdate: UpdateGlossaryInput = {
       glossaryId: activeGlossary.id,
       name: draftName,
       description: draftDescription || undefined,
       projectId: draftProjectId || undefined,
       status: activeGlossary.status === "active" ? "archived" : "active",
-    });
+    };
+
+    pendingGlossarySyncRef.current = glossaryUpdate;
+
+    const wasUpdated = await onUpdateGlossary(glossaryUpdate);
+
+    if (!wasUpdated) {
+      pendingGlossarySyncRef.current = null;
+    }
   }
 
   return (
