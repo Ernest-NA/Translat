@@ -459,12 +459,13 @@ mod tests {
         {
             let mut connection = open_database_with_key(&database_path, TEST_DATABASE_KEY)
                 .expect("database connection should open");
-            let mut repository = ProjectRepository::new(&mut connection);
+            {
+                let mut repository = ProjectRepository::new(&mut connection);
 
-            repository
-                .create(&sample_project(created_at))
-                .expect("project should be created");
-            drop(repository);
+                repository
+                    .create(&sample_project(created_at))
+                    .expect("project should be created");
+            }
 
             connection
                 .execute(
