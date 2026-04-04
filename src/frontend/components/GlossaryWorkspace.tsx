@@ -69,14 +69,15 @@ export function GlossaryWorkspace({
     const nextGlossaryId = activeGlossary?.id ?? null;
     const hasGlossaryChanged = previousGlossaryIdRef.current !== nextGlossaryId;
 
+    if (!hasGlossaryChanged) {
+      return;
+    }
+
     setDraftName(activeGlossary?.name ?? "");
     setDraftDescription(activeGlossary?.description ?? "");
     setDraftProjectId(activeGlossary?.projectId ?? "");
     setDraftStatus(activeGlossary?.status ?? "active");
-
-    if (hasGlossaryChanged) {
-      setHasUnsavedEntryChanges(false);
-    }
+    setHasUnsavedEntryChanges(false);
 
     previousGlossaryIdRef.current = nextGlossaryId;
   }, [activeGlossary]);

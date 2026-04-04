@@ -93,17 +93,25 @@ export function useGlossaryEntries(glossaryId: string | null) {
   const [isSaving, setIsSaving] = useState(false);
   const latestReloadRequestRef = useRef(0);
   const localStateVersionRef = useRef(0);
+  const activeGlossaryIdRef = useRef(glossaryId);
+
+  activeGlossaryIdRef.current = glossaryId;
 
   const applyLocalOverview = useCallback(
     (
+      expectedGlossaryId: string,
       updateOverview: (
         currentOverview: GlossaryEntriesOverview | null,
       ) => GlossaryEntriesOverview,
       nextSelectedEntryId?: string | null,
     ) => {
-      localStateVersionRef.current += 1;
-
       setOverview((currentOverview) => {
+        if (activeGlossaryIdRef.current !== expectedGlossaryId) {
+          return currentOverview;
+        }
+
+        localStateVersionRef.current += 1;
+
         const normalizedOverview = normalizeOverview(
           updateOverview(currentOverview),
         );
@@ -117,6 +125,15 @@ export function useGlossaryEntries(glossaryId: string | null) {
       });
     },
     [selectedEntryId],
+  );
+
+  const reportMutationError = useCallback(
+    (expectedGlossaryId: string, nextError: DesktopCommandError) => {
+      if (activeGlossaryIdRef.current === expectedGlossaryId) {
+        setError(nextError);
+      }
+    },
+    [],
   );
 
   const reload = useCallback(async () => {
@@ -185,18 +202,21 @@ export function useGlossaryEntries(glossaryId: string | null) {
         return false;
       }
 
+      const requestGlossaryId = glossaryId;
+
       setIsCreating(true);
       setError(null);
 
       try {
         const createdEntry = await createGlossaryEntry({
-          glossaryId,
+          glossaryId: requestGlossaryId,
           ...input,
         });
 
         applyLocalOverview(
+          requestGlossaryId,
           (currentOverview) => ({
-            glossaryId,
+            glossaryId: requestGlossaryId,
             entries: [
               createdEntry,
               ...(currentOverview?.entries ?? []).filter(
@@ -209,7 +229,8 @@ export function useGlossaryEntries(glossaryId: string | null) {
 
         return true;
       } catch (caughtError) {
-        setError(
+        reportMutationError(
+          requestGlossaryId,
           caughtError instanceof DesktopCommandError
             ? caughtError
             : buildUnexpectedError(
@@ -222,11 +243,13 @@ export function useGlossaryEntries(glossaryId: string | null) {
         setIsCreating(false);
       }
     },
-    [applyLocalOverview, glossaryId],
+    [applyLocalOverview, glossaryId, reportMutationError],
   );
 
   const saveEntry = useCallback(
     async (input: UpdateGlossaryEntryInput): Promise<boolean> => {
+      const requestGlossaryId = input.glossaryId;
+
       setIsSaving(true);
       setError(null);
 
@@ -234,6 +257,7 @@ export function useGlossaryEntries(glossaryId: string | null) {
         const updatedEntry = await updateGlossaryEntry(input);
 
         applyLocalOverview(
+          requestGlossaryId,
           (currentOverview) => ({
             glossaryId: currentOverview?.glossaryId ?? updatedEntry.glossaryId,
             entries: (currentOverview?.entries ?? []).map((entry) =>
@@ -245,7 +269,8 @@ export function useGlossaryEntries(glossaryId: string | null) {
 
         return true;
       } catch (caughtError) {
-        setError(
+        reportMutationError(
+          requestGlossaryId,
           caughtError instanceof DesktopCommandError
             ? caughtError
             : buildUnexpectedError(
@@ -258,7 +283,7 @@ export function useGlossaryEntries(glossaryId: string | null) {
         setIsSaving(false);
       }
     },
-    [applyLocalOverview],
+    [applyLocalOverview, reportMutationError],
   );
 
   const activeEntry = useMemo(
