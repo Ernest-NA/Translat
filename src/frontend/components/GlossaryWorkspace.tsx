@@ -489,6 +489,7 @@ export function GlossaryWorkspace({
             </form>
 
             <GlossaryEntriesPanel
+              key={activeGlossary.id}
               glossary={activeGlossary}
               onDirtyChange={setHasUnsavedEntryChanges}
               onEntriesChanged={onReloadGlossaries}

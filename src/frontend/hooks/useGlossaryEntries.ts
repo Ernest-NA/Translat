@@ -94,8 +94,32 @@ export function useGlossaryEntries(glossaryId: string | null) {
   const latestReloadRequestRef = useRef(0);
   const localStateVersionRef = useRef(0);
   const activeGlossaryIdRef = useRef(glossaryId);
+  const previousGlossaryIdRef = useRef<string | null>(null);
 
   activeGlossaryIdRef.current = glossaryId;
+
+  useEffect(() => {
+    if (previousGlossaryIdRef.current === glossaryId) {
+      return;
+    }
+
+    previousGlossaryIdRef.current = glossaryId;
+    latestReloadRequestRef.current += 1;
+    localStateVersionRef.current += 1;
+    setSelectedEntryId(null);
+    setError(null);
+    setIsCreating(false);
+    setIsSaving(false);
+    setOverview(
+      glossaryId
+        ? {
+            glossaryId,
+            entries: [],
+          }
+        : null,
+    );
+    setIsLoading(Boolean(glossaryId));
+  }, [glossaryId]);
 
   const applyLocalOverview = useCallback(
     (
@@ -138,10 +162,7 @@ export function useGlossaryEntries(glossaryId: string | null) {
 
   const reload = useCallback(async () => {
     if (!glossaryId) {
-      setOverview(null);
-      setSelectedEntryId(null);
-      setError(null);
-      setIsLoading(false);
+      latestReloadRequestRef.current += 1;
       return;
     }
 
@@ -149,6 +170,14 @@ export function useGlossaryEntries(glossaryId: string | null) {
     const localStateVersionAtStart = localStateVersionRef.current;
 
     latestReloadRequestRef.current = reloadRequestId;
+    setOverview((currentOverview) =>
+      currentOverview?.glossaryId === glossaryId
+        ? currentOverview
+        : {
+            glossaryId,
+            entries: [],
+          },
+    );
     setIsLoading(true);
     setError(null);
 
