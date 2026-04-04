@@ -95,10 +95,15 @@ export function ProjectWorkspace({
   selectedSegmentId,
   styleProfiles,
 }: ProjectWorkspaceProps) {
-  const [draftDefaultGlossaryId, setDraftDefaultGlossaryId] = useState("");
-  const [draftDefaultStyleProfileId, setDraftDefaultStyleProfileId] =
-    useState("");
-  const [draftDefaultRuleSetId, setDraftDefaultRuleSetId] = useState("");
+  const [draftDefaultGlossaryId, setDraftDefaultGlossaryId] = useState(() =>
+    normalizeSelectionValue(project?.defaultGlossaryId),
+  );
+  const [draftDefaultStyleProfileId, setDraftDefaultStyleProfileId] = useState(
+    () => normalizeSelectionValue(project?.defaultStyleProfileId),
+  );
+  const [draftDefaultRuleSetId, setDraftDefaultRuleSetId] = useState(() =>
+    normalizeSelectionValue(project?.defaultRuleSetId),
+  );
   const previousProjectIdRef = useRef<string | null>(null);
   const pendingDefaultsSyncRef =
     useRef<UpdateProjectEditorialDefaultsInput | null>(null);
