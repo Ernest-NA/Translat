@@ -36,7 +36,7 @@ pub(crate) fn build_translation_context_with_runtime(
         database_runtime,
         &project_id,
         &document_id,
-        true,
+        false,
         timestamp,
     )?;
 
@@ -107,6 +107,7 @@ mod tests {
     };
     use crate::documents::{NewDocument, DOCUMENT_SOURCE_LOCAL_FILE, DOCUMENT_STATUS_SEGMENTED};
     use crate::persistence::bootstrap::{bootstrap_database, DatabaseRuntime};
+    use crate::persistence::sections::DocumentSectionRepository;
     use crate::persistence::chapter_contexts::ChapterContextRepository;
     use crate::persistence::documents::DocumentRepository;
     use crate::persistence::glossaries::GlossaryRepository;
@@ -120,8 +121,8 @@ mod tests {
     use crate::projects::{NewProject, ProjectEditorialDefaultsChanges};
     use crate::rule_sets::{
         NewRule, NewRuleSet, RULE_ACTION_SCOPE_QA, RULE_ACTION_SCOPE_TRANSLATION,
-        RULE_SET_STATUS_ACTIVE, RULE_SEVERITY_HIGH, RULE_SEVERITY_MEDIUM, RULE_TYPE_CONSISTENCY,
-        RULE_TYPE_RESTRICTION,
+        RULE_SET_STATUS_ACTIVE, RULE_SEVERITY_HIGH, RULE_SEVERITY_LOW, RULE_SEVERITY_MEDIUM,
+        RULE_TYPE_CONSISTENCY, RULE_TYPE_PREFERENCE, RULE_TYPE_RESTRICTION,
     };
     use crate::sections::NewDocumentSection;
     use crate::segments::{NewSegment, SEGMENT_STATUS_PENDING_TRANSLATION};
@@ -558,17 +559,101 @@ mod tests {
     fn build_translation_context_filters_rules_by_action_scope() {
         let (_temp_dir, runtime) = create_runtime();
         seed_context_builder_graph(&runtime);
+        let mut connection = runtime
+            .open_connection()
+            .expect("database connection should open");
+        let now = 1_800_000_100_i64;
+
+        RuleRepository::new(&mut connection)
+            .create(&NewRule {
+                id: "rul_translation_002".to_owned(),
+                rule_set_id: "rset_project_001".to_owned(),
+                action_scope: RULE_ACTION_SCOPE_TRANSLATION.to_owned(),
+                rule_type: RULE_TYPE_CONSISTENCY.to_owned(),
+                severity: RULE_SEVERITY_MEDIUM.to_owned(),
+                name: "Keep list formatting stable".to_owned(),
+                description: None,
+                guidance: "Preserve enumerated formatting in the translation.".to_owned(),
+                is_enabled: true,
+                created_at: now,
+                updated_at: now,
+            })
+            .expect("medium translation rule should persist");
+        RuleRepository::new(&mut connection)
+            .create(&NewRule {
+                id: "rul_translation_003".to_owned(),
+                rule_set_id: "rset_project_001".to_owned(),
+                action_scope: RULE_ACTION_SCOPE_TRANSLATION.to_owned(),
+                rule_type: RULE_TYPE_PREFERENCE.to_owned(),
+                severity: RULE_SEVERITY_LOW.to_owned(),
+                name: "Prefer recurring noun phrases".to_owned(),
+                description: None,
+                guidance: "Prefer repeated noun phrases when they remain natural.".to_owned(),
+                is_enabled: true,
+                created_at: now + 1,
+                updated_at: now + 1,
+            })
+            .expect("low translation rule should persist");
 
         let translation_preview = build_preview(&runtime, RULE_ACTION_SCOPE_TRANSLATION);
         let qa_preview = build_preview(&runtime, RULE_ACTION_SCOPE_QA);
 
-        assert_eq!(translation_preview.rules.len(), 1);
+        assert_eq!(translation_preview.rules.len(), 3);
         assert_eq!(
-            translation_preview.rules[0].rule.name,
-            "Keep command names stable"
+            translation_preview
+                .rules
+                .iter()
+                .map(|rule| rule.rule.name.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                "Keep command names stable",
+                "Keep list formatting stable",
+                "Prefer recurring noun phrases",
+            ]
         );
         assert_eq!(qa_preview.rules.len(), 1);
         assert_eq!(qa_preview.rules[0].rule.name, "QA-only rule");
+    }
+
+    #[test]
+    fn build_translation_context_does_not_persist_rebuilt_sections() {
+        let (_temp_dir, runtime) = create_runtime();
+        seed_context_builder_graph(&runtime);
+        let mut connection = runtime
+            .open_connection()
+            .expect("database connection should open");
+
+        DocumentSectionRepository::new(&mut connection)
+            .replace_for_document("doc_chunk_001", &[])
+            .expect("sections should be cleared");
+        assert!(
+            DocumentSectionRepository::new(&mut connection)
+                .list_by_document("doc_chunk_001")
+                .expect("sections should list")
+                .is_empty()
+        );
+        drop(connection);
+
+        let preview = build_preview(&runtime, RULE_ACTION_SCOPE_TRANSLATION);
+
+        assert_eq!(
+            preview
+                .chunk_context
+                .section
+                .as_ref()
+                .map(|section| section.title.as_str()),
+            Some("Chapter 1")
+        );
+
+        let mut connection = runtime
+            .open_connection()
+            .expect("database connection should open");
+        assert!(
+            DocumentSectionRepository::new(&mut connection)
+                .list_by_document("doc_chunk_001")
+                .expect("sections should remain unpersisted")
+                .is_empty()
+        );
     }
 
     #[test]

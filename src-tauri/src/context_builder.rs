@@ -22,7 +22,7 @@ use crate::projects::ProjectSummary;
 use crate::rule_sets::{
     RuleSetSummary, RuleSummary, RULE_ACTION_SCOPE_CONSISTENCY_REVIEW, RULE_ACTION_SCOPE_EXPORT,
     RULE_ACTION_SCOPE_QA, RULE_ACTION_SCOPE_RETRANSLATION, RULE_ACTION_SCOPE_TRANSLATION,
-    RULE_SET_STATUS_ACTIVE,
+    RULE_SET_STATUS_ACTIVE, RULE_SEVERITY_HIGH, RULE_SEVERITY_LOW, RULE_SEVERITY_MEDIUM,
 };
 use crate::sections::DocumentSectionSummary;
 use crate::segments::{DocumentSegmentsOverview, SegmentSummary};
@@ -637,7 +637,10 @@ fn resolve_rules(
             right
                 .priority
                 .cmp(&left.priority)
-                .then_with(|| left.rule.severity.cmp(&right.rule.severity))
+                .then_with(|| {
+                    rule_severity_rank(&left.rule.severity)
+                        .cmp(&rule_severity_rank(&right.rule.severity))
+                })
                 .then_with(|| left.rule.name.cmp(&right.rule.name))
                 .then_with(|| left.rule.id.cmp(&right.rule.id))
         });
@@ -730,6 +733,15 @@ fn resolve_chapter_contexts(
     });
 
     Ok(resolved_contexts)
+}
+
+fn rule_severity_rank(severity: &str) -> i64 {
+    match severity {
+        RULE_SEVERITY_HIGH => 0,
+        RULE_SEVERITY_MEDIUM => 1,
+        RULE_SEVERITY_LOW => 2,
+        _ => 3,
+    }
 }
 
 fn resolve_chapter_context_match(
