@@ -1,5 +1,10 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { RuleSeverity, RuleSummary, RuleType } from "../../shared/desktop";
+import type {
+  RuleActionScope,
+  RuleSeverity,
+  RuleSummary,
+  RuleType,
+} from "../../shared/desktop";
 import { useRuleSetRules } from "../hooks/useRuleSetRules";
 import type { DesktopCommandError } from "../lib/desktop";
 
@@ -13,6 +18,17 @@ const RULE_TYPE_OPTIONS: Array<{ label: string; value: RuleType }> = [
   { label: "Consistency", value: "consistency" },
   { label: "Preference", value: "preference" },
   { label: "Restriction", value: "restriction" },
+];
+
+const RULE_ACTION_SCOPE_OPTIONS: Array<{
+  label: string;
+  value: RuleActionScope;
+}> = [
+  { label: "Translation", value: "translation" },
+  { label: "Retranslation", value: "retranslation" },
+  { label: "QA", value: "qa" },
+  { label: "Export", value: "export" },
+  { label: "Consistency review", value: "consistency_review" },
 ];
 
 const RULE_SEVERITY_OPTIONS: Array<{ label: string; value: RuleSeverity }> = [
@@ -34,6 +50,7 @@ function optionLabel<TValue extends string>(
 
 function ruleSummary(rule: RuleSummary) {
   return [
+    optionLabel(RULE_ACTION_SCOPE_OPTIONS, rule.actionScope),
     optionLabel(RULE_TYPE_OPTIONS, rule.ruleType),
     optionLabel(RULE_SEVERITY_OPTIONS, rule.severity),
     rule.isEnabled ? "Enabled" : "Disabled",
@@ -69,12 +86,16 @@ export function RuleSetRulesPanel({
   const [createGuidance, setCreateGuidance] = useState("");
   const [createIsEnabled, setCreateIsEnabled] = useState(true);
   const [createName, setCreateName] = useState("");
+  const [createActionScope, setCreateActionScope] =
+    useState<RuleActionScope>("translation");
   const [createSeverity, setCreateSeverity] = useState<RuleSeverity>("medium");
   const [createType, setCreateType] = useState<RuleType>("consistency");
   const [draftDescription, setDraftDescription] = useState("");
   const [draftGuidance, setDraftGuidance] = useState("");
   const [draftIsEnabled, setDraftIsEnabled] = useState(true);
   const [draftName, setDraftName] = useState("");
+  const [draftActionScope, setDraftActionScope] =
+    useState<RuleActionScope>("translation");
   const [draftSeverity, setDraftSeverity] = useState<RuleSeverity>("medium");
   const [draftType, setDraftType] = useState<RuleType>("consistency");
   const previousRuleRevisionRef = useRef<string | null>(null);
@@ -85,6 +106,7 @@ export function RuleSetRulesPanel({
           activeRule.id,
           activeRule.updatedAt,
           activeRule.name,
+          activeRule.actionScope,
           activeRule.ruleType,
           activeRule.severity,
           activeRule.description ?? "",
@@ -98,6 +120,7 @@ export function RuleSetRulesPanel({
     }
 
     setDraftName(activeRule?.name ?? "");
+    setDraftActionScope(activeRule?.actionScope ?? "translation");
     setDraftType(activeRule?.ruleType ?? "consistency");
     setDraftSeverity(activeRule?.severity ?? "medium");
     setDraftDescription(activeRule?.description ?? "");
@@ -112,11 +135,13 @@ export function RuleSetRulesPanel({
       createName.trim().length > 0 ||
       createDescription.trim().length > 0 ||
       createGuidance.trim().length > 0 ||
+      createActionScope !== "translation" ||
       createType !== "consistency" ||
       createSeverity !== "medium" ||
       !createIsEnabled,
     [
       createDescription,
+      createActionScope,
       createGuidance,
       createIsEnabled,
       createName,
@@ -132,6 +157,7 @@ export function RuleSetRulesPanel({
 
     return (
       draftName !== activeRule.name ||
+      draftActionScope !== activeRule.actionScope ||
       draftType !== activeRule.ruleType ||
       draftSeverity !== activeRule.severity ||
       draftDescription !== (activeRule.description ?? "") ||
@@ -140,6 +166,7 @@ export function RuleSetRulesPanel({
     );
   }, [
     activeRule,
+    draftActionScope,
     draftDescription,
     draftGuidance,
     draftIsEnabled,
@@ -168,6 +195,7 @@ export function RuleSetRulesPanel({
 
     const wasCreated = await submitRule({
       ruleType: createType,
+      actionScope: createActionScope,
       severity: createSeverity,
       name: createName,
       description: createDescription || undefined,
@@ -177,6 +205,7 @@ export function RuleSetRulesPanel({
 
     if (wasCreated) {
       setCreateName("");
+      setCreateActionScope("translation");
       setCreateType("consistency");
       setCreateSeverity("medium");
       setCreateDescription("");
@@ -201,6 +230,7 @@ export function RuleSetRulesPanel({
     const wasUpdated = await saveRule({
       ruleId: activeRule.id,
       ruleSetId: activeRule.ruleSetId,
+      actionScope: draftActionScope,
       ruleType: draftType,
       severity: draftSeverity,
       name: draftName,
@@ -243,6 +273,7 @@ export function RuleSetRulesPanel({
     const wasUpdated = await saveRule({
       ruleId: activeRule.id,
       ruleSetId: activeRule.ruleSetId,
+      actionScope: draftActionScope,
       ruleType: draftType,
       severity: draftSeverity,
       name: draftName,
@@ -324,6 +355,24 @@ export function RuleSetRulesPanel({
             </label>
 
             <div className="rule-form-grid">
+              <label className="field-group">
+                <span>Action scope</span>
+                <select
+                  className="field-control"
+                  disabled={isCreating}
+                  onChange={(event) =>
+                    setCreateActionScope(event.target.value as RuleActionScope)
+                  }
+                  value={createActionScope}
+                >
+                  {RULE_ACTION_SCOPE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
               <label className="field-group">
                 <span>Rule type</span>
                 <select
@@ -486,6 +535,26 @@ export function RuleSetRulesPanel({
                 </label>
 
                 <div className="rule-form-grid">
+                  <label className="field-group">
+                    <span>Action scope</span>
+                    <select
+                      className="field-control"
+                      disabled={isSaving}
+                      onChange={(event) =>
+                        setDraftActionScope(
+                          event.target.value as RuleActionScope,
+                        )
+                      }
+                      value={draftActionScope}
+                    >
+                      {RULE_ACTION_SCOPE_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
                   <label className="field-group">
                     <span>Rule type</span>
                     <select

@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import {
   type BuildDocumentTranslationChunksInput,
+  type BuildTranslationContextInput,
   type CreateGlossaryEntryInput,
   type CreateGlossaryInput,
   type CreateProjectInput,
@@ -38,6 +39,7 @@ import {
   type RuleSummary,
   type StyleProfileSummary,
   type StyleProfilesOverview,
+  type TranslationContextPreview,
   type UpdateGlossaryEntryInput,
   type UpdateGlossaryInput,
   type UpdateProjectEditorialDefaultsInput,
@@ -228,6 +230,15 @@ export function buildDocumentTranslationChunks(
 ) {
   return invokeDesktopCommand<DocumentTranslationChunksOverview>(
     DESKTOP_COMMANDS.buildDocumentTranslationChunks,
+    {
+      input,
+    },
+  );
+}
+
+export function buildTranslationContext(input: BuildTranslationContextInput) {
+  return invokeDesktopCommand<TranslationContextPreview>(
+    DESKTOP_COMMANDS.buildTranslationContext,
     {
       input,
     },

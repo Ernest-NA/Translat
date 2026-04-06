@@ -19,7 +19,10 @@ impl<'connection> RuleSetRepository<'connection> {
         Self { connection }
     }
 
-    pub fn create(&mut self, new_rule_set: &NewRuleSet) -> Result<RuleSetSummary, PersistenceError> {
+    pub fn create(
+        &mut self,
+        new_rule_set: &NewRuleSet,
+    ) -> Result<RuleSetSummary, PersistenceError> {
         let transaction = self.connection.transaction().map_err(|error| {
             PersistenceError::with_details(
                 "The rule-set repository could not start the rule-set creation transaction.",
@@ -140,7 +143,9 @@ impl<'connection> RuleSetRepository<'connection> {
             )
             .map_err(|error| {
                 PersistenceError::with_details(
-                    format!("The rule-set repository could not mark rule set {rule_set_id} as opened."),
+                    format!(
+                        "The rule-set repository could not mark rule set {rule_set_id} as opened."
+                    ),
                     error,
                 )
             })?;
@@ -187,10 +192,7 @@ impl<'connection> RuleSetRepository<'connection> {
         Ok(rule_set)
     }
 
-    pub fn update(
-        &mut self,
-        changes: &RuleSetChanges,
-    ) -> Result<RuleSetSummary, PersistenceError> {
+    pub fn update(&mut self, changes: &RuleSetChanges) -> Result<RuleSetSummary, PersistenceError> {
         let transaction = self.connection.transaction().map_err(|error| {
             PersistenceError::with_details(
                 "The rule-set repository could not start the rule-set update transaction.",
@@ -219,7 +221,10 @@ impl<'connection> RuleSetRepository<'connection> {
             )
             .map_err(|error| {
                 PersistenceError::with_details(
-                    format!("The rule-set repository could not update rule set {}.", changes.rule_set_id),
+                    format!(
+                        "The rule-set repository could not update rule set {}.",
+                        changes.rule_set_id
+                    ),
                     error,
                 )
             })?;
@@ -252,7 +257,10 @@ impl<'connection> RuleSetRepository<'connection> {
             )
             .map_err(|error| {
                 PersistenceError::with_details(
-                    format!("The rule-set repository could not reload rule set {}.", changes.rule_set_id),
+                    format!(
+                        "The rule-set repository could not reload rule set {}.",
+                        changes.rule_set_id
+                    ),
                     error,
                 )
             })?;
@@ -329,6 +337,7 @@ impl<'connection> RuleRepository<'connection> {
                 INSERT INTO rules (
                   id,
                   rule_set_id,
+                  action_scope,
                   rule_type,
                   severity,
                   name,
@@ -338,11 +347,12 @@ impl<'connection> RuleRepository<'connection> {
                   created_at,
                   updated_at
                 )
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
                 "#,
                 params![
                     new_rule.id,
                     new_rule.rule_set_id,
+                    new_rule.action_scope,
                     new_rule.rule_type,
                     new_rule.severity,
                     new_rule.name,
@@ -373,7 +383,10 @@ impl<'connection> RuleRepository<'connection> {
         Ok(created_rule)
     }
 
-    pub fn list_by_rule_set(&mut self, rule_set_id: &str) -> Result<Vec<RuleSummary>, PersistenceError> {
+    pub fn list_by_rule_set(
+        &mut self,
+        rule_set_id: &str,
+    ) -> Result<Vec<RuleSummary>, PersistenceError> {
         let mut statement = self
             .connection
             .prepare(
@@ -381,6 +394,7 @@ impl<'connection> RuleRepository<'connection> {
                 SELECT
                   id,
                   rule_set_id,
+                  action_scope,
                   rule_type,
                   severity,
                   name,
@@ -397,6 +411,13 @@ impl<'connection> RuleRepository<'connection> {
                     WHEN 'high' THEN 0
                     WHEN 'medium' THEN 1
                     ELSE 2
+                  END ASC,
+                  CASE action_scope
+                    WHEN 'translation' THEN 0
+                    WHEN 'retranslation' THEN 1
+                    WHEN 'qa' THEN 2
+                    WHEN 'export' THEN 3
+                    ELSE 4
                   END ASC,
                   name COLLATE NOCASE ASC,
                   updated_at DESC
@@ -445,18 +466,20 @@ impl<'connection> RuleRepository<'connection> {
                 r#"
                 UPDATE rules
                 SET
-                  rule_type = ?3,
-                  severity = ?4,
-                  name = ?5,
-                  description = ?6,
-                  guidance = ?7,
-                  is_enabled = ?8,
-                  updated_at = ?9
+                  action_scope = ?3,
+                  rule_type = ?4,
+                  severity = ?5,
+                  name = ?6,
+                  description = ?7,
+                  guidance = ?8,
+                  is_enabled = ?9,
+                  updated_at = ?10
                 WHERE id = ?1 AND rule_set_id = ?2
                 "#,
                 params![
                     changes.rule_id,
                     changes.rule_set_id,
+                    changes.action_scope,
                     changes.rule_type,
                     changes.severity,
                     changes.name,
@@ -468,7 +491,10 @@ impl<'connection> RuleRepository<'connection> {
             )
             .map_err(|error| {
                 PersistenceError::with_details(
-                    format!("The rule repository could not update rule {}.", changes.rule_id),
+                    format!(
+                        "The rule repository could not update rule {}.",
+                        changes.rule_id
+                    ),
                     error,
                 )
             })?;
@@ -493,7 +519,10 @@ impl<'connection> RuleRepository<'connection> {
         Ok(updated_rule)
     }
 
-    pub fn load_overview(&mut self, rule_set_id: &str) -> Result<RuleSetRulesOverview, PersistenceError> {
+    pub fn load_overview(
+        &mut self,
+        rule_set_id: &str,
+    ) -> Result<RuleSetRulesOverview, PersistenceError> {
         Ok(RuleSetRulesOverview {
             rule_set_id: rule_set_id.to_owned(),
             rules: self.list_by_rule_set(rule_set_id)?,
@@ -532,6 +561,7 @@ fn load_rule(
             SELECT
               id,
               rule_set_id,
+              action_scope,
               rule_type,
               severity,
               name,
@@ -608,14 +638,15 @@ fn map_rule_summary(row: &Row<'_>) -> rusqlite::Result<RuleSummary> {
     Ok(RuleSummary {
         id: row.get(0)?,
         rule_set_id: row.get(1)?,
-        rule_type: row.get(2)?,
-        severity: row.get(3)?,
-        name: row.get(4)?,
-        description: row.get(5)?,
-        guidance: row.get(6)?,
-        is_enabled: row.get::<_, i64>(7)? == 1,
-        created_at: row.get(8)?,
-        updated_at: row.get(9)?,
+        action_scope: row.get(2)?,
+        rule_type: row.get(3)?,
+        severity: row.get(4)?,
+        name: row.get(5)?,
+        description: row.get(6)?,
+        guidance: row.get(7)?,
+        is_enabled: row.get::<_, i64>(8)? == 1,
+        created_at: row.get(9)?,
+        updated_at: row.get(10)?,
     })
 }
 
@@ -626,9 +657,10 @@ mod tests {
 
     use crate::persistence::bootstrap::{bootstrap_database, open_database_with_key};
     use crate::rule_sets::{
-        NewRule, NewRuleSet, RuleChanges, RuleSetChanges, RULE_SEVERITY_HIGH, RULE_SEVERITY_LOW,
-        RULE_SEVERITY_MEDIUM, RULE_SET_STATUS_ACTIVE, RULE_SET_STATUS_ARCHIVED,
-        RULE_TYPE_CONSISTENCY, RULE_TYPE_PREFERENCE, RULE_TYPE_RESTRICTION,
+        NewRule, NewRuleSet, RuleChanges, RuleSetChanges, RULE_ACTION_SCOPE_QA,
+        RULE_ACTION_SCOPE_TRANSLATION, RULE_SET_STATUS_ACTIVE, RULE_SET_STATUS_ARCHIVED,
+        RULE_SEVERITY_HIGH, RULE_SEVERITY_LOW, RULE_SEVERITY_MEDIUM, RULE_TYPE_CONSISTENCY,
+        RULE_TYPE_PREFERENCE, RULE_TYPE_RESTRICTION,
     };
 
     const TEST_DATABASE_KEY: &str = "translat-test-key-for-d4";
@@ -649,6 +681,7 @@ mod tests {
         NewRule {
             id: "rul_test_001".to_owned(),
             rule_set_id: "rset_test_001".to_owned(),
+            action_scope: RULE_ACTION_SCOPE_TRANSLATION.to_owned(),
             rule_type: RULE_TYPE_RESTRICTION.to_owned(),
             severity: RULE_SEVERITY_HIGH.to_owned(),
             name: "Do not soften contraindications".to_owned(),
@@ -679,7 +712,10 @@ mod tests {
             .load_overview()
             .expect("rule-set overview should load");
 
-        assert_eq!(overview.active_rule_set_id.as_deref(), Some("rset_test_001"));
+        assert_eq!(
+            overview.active_rule_set_id.as_deref(),
+            Some("rset_test_001")
+        );
         assert_eq!(overview.rule_sets.len(), 1);
         assert_eq!(overview.rule_sets[0].name, "Medical safeguards");
     }
@@ -717,6 +753,7 @@ mod tests {
                 .update(&RuleChanges {
                     rule_id: "rul_test_001".to_owned(),
                     rule_set_id: "rset_test_001".to_owned(),
+                    action_scope: RULE_ACTION_SCOPE_QA.to_owned(),
                     rule_type: RULE_TYPE_CONSISTENCY.to_owned(),
                     severity: RULE_SEVERITY_MEDIUM.to_owned(),
                     name: "Keep warning terminology stable".to_owned(),
@@ -738,12 +775,22 @@ mod tests {
             .expect("rule overview should reload");
 
         assert_eq!(rule_set_overview.rule_sets.len(), 1);
-        assert_eq!(rule_set_overview.rule_sets[0].status, RULE_SET_STATUS_ARCHIVED);
-        assert_eq!(rule_set_overview.rule_sets[0].name, "Medical safeguards revised");
+        assert_eq!(
+            rule_set_overview.rule_sets[0].status,
+            RULE_SET_STATUS_ARCHIVED
+        );
+        assert_eq!(
+            rule_set_overview.rule_sets[0].name,
+            "Medical safeguards revised"
+        );
         assert_eq!(rules_overview.rules.len(), 1);
+        assert_eq!(rules_overview.rules[0].action_scope, RULE_ACTION_SCOPE_QA);
         assert_eq!(rules_overview.rules[0].rule_type, RULE_TYPE_CONSISTENCY);
         assert_eq!(rules_overview.rules[0].severity, RULE_SEVERITY_MEDIUM);
-        assert_eq!(rules_overview.rules[0].name, "Keep warning terminology stable");
+        assert_eq!(
+            rules_overview.rules[0].name,
+            "Keep warning terminology stable"
+        );
         assert!(!rules_overview.rules[0].is_enabled);
     }
 
@@ -768,6 +815,7 @@ mod tests {
             .create(&NewRule {
                 id: "rul_test_002".to_owned(),
                 rule_set_id: "rset_test_001".to_owned(),
+                action_scope: RULE_ACTION_SCOPE_TRANSLATION.to_owned(),
                 rule_type: RULE_TYPE_PREFERENCE.to_owned(),
                 severity: RULE_SEVERITY_LOW.to_owned(),
                 name: "Prefer stable label pairs".to_owned(),
@@ -782,6 +830,7 @@ mod tests {
             .create(&NewRule {
                 id: "rul_test_003".to_owned(),
                 rule_set_id: "rset_test_001".to_owned(),
+                action_scope: RULE_ACTION_SCOPE_QA.to_owned(),
                 rule_type: RULE_TYPE_RESTRICTION.to_owned(),
                 severity: RULE_SEVERITY_HIGH.to_owned(),
                 name: "Disabled hard rule".to_owned(),
