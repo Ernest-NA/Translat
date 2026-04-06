@@ -24,3 +24,6 @@ Planned responsibility areas:
 - translation workspace UI
 - historical review and diff UI
 - corpus and search UI
+
+Current workflow reference:
+- [Translation Workspace frontend workflow](../../docs/product/translation-workspace-frontend-workflow.md)
