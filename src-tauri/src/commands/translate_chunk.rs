@@ -11,7 +11,6 @@ use crate::context_builder::{
 };
 use crate::error::DesktopCommandError;
 use crate::persistence::bootstrap::DatabaseRuntime;
-use crate::persistence::segments::SegmentRepository;
 use crate::persistence::task_runs::TaskRunRepository;
 use crate::task_runs::{NewTaskRun, TASK_RUN_STATUS_RUNNING};
 use crate::translate_chunk::{
@@ -142,20 +141,25 @@ pub(crate) fn translate_chunk_with_runtime_and_executor<E: TranslateChunkExecuto
         }
     };
     let completed_at = current_timestamp()?;
+    let segment_writes = validated_segments
+        .iter()
+        .map(|segment| segment.to_segment_write())
+        .collect::<Vec<_>>();
+    let output_payload =
+        serialize_task_run_output(&model_output.provider, &model_output.model, &action_response)?;
 
-    SegmentRepository::new(&mut connection)
-        .apply_translation_projection(
+    let task_run = TaskRunRepository::new(&mut connection)
+        .mark_completed_with_translation_projection(
+            &project_id,
             &document_id,
             &task_run_id,
-            &validated_segments
-                .iter()
-                .map(|segment| segment.to_segment_write())
-                .collect::<Vec<_>>(),
+            &output_payload,
+            &segment_writes,
             completed_at,
         )
         .map_err(|error| {
             let desktop_error = DesktopCommandError::internal(
-                "The desktop shell could not persist translated segment output for translate_chunk.",
+                "The desktop shell could not finalize translated output for translate_chunk.",
                 Some(error.to_string()),
             );
             best_effort_mark_task_run_failed(
@@ -166,17 +170,6 @@ pub(crate) fn translate_chunk_with_runtime_and_executor<E: TranslateChunkExecuto
                 completed_at,
             );
             desktop_error
-        })?;
-
-    let output_payload =
-        serialize_task_run_output(&model_output.provider, &model_output.model, &action_response)?;
-    let task_run = TaskRunRepository::new(&mut connection)
-        .mark_completed(&task_run_id, &output_payload, completed_at)
-        .map_err(|error| {
-            DesktopCommandError::internal(
-                "The desktop shell could not finalize the translate_chunk task run.",
-                Some(error.to_string()),
-            )
         })?;
 
     Ok(TranslateChunkResult {

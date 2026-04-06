@@ -2,9 +2,7 @@ use rusqlite::{params, Connection};
 
 use crate::documents::DOCUMENT_STATUS_SEGMENTED;
 use crate::persistence::error::PersistenceError;
-use crate::segments::{
-    NewSegment, SegmentSummary, SegmentTranslationWrite, SEGMENT_STATUS_TRANSLATED,
-};
+use crate::segments::{NewSegment, SegmentSummary};
 
 pub struct SegmentRepository<'connection> {
     connection: &'connection mut Connection,
@@ -220,86 +218,5 @@ impl<'connection> SegmentRepository<'connection> {
         }
 
         Ok(segments)
-    }
-
-    pub fn apply_translation_projection(
-        &mut self,
-        document_id: &str,
-        task_run_id: &str,
-        segment_translations: &[SegmentTranslationWrite],
-        translated_at: i64,
-    ) -> Result<(), PersistenceError> {
-        let transaction = self.connection.transaction().map_err(|error| {
-            PersistenceError::with_details(
-                format!(
-                    "The segment repository could not start the translation projection transaction for document {document_id}."
-                ),
-                error,
-            )
-        })?;
-
-        for segment_translation in segment_translations {
-            let updated_rows = transaction
-                .execute(
-                    r#"
-                    UPDATE segments
-                    SET
-                      target_text = ?3,
-                      status = ?4,
-                      last_task_run_id = ?5,
-                      updated_at = ?6
-                    WHERE id = ?1 AND document_id = ?2
-                    "#,
-                    params![
-                        segment_translation.segment_id,
-                        document_id,
-                        segment_translation.target_text,
-                        SEGMENT_STATUS_TRANSLATED,
-                        task_run_id,
-                        translated_at
-                    ],
-                )
-                .map_err(|error| {
-                    PersistenceError::with_details(
-                        format!(
-                            "The segment repository could not project translation output onto segment {}.",
-                            segment_translation.segment_id
-                        ),
-                        error,
-                    )
-                })?;
-
-            if updated_rows != 1 {
-                return Err(PersistenceError::new(format!(
-                    "The segment repository could not find segment {} in document {document_id} while projecting translation output.",
-                    segment_translation.segment_id
-                )));
-            }
-        }
-
-        transaction
-            .execute(
-                "UPDATE documents SET updated_at = ?2 WHERE id = ?1",
-                params![document_id, translated_at],
-            )
-            .map_err(|error| {
-                PersistenceError::with_details(
-                    format!(
-                        "The segment repository could not update document {document_id} after translation projection."
-                    ),
-                    error,
-                )
-            })?;
-
-        transaction.commit().map_err(|error| {
-            PersistenceError::with_details(
-                format!(
-                    "The segment repository could not commit translation projection for document {document_id}."
-                ),
-                error,
-            )
-        })?;
-
-        Ok(())
     }
 }
