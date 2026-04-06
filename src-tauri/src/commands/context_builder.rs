@@ -122,10 +122,10 @@ mod tests {
     use crate::persistence::translation_chunks::TranslationChunkRepository;
     use crate::projects::{NewProject, ProjectEditorialDefaultsChanges};
     use crate::rule_sets::{
-        NewRule, NewRuleSet, RULE_ACTION_SCOPE_QA, RULE_ACTION_SCOPE_TRANSLATION,
-        RULE_SET_STATUS_ACTIVE, RULE_SET_STATUS_ARCHIVED, RULE_SEVERITY_HIGH,
-        RULE_SEVERITY_LOW, RULE_SEVERITY_MEDIUM, RULE_TYPE_CONSISTENCY,
-        RULE_TYPE_PREFERENCE, RULE_TYPE_RESTRICTION,
+        NewRule, NewRuleSet, RULE_ACTION_SCOPE_EXPORT, RULE_ACTION_SCOPE_QA,
+        RULE_ACTION_SCOPE_TRANSLATION, RULE_SET_STATUS_ACTIVE, RULE_SET_STATUS_ARCHIVED,
+        RULE_SEVERITY_HIGH, RULE_SEVERITY_LOW, RULE_SEVERITY_MEDIUM,
+        RULE_TYPE_CONSISTENCY, RULE_TYPE_PREFERENCE, RULE_TYPE_RESTRICTION,
     };
     use crate::sections::NewDocumentSection;
     use crate::segments::{NewSegment, SEGMENT_STATUS_PENDING_TRANSLATION};
@@ -668,6 +668,61 @@ mod tests {
     }
 
     #[test]
+    fn build_translation_context_falls_back_to_workspace_rule_set_for_missing_scope() {
+        let (_temp_dir, runtime) = create_runtime();
+        seed_context_builder_graph(&runtime);
+        let mut connection = runtime
+            .open_connection()
+            .expect("database connection should open");
+        let now = 1_800_000_250_i64;
+
+        let fallback_rule_set = RuleSetRepository::new(&mut connection)
+            .create(&NewRuleSet {
+                id: "rset_workspace_scope_001".to_owned(),
+                name: "Scoped fallback rules".to_owned(),
+                description: None,
+                status: RULE_SET_STATUS_ACTIVE.to_owned(),
+                created_at: now,
+                updated_at: now,
+                last_opened_at: now,
+            })
+            .expect("scoped fallback rule set should persist");
+        RuleRepository::new(&mut connection)
+            .create(&NewRule {
+                id: "rul_workspace_qa_001".to_owned(),
+                rule_set_id: fallback_rule_set.id.clone(),
+                action_scope: RULE_ACTION_SCOPE_EXPORT.to_owned(),
+                rule_type: RULE_TYPE_CONSISTENCY.to_owned(),
+                severity: RULE_SEVERITY_HIGH.to_owned(),
+                name: "Workspace export fallback".to_owned(),
+                description: None,
+                guidance: "Export fallback guidance.".to_owned(),
+                is_enabled: true,
+                created_at: now,
+                updated_at: now,
+            })
+            .expect("scoped fallback export rule should persist");
+        RuleSetRepository::new(&mut connection)
+            .open_rule_set(&fallback_rule_set.id, now + 1)
+            .expect("scoped fallback rule set should become active");
+        drop(connection);
+
+        let preview = build_preview(&runtime, RULE_ACTION_SCOPE_EXPORT);
+
+        assert_eq!(
+            preview
+                .rule_set
+                .as_ref()
+                .map(|rule_set| rule_set.rule_set.id.as_str()),
+            Some("rset_workspace_scope_001")
+        );
+        assert_eq!(
+            preview.rules.iter().map(|rule| rule.rule.name.as_str()).collect::<Vec<_>>(),
+            vec!["Workspace export fallback"]
+        );
+    }
+
+    #[test]
     fn build_translation_context_filters_rules_by_action_scope() {
         let (_temp_dir, runtime) = create_runtime();
         seed_context_builder_graph(&runtime);
@@ -725,6 +780,64 @@ mod tests {
         );
         assert_eq!(qa_preview.rules.len(), 1);
         assert_eq!(qa_preview.rules[0].rule.name, "QA-only rule");
+    }
+
+    #[test]
+    fn build_translation_context_deduplicates_unicode_glossary_terms() {
+        let (_temp_dir, runtime) = create_runtime();
+        seed_context_builder_graph(&runtime);
+        let mut connection = runtime
+            .open_connection()
+            .expect("database connection should open");
+        let now = 1_800_000_150_i64;
+
+        GlossaryEntryRepository::new(&mut connection)
+            .create(&NewGlossaryEntry {
+                id: "gle_global_unicode_001".to_owned(),
+                glossary_id: "gls_global_001".to_owned(),
+                source_term: "ÓRDEN".to_owned(),
+                target_term: "Orden global".to_owned(),
+                context_note: None,
+                status: GLOSSARY_ENTRY_STATUS_ACTIVE.to_owned(),
+                created_at: now,
+                updated_at: now,
+                source_variants: vec![],
+                target_variants: vec![],
+                forbidden_terms: vec![],
+            })
+            .expect("global unicode glossary entry should persist");
+        GlossaryEntryRepository::new(&mut connection)
+            .create(&NewGlossaryEntry {
+                id: "gle_project_unicode_001".to_owned(),
+                glossary_id: "gls_project_001".to_owned(),
+                source_term: "órden".to_owned(),
+                target_term: "Mandato unicode".to_owned(),
+                context_note: None,
+                status: GLOSSARY_ENTRY_STATUS_ACTIVE.to_owned(),
+                created_at: now + 1,
+                updated_at: now + 1,
+                source_variants: vec![],
+                target_variants: vec![],
+                forbidden_terms: vec![],
+            })
+            .expect("project unicode glossary entry should persist");
+        drop(connection);
+
+        let preview = build_preview(&runtime, RULE_ACTION_SCOPE_TRANSLATION);
+
+        assert_eq!(preview.glossary_entries.len(), 2);
+        assert!(
+            preview
+                .glossary_entries
+                .iter()
+                .any(|entry| entry.entry.target_term == "Mandato unicode")
+        );
+        assert!(
+            !preview
+                .glossary_entries
+                .iter()
+                .any(|entry| entry.entry.target_term == "Orden global")
+        );
     }
 
     #[test]

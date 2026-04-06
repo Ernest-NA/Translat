@@ -560,79 +560,90 @@ fn resolve_rules(
                 Some(error.to_string()),
             )
         })?;
-    let rule_set = if let Some(rule_set_id) = project.default_rule_set_id.as_deref() {
-        resolve_optional_rule_set(
+    let mut candidates = Vec::new();
+
+    if let Some(rule_set_id) = project.default_rule_set_id.as_deref() {
+        if let Some(rule_set) = resolve_optional_rule_set(
             &overview.rule_sets,
             rule_set_id,
             EDITORIAL_SOURCE_PROJECT_DEFAULT,
             PROJECT_DEFAULT_PRIORITY,
-        )
-        .or_else(|| {
-            overview
-                .active_rule_set_id
-                .as_deref()
-                .and_then(|active_rule_set_id| {
-                    resolve_optional_rule_set(
-                        &overview.rule_sets,
-                        active_rule_set_id,
-                        EDITORIAL_SOURCE_WORKSPACE_ACTIVE,
-                        WORKSPACE_ACTIVE_PRIORITY,
-                    )
-                })
+        ) {
+            candidates.push(rule_set);
+        }
+    }
+
+    if let Some(rule_set_id) = overview.active_rule_set_id.as_deref() {
+        if let Some(rule_set) = resolve_optional_rule_set(
+            &overview.rule_sets,
+            rule_set_id,
+            EDITORIAL_SOURCE_WORKSPACE_ACTIVE,
+            WORKSPACE_ACTIVE_PRIORITY,
+        ) {
+            if !candidates
+                .iter()
+                .any(|candidate| candidate.rule_set.id == rule_set.rule_set.id)
+            {
+                candidates.push(rule_set);
+            }
+        }
+    }
+
+    let mut fallback_rule_set = None;
+
+    for candidate in candidates {
+        let rules = load_resolved_rules_for_rule_set(connection, &candidate, action_scope)?;
+
+        if fallback_rule_set.is_none() {
+            fallback_rule_set = Some(candidate.clone());
+        }
+
+        if !rules.is_empty() {
+            return Ok((Some(candidate), rules));
+        }
+    }
+
+    Ok((fallback_rule_set, Vec::new()))
+}
+
+fn load_resolved_rules_for_rule_set(
+    connection: &mut Connection,
+    resolved_rule_set: &ResolvedRuleSet,
+    action_scope: &str,
+) -> Result<Vec<ResolvedRule>, DesktopCommandError> {
+    let rules_overview = RuleRepository::new(connection)
+        .load_overview(&resolved_rule_set.rule_set.id)
+        .map_err(|error| {
+            DesktopCommandError::internal(
+                "The context builder could not load rules for the selected rule set.",
+                Some(error.to_string()),
+            )
+        })?;
+    let mut resolved_rules = rules_overview
+        .rules
+        .into_iter()
+        .filter(|rule| rule.is_enabled && rule.action_scope == action_scope)
+        .map(|rule| ResolvedRule {
+            rule,
+            rule_set_name: resolved_rule_set.rule_set.name.clone(),
+            source: resolved_rule_set.source.clone(),
+            priority: resolved_rule_set.priority,
         })
-    } else {
-        overview
-            .active_rule_set_id
-            .as_deref()
-            .and_then(|rule_set_id| {
-                resolve_optional_rule_set(
-                    &overview.rule_sets,
-                    rule_set_id,
-                    EDITORIAL_SOURCE_WORKSPACE_ACTIVE,
-                    WORKSPACE_ACTIVE_PRIORITY,
-                )
+        .collect::<Vec<_>>();
+
+    resolved_rules.sort_by(|left, right| {
+        right
+            .priority
+            .cmp(&left.priority)
+            .then_with(|| {
+                rule_severity_rank(&left.rule.severity)
+                    .cmp(&rule_severity_rank(&right.rule.severity))
             })
-    };
+            .then_with(|| left.rule.name.cmp(&right.rule.name))
+            .then_with(|| left.rule.id.cmp(&right.rule.id))
+    });
 
-    let rules = if let Some(resolved_rule_set) = &rule_set {
-        let rules_overview = RuleRepository::new(connection)
-            .load_overview(&resolved_rule_set.rule_set.id)
-            .map_err(|error| {
-                DesktopCommandError::internal(
-                    "The context builder could not load rules for the selected rule set.",
-                    Some(error.to_string()),
-                )
-            })?;
-        let mut resolved_rules = rules_overview
-            .rules
-            .into_iter()
-            .filter(|rule| rule.is_enabled && rule.action_scope == action_scope)
-            .map(|rule| ResolvedRule {
-                rule,
-                rule_set_name: resolved_rule_set.rule_set.name.clone(),
-                source: resolved_rule_set.source.clone(),
-                priority: resolved_rule_set.priority,
-            })
-            .collect::<Vec<_>>();
-
-        resolved_rules.sort_by(|left, right| {
-            right
-                .priority
-                .cmp(&left.priority)
-                .then_with(|| {
-                    rule_severity_rank(&left.rule.severity)
-                        .cmp(&rule_severity_rank(&right.rule.severity))
-                })
-                .then_with(|| left.rule.name.cmp(&right.rule.name))
-                .then_with(|| left.rule.id.cmp(&right.rule.id))
-        });
-
-        resolved_rules
-    } else {
-        Vec::new()
-    };
-
-    Ok((rule_set, rules))
+    Ok(resolved_rules)
 }
 fn resolve_optional_rule_set(
     rule_sets: &[RuleSetSummary],
@@ -761,7 +772,7 @@ fn ranges_overlap(left_start: i64, left_end: i64, right_start: i64, right_end: i
 }
 
 fn normalize_term_key(value: &str) -> String {
-    value.trim().to_ascii_lowercase()
+    value.trim().to_lowercase()
 }
 
 pub(crate) fn validate_action_scope(action_scope: &str) -> Result<String, DesktopCommandError> {
