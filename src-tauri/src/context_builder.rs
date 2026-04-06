@@ -341,15 +341,16 @@ fn resolve_glossary_layers(
     let mut seen_glossary_ids = Vec::new();
 
     if let Some(glossary_id) = project.default_glossary_id.as_deref() {
-        let resolved_glossary = resolve_required_glossary(
+        if let Some(resolved_glossary) = resolve_optional_glossary(
             &overview.glossaries,
             glossary_id,
             &project.id,
             EDITORIAL_SOURCE_PROJECT_DEFAULT,
             PROJECT_DEFAULT_PRIORITY,
-        )?;
-        seen_glossary_ids.push(resolved_glossary.glossary.id.clone());
-        glossary_layers.push(resolved_glossary);
+        ) {
+            seen_glossary_ids.push(resolved_glossary.glossary.id.clone());
+            glossary_layers.push(resolved_glossary);
+        }
     }
 
     if let Some(glossary_id) = overview.active_glossary_id.as_deref() {
@@ -379,24 +380,6 @@ fn resolve_glossary_layers(
 
     Ok(glossary_layers)
 }
-
-fn resolve_required_glossary(
-    glossaries: &[GlossarySummary],
-    glossary_id: &str,
-    project_id: &str,
-    source: &str,
-    priority: i64,
-) -> Result<ResolvedGlossaryLayer, DesktopCommandError> {
-    resolve_optional_glossary(glossaries, glossary_id, project_id, source, priority).ok_or_else(
-        || {
-            DesktopCommandError::validation(
-                "The project's default glossary is no longer active or applicable to the selected project.",
-                None,
-            )
-        },
-    )
-}
-
 fn resolve_optional_glossary(
     glossaries: &[GlossarySummary],
     glossary_id: &str,
@@ -519,13 +502,15 @@ fn resolve_style_profile(
         })?;
 
     if let Some(style_profile_id) = project.default_style_profile_id.as_deref() {
-        return resolve_required_style_profile(
+        if let Some(style_profile) = resolve_optional_style_profile(
             &overview.style_profiles,
             style_profile_id,
             EDITORIAL_SOURCE_PROJECT_DEFAULT,
             PROJECT_DEFAULT_PRIORITY,
         )
-        .map(Some);
+        {
+            return Ok(Some(style_profile));
+        }
     }
 
     Ok(overview
@@ -539,22 +524,6 @@ fn resolve_style_profile(
                 WORKSPACE_ACTIVE_PRIORITY,
             )
         }))
-}
-
-fn resolve_required_style_profile(
-    style_profiles: &[StyleProfileSummary],
-    style_profile_id: &str,
-    source: &str,
-    priority: i64,
-) -> Result<ResolvedStyleProfile, DesktopCommandError> {
-    resolve_optional_style_profile(style_profiles, style_profile_id, source, priority).ok_or_else(
-        || {
-            DesktopCommandError::validation(
-                "The project's default style profile is no longer active.",
-                None,
-            )
-        },
-    )
 }
 
 fn resolve_optional_style_profile(
@@ -592,12 +561,25 @@ fn resolve_rules(
             )
         })?;
     let rule_set = if let Some(rule_set_id) = project.default_rule_set_id.as_deref() {
-        Some(resolve_required_rule_set(
+        resolve_optional_rule_set(
             &overview.rule_sets,
             rule_set_id,
             EDITORIAL_SOURCE_PROJECT_DEFAULT,
             PROJECT_DEFAULT_PRIORITY,
-        )?)
+        )
+        .or_else(|| {
+            overview
+                .active_rule_set_id
+                .as_deref()
+                .and_then(|active_rule_set_id| {
+                    resolve_optional_rule_set(
+                        &overview.rule_sets,
+                        active_rule_set_id,
+                        EDITORIAL_SOURCE_WORKSPACE_ACTIVE,
+                        WORKSPACE_ACTIVE_PRIORITY,
+                    )
+                })
+        })
     } else {
         overview
             .active_rule_set_id
@@ -652,18 +634,6 @@ fn resolve_rules(
 
     Ok((rule_set, rules))
 }
-
-fn resolve_required_rule_set(
-    rule_sets: &[RuleSetSummary],
-    rule_set_id: &str,
-    source: &str,
-    priority: i64,
-) -> Result<ResolvedRuleSet, DesktopCommandError> {
-    resolve_optional_rule_set(rule_sets, rule_set_id, source, priority).ok_or_else(|| {
-        DesktopCommandError::validation("The project's default rule set is no longer active.", None)
-    })
-}
-
 fn resolve_optional_rule_set(
     rule_sets: &[RuleSetSummary],
     rule_set_id: &str,
@@ -750,6 +720,15 @@ fn resolve_chapter_context_match(
     chunk_start: i64,
     chunk_end: i64,
 ) -> Option<(&'static str, i64)> {
+    if !ranges_overlap(
+        context.start_segment_sequence,
+        context.end_segment_sequence,
+        chunk_start,
+        chunk_end,
+    ) {
+        return None;
+    }
+
     if let Some(section) = section {
         if context.section_id.as_deref() == Some(section.id.as_str()) {
             return Some((
@@ -761,15 +740,6 @@ fn resolve_chapter_context_match(
         if context.section_id.is_some() {
             return None;
         }
-    }
-
-    if !ranges_overlap(
-        context.start_segment_sequence,
-        context.end_segment_sequence,
-        chunk_start,
-        chunk_end,
-    ) {
-        return None;
     }
 
     match context.scope_type.as_str() {

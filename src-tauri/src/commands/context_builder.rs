@@ -104,8 +104,10 @@ mod tests {
     use crate::context_builder::{
         BuildTranslationContextInput, TranslationContextPreview, CHAPTER_CONTEXT_MATCH_DOCUMENT,
         CHAPTER_CONTEXT_MATCH_SECTION, EDITORIAL_SOURCE_PROJECT_DEFAULT,
+        EDITORIAL_SOURCE_WORKSPACE_ACTIVE,
     };
     use crate::documents::{NewDocument, DOCUMENT_SOURCE_LOCAL_FILE, DOCUMENT_STATUS_SEGMENTED};
+    use crate::glossaries::GLOSSARY_STATUS_ARCHIVED;
     use crate::persistence::bootstrap::{bootstrap_database, DatabaseRuntime};
     use crate::persistence::sections::DocumentSectionRepository;
     use crate::persistence::chapter_contexts::ChapterContextRepository;
@@ -121,14 +123,16 @@ mod tests {
     use crate::projects::{NewProject, ProjectEditorialDefaultsChanges};
     use crate::rule_sets::{
         NewRule, NewRuleSet, RULE_ACTION_SCOPE_QA, RULE_ACTION_SCOPE_TRANSLATION,
-        RULE_SET_STATUS_ACTIVE, RULE_SEVERITY_HIGH, RULE_SEVERITY_LOW, RULE_SEVERITY_MEDIUM,
-        RULE_TYPE_CONSISTENCY, RULE_TYPE_PREFERENCE, RULE_TYPE_RESTRICTION,
+        RULE_SET_STATUS_ACTIVE, RULE_SET_STATUS_ARCHIVED, RULE_SEVERITY_HIGH,
+        RULE_SEVERITY_LOW, RULE_SEVERITY_MEDIUM, RULE_TYPE_CONSISTENCY,
+        RULE_TYPE_PREFERENCE, RULE_TYPE_RESTRICTION,
     };
     use crate::sections::NewDocumentSection;
     use crate::segments::{NewSegment, SEGMENT_STATUS_PENDING_TRANSLATION};
     use crate::style_profiles::{
         NewStyleProfile, STYLE_PROFILE_FORMALITY_FORMAL, STYLE_PROFILE_STATUS_ACTIVE,
-        STYLE_PROFILE_TONE_TECHNICAL, STYLE_PROFILE_TREATMENT_USTED,
+        STYLE_PROFILE_STATUS_ARCHIVED, STYLE_PROFILE_TONE_DIRECT, STYLE_PROFILE_TONE_TECHNICAL,
+        STYLE_PROFILE_TREATMENT_TUTEO, STYLE_PROFILE_TREATMENT_USTED,
     };
     use crate::translation_chunks::{
         NewTranslationChunk, NewTranslationChunkSegment,
@@ -556,6 +560,114 @@ mod tests {
     }
 
     #[test]
+    fn build_translation_context_falls_back_from_archived_project_defaults() {
+        let (_temp_dir, runtime) = create_runtime();
+        seed_context_builder_graph(&runtime);
+        let mut connection = runtime
+            .open_connection()
+            .expect("database connection should open");
+        let now = 1_800_000_200_i64;
+
+        let fallback_style = StyleProfileRepository::new(&mut connection)
+            .create(&NewStyleProfile {
+                id: "stp_workspace_001".to_owned(),
+                name: "Fallback style".to_owned(),
+                description: None,
+                tone: STYLE_PROFILE_TONE_DIRECT.to_owned(),
+                formality: STYLE_PROFILE_FORMALITY_FORMAL.to_owned(),
+                treatment_preference: STYLE_PROFILE_TREATMENT_TUTEO.to_owned(),
+                consistency_instructions: Some("Fallback style instructions.".to_owned()),
+                editorial_notes: None,
+                status: STYLE_PROFILE_STATUS_ACTIVE.to_owned(),
+                created_at: now,
+                updated_at: now,
+                last_opened_at: now,
+            })
+            .expect("fallback style should persist");
+        StyleProfileRepository::new(&mut connection)
+            .open_style_profile(&fallback_style.id, now + 1)
+            .expect("fallback style should become active");
+
+        let fallback_rule_set = RuleSetRepository::new(&mut connection)
+            .create(&NewRuleSet {
+                id: "rset_workspace_001".to_owned(),
+                name: "Fallback rules".to_owned(),
+                description: None,
+                status: RULE_SET_STATUS_ACTIVE.to_owned(),
+                created_at: now,
+                updated_at: now,
+                last_opened_at: now,
+            })
+            .expect("fallback rule set should persist");
+        RuleRepository::new(&mut connection)
+            .create(&NewRule {
+                id: "rul_workspace_001".to_owned(),
+                rule_set_id: fallback_rule_set.id.clone(),
+                action_scope: RULE_ACTION_SCOPE_TRANSLATION.to_owned(),
+                rule_type: RULE_TYPE_CONSISTENCY.to_owned(),
+                severity: RULE_SEVERITY_MEDIUM.to_owned(),
+                name: "Fallback rule".to_owned(),
+                description: None,
+                guidance: "Fallback rule guidance.".to_owned(),
+                is_enabled: true,
+                created_at: now,
+                updated_at: now,
+            })
+            .expect("fallback rule should persist");
+        RuleSetRepository::new(&mut connection)
+            .open_rule_set(&fallback_rule_set.id, now + 1)
+            .expect("fallback rule set should become active");
+
+        connection
+            .execute(
+                "UPDATE glossaries SET status = ?2 WHERE id = ?1",
+                rusqlite::params!["gls_project_001", GLOSSARY_STATUS_ARCHIVED],
+            )
+            .expect("project glossary should archive");
+        connection
+            .execute(
+                "UPDATE style_profiles SET status = ?2 WHERE id = ?1",
+                rusqlite::params!["stp_project_001", STYLE_PROFILE_STATUS_ARCHIVED],
+            )
+            .expect("project style should archive");
+        connection
+            .execute(
+                "UPDATE rule_sets SET status = ?2 WHERE id = ?1",
+                rusqlite::params!["rset_project_001", RULE_SET_STATUS_ARCHIVED],
+            )
+            .expect("project rule set should archive");
+        drop(connection);
+
+        let preview = build_preview(&runtime, RULE_ACTION_SCOPE_TRANSLATION);
+
+        assert_eq!(preview.glossary_layers.len(), 1);
+        assert_eq!(
+            preview.glossary_layers[0].source,
+            EDITORIAL_SOURCE_WORKSPACE_ACTIVE
+        );
+        assert_eq!(preview.glossary_layers[0].glossary.id, "gls_global_001");
+        assert_eq!(preview.glossary_entries[0].entry.target_term, "Orden");
+        assert_eq!(
+            preview
+                .style_profile
+                .as_ref()
+                .map(|style| style.style_profile.id.as_str()),
+            Some("stp_workspace_001")
+        );
+        assert_eq!(
+            preview
+                .rule_set
+                .as_ref()
+                .map(|rule_set| rule_set.rule_set.id.as_str()),
+            Some("rset_workspace_001")
+        );
+        assert_eq!(
+            preview.rules.iter().map(|rule| rule.rule.name.as_str()).collect::<Vec<_>>(),
+            vec!["Fallback rule"]
+        );
+    }
+
+    #[test]
     fn build_translation_context_filters_rules_by_action_scope() {
         let (_temp_dir, runtime) = create_runtime();
         seed_context_builder_graph(&runtime);
@@ -683,6 +795,70 @@ mod tests {
         assert_eq!(
             preview.accumulated_contexts[1].match_reason,
             CHAPTER_CONTEXT_MATCH_DOCUMENT
+        );
+    }
+
+    #[test]
+    fn build_translation_context_ignores_section_contexts_without_range_overlap() {
+        let (_temp_dir, runtime) = create_runtime();
+        seed_context_builder_graph(&runtime);
+        let mut connection = runtime
+            .open_connection()
+            .expect("database connection should open");
+        let now = 1_800_000_300_i64;
+
+        ChapterContextRepository::new(&mut connection)
+            .replace_for_document(
+                "doc_chunk_001",
+                &[
+                    NewChapterContext {
+                        id: "ctx_section_overlap".to_owned(),
+                        document_id: "doc_chunk_001".to_owned(),
+                        section_id: Some("doc_chunk_001_sec_0001".to_owned()),
+                        task_run_id: None,
+                        scope_type: "chapter".to_owned(),
+                        start_segment_sequence: 2,
+                        end_segment_sequence: 3,
+                        context_text: "Overlapping section context.".to_owned(),
+                        source_summary: None,
+                        context_word_count: 3,
+                        context_character_count: 28,
+                        created_at: now,
+                        updated_at: now,
+                    },
+                    NewChapterContext {
+                        id: "ctx_section_stale".to_owned(),
+                        document_id: "doc_chunk_001".to_owned(),
+                        section_id: Some("doc_chunk_001_sec_0001".to_owned()),
+                        task_run_id: None,
+                        scope_type: "chapter".to_owned(),
+                        start_segment_sequence: 4,
+                        end_segment_sequence: 4,
+                        context_text: "Stale section context.".to_owned(),
+                        source_summary: None,
+                        context_word_count: 3,
+                        context_character_count: 22,
+                        created_at: now + 1,
+                        updated_at: now + 1,
+                    },
+                ],
+            )
+            .expect("chapter contexts should persist");
+        drop(connection);
+
+        let preview = build_preview(&runtime, RULE_ACTION_SCOPE_TRANSLATION);
+
+        assert_eq!(
+            preview
+                .accumulated_contexts
+                .iter()
+                .map(|context| context.chapter_context.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["ctx_section_overlap"]
+        );
+        assert_eq!(
+            preview.accumulated_contexts[0].match_reason,
+            CHAPTER_CONTEXT_MATCH_SECTION
         );
     }
 
