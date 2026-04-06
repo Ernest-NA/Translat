@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import {
+  type BuildDocumentTranslationChunksInput,
   type CreateGlossaryEntryInput,
   type CreateGlossaryInput,
   type CreateProjectInput,
@@ -11,6 +12,7 @@ import {
   type DesktopCommandName,
   type DocumentSegmentsOverview,
   type DocumentSummary,
+  type DocumentTranslationChunksOverview,
   type GlossariesOverview,
   type GlossaryEntriesOverview,
   type GlossaryEntrySummary,
@@ -18,6 +20,7 @@ import {
   type HealthcheckResponse,
   type ImportDocumentInput,
   type ListDocumentSegmentsInput,
+  type ListDocumentTranslationChunksInput,
   type ListGlossaryEntriesInput,
   type ListProjectDocumentsInput,
   type ListRuleSetRulesInput,
@@ -214,6 +217,28 @@ export function listProjectDocuments(input: ListProjectDocumentsInput) {
 export function listDocumentSegments(input: ListDocumentSegmentsInput) {
   return invokeDesktopCommand<DocumentSegmentsOverview>(
     DESKTOP_COMMANDS.listDocumentSegments,
+    {
+      input,
+    },
+  );
+}
+
+export function buildDocumentTranslationChunks(
+  input: BuildDocumentTranslationChunksInput,
+) {
+  return invokeDesktopCommand<DocumentTranslationChunksOverview>(
+    DESKTOP_COMMANDS.buildDocumentTranslationChunks,
+    {
+      input,
+    },
+  );
+}
+
+export function listDocumentTranslationChunks(
+  input: ListDocumentTranslationChunksInput,
+) {
+  return invokeDesktopCommand<DocumentTranslationChunksOverview>(
+    DESKTOP_COMMANDS.listDocumentTranslationChunks,
     {
       input,
     },

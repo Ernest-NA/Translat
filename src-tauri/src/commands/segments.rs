@@ -112,7 +112,7 @@ fn process_project_document_with_runtime(
     })
 }
 
-fn list_document_segments_with_runtime(
+pub(crate) fn list_document_segments_with_runtime(
     input: ListDocumentSegmentsInput,
     database_runtime: &DatabaseRuntime,
 ) -> Result<DocumentSegmentsOverview, DesktopCommandError> {

@@ -7,6 +7,7 @@ import { ProjectList } from "../components/ProjectList";
 import { ProjectWorkspace } from "../components/ProjectWorkspace";
 import { RuleSetsWorkspace } from "../components/RuleSetsWorkspace";
 import { StyleProfilesWorkspace } from "../components/StyleProfilesWorkspace";
+import { useDocumentChunks } from "../hooks/useDocumentChunks";
 import { useDocumentSegments } from "../hooks/useDocumentSegments";
 import { useGlossariesWorkspace } from "../hooks/useGlossariesWorkspace";
 import { useHealthcheck } from "../hooks/useHealthcheck";
@@ -108,6 +109,18 @@ export function AppShell() {
     selectedSegmentId,
     selectSegment,
   } = useDocumentSegments(activeProject?.id ?? null, documents);
+  const {
+    buildChunks,
+    chunkSegments,
+    chunks,
+    error: chunkError,
+    isBuilding: isBuildingChunks,
+    isLoading: isLoadingChunks,
+    selectedChunk,
+    selectedChunkId,
+    selectedChunkSegments,
+    selectChunk,
+  } = useDocumentChunks(activeProject?.id ?? null, activeDocument);
   const { error, healthcheck, isLoading, retry } = useHealthcheck();
   const activeProjectIdRef = useRef<string | null>(activeProject?.id ?? null);
   const [hasUnsavedProjectDefaults, setHasUnsavedProjectDefaults] =
@@ -332,18 +345,25 @@ export function AppShell() {
 
           <ProjectWorkspace
             activeDocument={activeDocument}
+            chunkError={chunkError}
+            chunkSegments={chunkSegments}
+            chunks={chunks}
             documents={documents}
             importError={importError}
+            isBuildingChunks={isBuildingChunks}
             isImportingDocuments={isImporting}
             isLoadingDocuments={isLoadingDocuments}
+            isLoadingChunks={isLoadingChunks}
             isLoadingSegments={isLoadingSegments}
             isSavingEditorialDefaults={isSavingEditorialDefaults}
             loadError={loadError}
             glossaries={glossaries}
+            onBuildChunks={buildChunks}
             onDirtyChange={setHasUnsavedProjectDefaults}
             onOpenDocument={openDocument}
             onImportDocuments={handleImportDocuments}
             onProcessDocument={handleProcessDocument}
+            onSelectChunk={selectChunk}
             onSaveEditorialDefaults={saveProjectEditorialDefaults}
             onSelectSection={selectSection}
             onSelectSegment={selectSegment}
@@ -357,6 +377,9 @@ export function AppShell() {
               isLoadingSegments ? (activeDocument?.id ?? null) : null
             }
             sections={sections}
+            selectedChunk={selectedChunk}
+            selectedChunkId={selectedChunkId}
+            selectedChunkSegments={selectedChunkSegments}
             selectedSection={selectedSection}
             segments={segments}
             selectedSegment={selectedSegment}
@@ -466,10 +489,18 @@ export function AppShell() {
                 <dd>{activeDocument ? sections.length : 0}</dd>
               </div>
               <div>
+                <dt>Loaded chunks</dt>
+                <dd>{activeDocument ? chunks.length : 0}</dd>
+              </div>
+              <div>
                 <dt>Selected segment</dt>
                 <dd>
                   {selectedSegment ? `#${selectedSegment.sequence}` : "None"}
                 </dd>
+              </div>
+              <div>
+                <dt>Selected chunk</dt>
+                <dd>{selectedChunk ? `#${selectedChunk.sequence}` : "None"}</dd>
               </div>
               <div>
                 <dt>Selected section</dt>
