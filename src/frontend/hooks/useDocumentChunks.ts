@@ -21,6 +21,10 @@ function emptyOverview(
   };
 }
 
+function chunkTargetKey(projectId: string, documentId: string): string {
+  return `${projectId}:${documentId}`;
+}
+
 export function useDocumentChunks(
   activeProjectId: string | null,
   activeDocument: DocumentSummary | null,
@@ -31,7 +35,9 @@ export function useDocumentChunks(
   const [error, setError] = useState<DesktopCommandError | null>(null);
   const [isBuilding, setIsBuilding] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const requestIdRef = useRef(0);
+  const buildRequestIdRef = useRef(0);
+  const buildTargetKeyRef = useRef<string | null>(null);
+  const loadRequestIdRef = useRef(0);
 
   const applyOverview = useCallback(
     (nextOverview: DocumentTranslationChunksOverview) => {
@@ -51,7 +57,9 @@ export function useDocumentChunks(
       !activeDocument ||
       activeDocument.status !== "segmented"
     ) {
-      requestIdRef.current += 1;
+      buildRequestIdRef.current += 1;
+      buildTargetKeyRef.current = null;
+      loadRequestIdRef.current += 1;
       setOverview(null);
       setSelectedChunkId(null);
       setError(null);
@@ -60,10 +68,20 @@ export function useDocumentChunks(
       return;
     }
 
-    const requestId = requestIdRef.current + 1;
-    requestIdRef.current = requestId;
+    const activeTargetKey = chunkTargetKey(activeProjectId, activeDocument.id);
 
-    setIsBuilding(false);
+    if (
+      buildTargetKeyRef.current &&
+      buildTargetKeyRef.current !== activeTargetKey
+    ) {
+      buildRequestIdRef.current += 1;
+      buildTargetKeyRef.current = null;
+      setIsBuilding(false);
+    }
+
+    const requestId = loadRequestIdRef.current + 1;
+    loadRequestIdRef.current = requestId;
+
     setOverview((currentOverview) =>
       currentOverview?.documentId === activeDocument.id
         ? currentOverview
@@ -78,13 +96,13 @@ export function useDocumentChunks(
         projectId: activeProjectId,
       });
 
-      if (requestIdRef.current !== requestId) {
+      if (loadRequestIdRef.current !== requestId) {
         return;
       }
 
       applyOverview(nextOverview);
     } catch (caughtError) {
-      if (requestIdRef.current !== requestId) {
+      if (loadRequestIdRef.current !== requestId) {
         return;
       }
 
@@ -98,7 +116,7 @@ export function useDocumentChunks(
             }),
       );
     } finally {
-      if (requestIdRef.current === requestId) {
+      if (loadRequestIdRef.current === requestId) {
         setIsLoading(false);
       }
     }
@@ -117,8 +135,10 @@ export function useDocumentChunks(
       return;
     }
 
-    const requestId = requestIdRef.current + 1;
-    requestIdRef.current = requestId;
+    const targetKey = chunkTargetKey(activeProjectId, activeDocument.id);
+    const requestId = buildRequestIdRef.current + 1;
+    buildRequestIdRef.current = requestId;
+    buildTargetKeyRef.current = targetKey;
 
     setError(null);
     setIsBuilding(true);
@@ -129,13 +149,19 @@ export function useDocumentChunks(
         projectId: activeProjectId,
       });
 
-      if (requestIdRef.current !== requestId) {
+      if (
+        buildRequestIdRef.current !== requestId ||
+        buildTargetKeyRef.current !== targetKey
+      ) {
         return;
       }
 
       applyOverview(nextOverview);
     } catch (caughtError) {
-      if (requestIdRef.current !== requestId) {
+      if (
+        buildRequestIdRef.current !== requestId ||
+        buildTargetKeyRef.current !== targetKey
+      ) {
         return;
       }
 
@@ -149,7 +175,11 @@ export function useDocumentChunks(
             }),
       );
     } finally {
-      if (requestIdRef.current === requestId) {
+      if (
+        buildRequestIdRef.current === requestId &&
+        buildTargetKeyRef.current === targetKey
+      ) {
+        buildTargetKeyRef.current = null;
         setIsBuilding(false);
       }
     }
