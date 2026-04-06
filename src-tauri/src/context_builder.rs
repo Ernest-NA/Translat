@@ -161,8 +161,12 @@ pub(crate) fn build_translation_context(
     let glossary_entries = resolve_glossary_entries(connection, &glossary_layers)?;
     let style_profile = resolve_style_profile(connection, &project)?;
     let (rule_set, rules) = resolve_rules(connection, &project, &action_scope)?;
-    let accumulated_contexts =
-        resolve_chapter_contexts(connection, &input.document_id, &chunk_context)?;
+    let accumulated_contexts = resolve_chapter_contexts(
+        connection,
+        &input.document_id,
+        &segment_overview.sections,
+        &chunk_context,
+    )?;
     let resolution = TranslationContextResolution {
         glossary_ids: glossary_layers
             .iter()
@@ -309,20 +313,31 @@ fn select_chunk_section(
     sections: &[DocumentSectionSummary],
     chunk: &TranslationChunkSummary,
 ) -> Option<DocumentSectionSummary> {
-    sections
+    select_chunk_sections(sections, chunk).into_iter().next()
+}
+
+fn select_chunk_sections(
+    sections: &[DocumentSectionSummary],
+    chunk: &TranslationChunkSummary,
+) -> Vec<DocumentSectionSummary> {
+    let mut containing_sections = sections
         .iter()
         .filter(|section| {
             section.start_segment_sequence <= chunk.start_segment_sequence
                 && section.end_segment_sequence >= chunk.end_segment_sequence
         })
-        .min_by_key(|section| {
-            (
-                section.segment_count,
-                Reverse(section.level),
-                section.sequence,
-            )
-        })
         .cloned()
+        .collect::<Vec<_>>();
+
+    containing_sections.sort_by_key(|section| {
+        (
+            section.segment_count,
+            Reverse(section.level),
+            section.sequence,
+        )
+    });
+
+    containing_sections
 }
 
 fn resolve_glossary_layers(
@@ -590,6 +605,8 @@ fn resolve_rules(
     }
 
     let mut fallback_rule_set = None;
+    let mut selected_rule_set = None;
+    let mut combined_rules = Vec::new();
 
     for candidate in candidates {
         let rules = load_resolved_rules_for_rule_set(connection, &candidate, action_scope)?;
@@ -598,12 +615,31 @@ fn resolve_rules(
             fallback_rule_set = Some(candidate.clone());
         }
 
+        if !rules.is_empty() && selected_rule_set.is_none() {
+            selected_rule_set = Some(candidate.clone());
+        }
+
         if !rules.is_empty() {
-            return Ok((Some(candidate), rules));
+            combined_rules.extend(rules);
         }
     }
 
-    Ok((fallback_rule_set, Vec::new()))
+    combined_rules.sort_by(|left, right| {
+        right
+            .priority
+            .cmp(&left.priority)
+            .then_with(|| {
+                rule_severity_rank(&left.rule.severity)
+                    .cmp(&rule_severity_rank(&right.rule.severity))
+            })
+            .then_with(|| left.rule.name.cmp(&right.rule.name))
+            .then_with(|| left.rule.id.cmp(&right.rule.id))
+    });
+
+    Ok((
+        selected_rule_set.or(fallback_rule_set),
+        combined_rules,
+    ))
 }
 
 fn load_resolved_rules_for_rule_set(
@@ -669,8 +705,10 @@ fn resolve_optional_rule_set(
 fn resolve_chapter_contexts(
     connection: &mut Connection,
     document_id: &str,
+    sections: &[DocumentSectionSummary],
     chunk_context: &TranslationChunkContext,
 ) -> Result<Vec<ResolvedChapterContext>, DesktopCommandError> {
+    let containing_sections = select_chunk_sections(sections, &chunk_context.chunk);
     let contexts = ChapterContextRepository::new(connection)
         .list_by_document(document_id)
         .map_err(|error| {
@@ -684,7 +722,7 @@ fn resolve_chapter_contexts(
         .filter_map(|context| {
             resolve_chapter_context_match(
                 &context,
-                chunk_context.section.as_ref(),
+                &containing_sections,
                 chunk_context.chunk.start_segment_sequence,
                 chunk_context.chunk.end_segment_sequence,
             )
@@ -727,7 +765,7 @@ fn rule_severity_rank(severity: &str) -> i64 {
 
 fn resolve_chapter_context_match(
     context: &ChapterContextSummary,
-    section: Option<&DocumentSectionSummary>,
+    containing_sections: &[DocumentSectionSummary],
     chunk_start: i64,
     chunk_end: i64,
 ) -> Option<(&'static str, i64)> {
@@ -740,17 +778,19 @@ fn resolve_chapter_context_match(
         return None;
     }
 
-    if let Some(section) = section {
-        if context.section_id.as_deref() == Some(section.id.as_str()) {
+    if let Some(context_section_id) = context.section_id.as_deref() {
+        if let Some(section_index) = containing_sections
+            .iter()
+            .position(|section| section.id == context_section_id)
+        {
             return Some((
                 CHAPTER_CONTEXT_MATCH_SECTION,
-                CHAPTER_CONTEXT_SECTION_PRIORITY,
+                CHAPTER_CONTEXT_SECTION_PRIORITY
+                    - i64::try_from(section_index).unwrap_or(CHAPTER_CONTEXT_SECTION_PRIORITY),
             ));
         }
 
-        if context.section_id.is_some() {
-            return None;
-        }
+        return None;
     }
 
     match context.scope_type.as_str() {

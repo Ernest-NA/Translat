@@ -30,14 +30,13 @@ pub(crate) fn build_translation_context_with_runtime(
             Some(error.to_string()),
         )
     })?;
-    let timestamp = current_timestamp()?;
     let segment_overview = load_segmented_document_overview(
         &mut connection,
         database_runtime,
         &project_id,
         &document_id,
         false,
-        timestamp,
+        0,
     )?;
 
     compose_translation_context(
@@ -50,26 +49,6 @@ pub(crate) fn build_translation_context_with_runtime(
             action_scope,
         },
     )
-}
-
-fn current_timestamp() -> Result<i64, DesktopCommandError> {
-    i64::try_from(
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_err(|error| {
-                DesktopCommandError::internal(
-                    "The desktop shell could not read the system clock while building translation context.",
-                    Some(error.to_string()),
-                )
-            })?
-            .as_secs(),
-    )
-    .map_err(|error| {
-        DesktopCommandError::internal(
-            "The desktop shell produced an invalid translation-context timestamp.",
-            Some(error.to_string()),
-        )
-    })
 }
 
 fn validate_identifier(value: &str, label: &str) -> Result<String, DesktopCommandError> {
@@ -128,7 +107,9 @@ mod tests {
         RULE_TYPE_CONSISTENCY, RULE_TYPE_PREFERENCE, RULE_TYPE_RESTRICTION,
     };
     use crate::sections::NewDocumentSection;
-    use crate::segments::{NewSegment, SEGMENT_STATUS_PENDING_TRANSLATION};
+    use crate::segments::{
+        DocumentSegmentsOverview, NewSegment, SEGMENT_STATUS_PENDING_TRANSLATION,
+    };
     use crate::style_profiles::{
         NewStyleProfile, STYLE_PROFILE_FORMALITY_FORMAL, STYLE_PROFILE_STATUS_ACTIVE,
         STYLE_PROFILE_STATUS_ARCHIVED, STYLE_PROFILE_TONE_DIRECT, STYLE_PROFILE_TONE_TECHNICAL,
@@ -723,6 +704,64 @@ mod tests {
     }
 
     #[test]
+    fn build_translation_context_includes_workspace_rules_alongside_project_defaults() {
+        let (_temp_dir, runtime) = create_runtime();
+        seed_context_builder_graph(&runtime);
+        let mut connection = runtime
+            .open_connection()
+            .expect("database connection should open");
+        let now = 1_800_000_260_i64;
+
+        let layered_rule_set = RuleSetRepository::new(&mut connection)
+            .create(&NewRuleSet {
+                id: "rset_workspace_layered_001".to_owned(),
+                name: "Workspace layered rules".to_owned(),
+                description: None,
+                status: RULE_SET_STATUS_ACTIVE.to_owned(),
+                created_at: now,
+                updated_at: now,
+                last_opened_at: now,
+            })
+            .expect("layered workspace rule set should persist");
+        RuleRepository::new(&mut connection)
+            .create(&NewRule {
+                id: "rul_workspace_translation_001".to_owned(),
+                rule_set_id: layered_rule_set.id.clone(),
+                action_scope: RULE_ACTION_SCOPE_TRANSLATION.to_owned(),
+                rule_type: RULE_TYPE_PREFERENCE.to_owned(),
+                severity: RULE_SEVERITY_MEDIUM.to_owned(),
+                name: "Workspace layered translation rule".to_owned(),
+                description: None,
+                guidance: "Layered workspace guidance.".to_owned(),
+                is_enabled: true,
+                created_at: now,
+                updated_at: now,
+            })
+            .expect("layered workspace translation rule should persist");
+        RuleSetRepository::new(&mut connection)
+            .open_rule_set(&layered_rule_set.id, now + 1)
+            .expect("layered workspace rule set should become active");
+        drop(connection);
+
+        let preview = build_preview(&runtime, RULE_ACTION_SCOPE_TRANSLATION);
+
+        assert_eq!(
+            preview
+                .rule_set
+                .as_ref()
+                .map(|rule_set| rule_set.rule_set.id.as_str()),
+            Some("rset_project_001")
+        );
+        assert_eq!(
+            preview.rules.iter().map(|rule| rule.rule.name.as_str()).collect::<Vec<_>>(),
+            vec![
+                "Keep command names stable",
+                "Workspace layered translation rule",
+            ]
+        );
+    }
+
+    #[test]
     fn build_translation_context_filters_rules_by_action_scope() {
         let (_temp_dir, runtime) = create_runtime();
         seed_context_builder_graph(&runtime);
@@ -882,6 +921,33 @@ mod tests {
     }
 
     #[test]
+    fn build_translation_context_is_deterministic_when_sections_are_rebuilt() {
+        let (_temp_dir, runtime) = create_runtime();
+        seed_context_builder_graph(&runtime);
+        let mut connection = runtime
+            .open_connection()
+            .expect("database connection should open");
+
+        DocumentSectionRepository::new(&mut connection)
+            .replace_for_document("doc_chunk_001", &[])
+            .expect("sections should be cleared");
+        drop(connection);
+
+        let first_preview = build_preview(&runtime, RULE_ACTION_SCOPE_TRANSLATION);
+        let second_preview = build_preview(&runtime, RULE_ACTION_SCOPE_TRANSLATION);
+
+        assert_eq!(first_preview, second_preview);
+        assert_eq!(
+            first_preview
+                .chunk_context
+                .section
+                .as_ref()
+                .map(|section| (section.created_at, section.updated_at)),
+            Some((0, 0))
+        );
+    }
+
+    #[test]
     fn build_translation_context_composes_chunk_and_accumulated_context() {
         let (_temp_dir, runtime) = create_runtime();
         seed_context_builder_graph(&runtime);
@@ -972,6 +1038,126 @@ mod tests {
         assert_eq!(
             preview.accumulated_contexts[0].match_reason,
             CHAPTER_CONTEXT_MATCH_SECTION
+        );
+    }
+
+    #[test]
+    fn build_translation_context_keeps_ancestor_section_contexts_for_nested_chunks() {
+        let (_temp_dir, runtime) = create_runtime();
+        seed_context_builder_graph(&runtime);
+        let mut connection = runtime
+            .open_connection()
+            .expect("database connection should open");
+        let now = 1_800_000_320_i64;
+
+        DocumentSectionRepository::new(&mut connection)
+            .replace_for_document(
+                "doc_chunk_001",
+                &[
+                    NewDocumentSection {
+                        id: "doc_chunk_001_sec_chapter".to_owned(),
+                        document_id: "doc_chunk_001".to_owned(),
+                        sequence: 1,
+                        title: "Chapter 1".to_owned(),
+                        section_type: "chapter".to_owned(),
+                        level: 1,
+                        start_segment_sequence: 1,
+                        end_segment_sequence: 4,
+                        segment_count: 4,
+                        created_at: now,
+                        updated_at: now,
+                    },
+                    NewDocumentSection {
+                        id: "doc_chunk_001_sec_subsection".to_owned(),
+                        document_id: "doc_chunk_001".to_owned(),
+                        sequence: 2,
+                        title: "Subsection".to_owned(),
+                        section_type: "section".to_owned(),
+                        level: 2,
+                        start_segment_sequence: 2,
+                        end_segment_sequence: 3,
+                        segment_count: 2,
+                        created_at: now,
+                        updated_at: now,
+                    },
+                ],
+            )
+            .expect("nested sections should persist");
+        ChapterContextRepository::new(&mut connection)
+            .replace_for_document(
+                "doc_chunk_001",
+                &[
+                    NewChapterContext {
+                        id: "ctx_nested_section".to_owned(),
+                        document_id: "doc_chunk_001".to_owned(),
+                        section_id: Some("doc_chunk_001_sec_subsection".to_owned()),
+                        task_run_id: None,
+                        scope_type: "section".to_owned(),
+                        start_segment_sequence: 2,
+                        end_segment_sequence: 3,
+                        context_text: "Nested section context.".to_owned(),
+                        source_summary: None,
+                        context_word_count: 3,
+                        context_character_count: 23,
+                        created_at: now,
+                        updated_at: now,
+                    },
+                    NewChapterContext {
+                        id: "ctx_nested_ancestor".to_owned(),
+                        document_id: "doc_chunk_001".to_owned(),
+                        section_id: Some("doc_chunk_001_sec_chapter".to_owned()),
+                        task_run_id: None,
+                        scope_type: "chapter".to_owned(),
+                        start_segment_sequence: 1,
+                        end_segment_sequence: 4,
+                        context_text: "Ancestor chapter context.".to_owned(),
+                        source_summary: None,
+                        context_word_count: 3,
+                        context_character_count: 25,
+                        created_at: now + 1,
+                        updated_at: now + 1,
+                    },
+                ],
+            )
+            .expect("nested chapter contexts should persist");
+        let segments = SegmentRepository::new(&mut connection)
+            .list_by_document("doc_chunk_001")
+            .expect("segments should list");
+        let sections = DocumentSectionRepository::new(&mut connection)
+            .list_by_document("doc_chunk_001")
+            .expect("sections should list");
+        let preview = crate::context_builder::build_translation_context(
+            &mut connection,
+            &DocumentSegmentsOverview {
+                project_id: "prj_active_001".to_owned(),
+                document_id: "doc_chunk_001".to_owned(),
+                sections,
+                segments,
+            },
+            &BuildTranslationContextInput {
+                project_id: "prj_active_001".to_owned(),
+                document_id: "doc_chunk_001".to_owned(),
+                chunk_id: "doc_chunk_001_chunk_0001".to_owned(),
+                action_scope: RULE_ACTION_SCOPE_TRANSLATION.to_owned(),
+            },
+        )
+        .expect("nested translation context should build");
+
+        assert_eq!(
+            preview
+                .chunk_context
+                .section
+                .as_ref()
+                .map(|section| section.id.as_str()),
+            Some("doc_chunk_001_sec_subsection")
+        );
+        assert_eq!(
+            preview
+                .accumulated_contexts
+                .iter()
+                .map(|context| context.chapter_context.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["ctx_nested_section", "ctx_nested_ancestor"]
         );
     }
 
