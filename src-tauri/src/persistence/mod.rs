@@ -1,13 +1,16 @@
 pub mod bootstrap;
+pub mod chapter_contexts;
 pub mod documents;
 pub mod error;
 pub mod glossaries;
 pub mod glossary_entries;
 pub mod migrations;
 pub mod projects;
+pub mod qa_findings;
 pub mod rule_sets;
 pub mod secret_store;
 pub mod sections;
 pub mod segments;
 pub mod style_profiles;
+pub mod task_runs;
 pub mod translation_chunks;
