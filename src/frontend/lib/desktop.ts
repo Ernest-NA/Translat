@@ -1,5 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import {
+  type BuildDocumentTranslationChunksInput,
+  type BuildTranslationContextInput,
   type CreateGlossaryEntryInput,
   type CreateGlossaryInput,
   type CreateProjectInput,
@@ -11,6 +13,7 @@ import {
   type DesktopCommandName,
   type DocumentSegmentsOverview,
   type DocumentSummary,
+  type DocumentTranslationChunksOverview,
   type GlossariesOverview,
   type GlossaryEntriesOverview,
   type GlossaryEntrySummary,
@@ -18,6 +21,7 @@ import {
   type HealthcheckResponse,
   type ImportDocumentInput,
   type ListDocumentSegmentsInput,
+  type ListDocumentTranslationChunksInput,
   type ListGlossaryEntriesInput,
   type ListProjectDocumentsInput,
   type ListRuleSetRulesInput,
@@ -35,6 +39,9 @@ import {
   type RuleSummary,
   type StyleProfileSummary,
   type StyleProfilesOverview,
+  type TranslateChunkInput,
+  type TranslateChunkResult,
+  type TranslationContextPreview,
   type UpdateGlossaryEntryInput,
   type UpdateGlossaryInput,
   type UpdateProjectEditorialDefaultsInput,
@@ -214,6 +221,46 @@ export function listProjectDocuments(input: ListProjectDocumentsInput) {
 export function listDocumentSegments(input: ListDocumentSegmentsInput) {
   return invokeDesktopCommand<DocumentSegmentsOverview>(
     DESKTOP_COMMANDS.listDocumentSegments,
+    {
+      input,
+    },
+  );
+}
+
+export function buildDocumentTranslationChunks(
+  input: BuildDocumentTranslationChunksInput,
+) {
+  return invokeDesktopCommand<DocumentTranslationChunksOverview>(
+    DESKTOP_COMMANDS.buildDocumentTranslationChunks,
+    {
+      input,
+    },
+  );
+}
+
+export function buildTranslationContext(input: BuildTranslationContextInput) {
+  return invokeDesktopCommand<TranslationContextPreview>(
+    DESKTOP_COMMANDS.buildTranslationContext,
+    {
+      input,
+    },
+  );
+}
+
+export function listDocumentTranslationChunks(
+  input: ListDocumentTranslationChunksInput,
+) {
+  return invokeDesktopCommand<DocumentTranslationChunksOverview>(
+    DESKTOP_COMMANDS.listDocumentTranslationChunks,
+    {
+      input,
+    },
+  );
+}
+
+export function translateChunk(input: TranslateChunkInput) {
+  return invokeDesktopCommand<TranslateChunkResult>(
+    DESKTOP_COMMANDS.translateChunk,
     {
       input,
     },

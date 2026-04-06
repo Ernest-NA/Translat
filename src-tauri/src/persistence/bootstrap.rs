@@ -228,6 +228,11 @@ fn inspect_connection(
         && migrations::has_table(connection, "documents")?
         && migrations::has_table(connection, "segments")?
         && migrations::has_table(connection, "document_sections")?
+        && migrations::has_table(connection, "translation_chunks")?
+        && migrations::has_table(connection, "translation_chunk_segments")?
+        && migrations::has_table(connection, "task_runs")?
+        && migrations::has_table(connection, "chapter_contexts")?
+        && migrations::has_table(connection, "qa_findings")?
         && migrations::has_table(connection, "glossaries")?
         && migrations::has_table(connection, "glossary_entries")?
         && migrations::has_table(connection, "glossary_entry_variants")?
@@ -279,7 +284,11 @@ mod tests {
                 "0007_glossary_entries".to_owned(),
                 "0008_style_profiles".to_owned(),
                 "0009_rule_sets".to_owned(),
-                "0010_project_editorial_defaults".to_owned()
+                "0010_project_editorial_defaults".to_owned(),
+                "0011_translation_chunks".to_owned(),
+                "0012_operational_persistence".to_owned(),
+                "0013_rule_action_scopes".to_owned(),
+                "0014_segment_translation_projection".to_owned()
             ]
         );
         assert_eq!(
@@ -294,7 +303,11 @@ mod tests {
                 "0007_glossary_entries".to_owned(),
                 "0008_style_profiles".to_owned(),
                 "0009_rule_sets".to_owned(),
-                "0010_project_editorial_defaults".to_owned()
+                "0010_project_editorial_defaults".to_owned(),
+                "0011_translation_chunks".to_owned(),
+                "0012_operational_persistence".to_owned(),
+                "0013_rule_action_scopes".to_owned(),
+                "0014_segment_translation_projection".to_owned()
             ]
         );
         assert!(bootstrap_report.schema_ready);
@@ -324,7 +337,11 @@ mod tests {
                 "0007_glossary_entries".to_owned(),
                 "0008_style_profiles".to_owned(),
                 "0009_rule_sets".to_owned(),
-                "0010_project_editorial_defaults".to_owned()
+                "0010_project_editorial_defaults".to_owned(),
+                "0011_translation_chunks".to_owned(),
+                "0012_operational_persistence".to_owned(),
+                "0013_rule_action_scopes".to_owned(),
+                "0014_segment_translation_projection".to_owned()
             ]
         );
         assert!(second_report.schema_ready);
@@ -384,6 +401,41 @@ mod tests {
                 |row| row.get::<_, i64>(0),
             )
             .expect("document_sections table should be queryable");
+        let translation_chunks_table_count = connection
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'translation_chunks'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("translation_chunks table should be queryable");
+        let translation_chunk_segments_table_count = connection
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'translation_chunk_segments'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("translation_chunk_segments table should be queryable");
+        let task_runs_table_count = connection
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'task_runs'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("task_runs table should be queryable");
+        let chapter_contexts_table_count = connection
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'chapter_contexts'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("chapter_contexts table should be queryable");
+        let qa_findings_table_count = connection
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'qa_findings'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("qa_findings table should be queryable");
 
         let glossaries_table_count = connection
             .query_row(
@@ -428,19 +480,24 @@ mod tests {
             )
             .expect("rules table should be queryable");
 
-        assert_eq!(migration_count, 10);
+        assert_eq!(migration_count, 14);
         assert_eq!(app_metadata_table_count, 1);
         assert_eq!(projects_table_count, 1);
         assert_eq!(documents_table_count, 1);
         assert_eq!(segments_table_count, 1);
         assert_eq!(document_sections_table_count, 1);
+        assert_eq!(translation_chunks_table_count, 1);
+        assert_eq!(translation_chunk_segments_table_count, 1);
+        assert_eq!(task_runs_table_count, 1);
+        assert_eq!(chapter_contexts_table_count, 1);
+        assert_eq!(qa_findings_table_count, 1);
         assert_eq!(glossaries_table_count, 1);
         assert_eq!(glossary_entries_table_count, 1);
         assert_eq!(glossary_entry_variants_table_count, 1);
         assert_eq!(style_profiles_table_count, 1);
         assert_eq!(rule_sets_table_count, 1);
         assert_eq!(rules_table_count, 1);
-        assert_eq!(database_status.migration_count, 10);
+        assert_eq!(database_status.migration_count, 14);
         assert_eq!(
             database_status.applied_migrations,
             vec![
@@ -453,7 +510,11 @@ mod tests {
                 "0007_glossary_entries".to_owned(),
                 "0008_style_profiles".to_owned(),
                 "0009_rule_sets".to_owned(),
-                "0010_project_editorial_defaults".to_owned()
+                "0010_project_editorial_defaults".to_owned(),
+                "0011_translation_chunks".to_owned(),
+                "0012_operational_persistence".to_owned(),
+                "0013_rule_action_scopes".to_owned(),
+                "0014_segment_translation_projection".to_owned()
             ]
         );
         assert!(database_status.schema_ready);

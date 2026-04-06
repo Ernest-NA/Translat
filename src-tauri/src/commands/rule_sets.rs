@@ -11,9 +11,11 @@ use crate::persistence::rule_sets::{RuleRepository, RuleSetRepository};
 use crate::rule_sets::{
     CreateRuleInput, CreateRuleSetInput, ListRuleSetRulesInput, NewRule, NewRuleSet, RuleChanges,
     RuleSetChanges, RuleSetRulesOverview, RuleSetSummary, RuleSetsOverview, RuleSummary,
-    UpdateRuleInput, UpdateRuleSetInput, RULE_SEVERITY_HIGH, RULE_SEVERITY_LOW,
-    RULE_SEVERITY_MEDIUM, RULE_SET_STATUS_ACTIVE, RULE_SET_STATUS_ARCHIVED,
-    RULE_TYPE_CONSISTENCY, RULE_TYPE_PREFERENCE, RULE_TYPE_RESTRICTION,
+    UpdateRuleInput, UpdateRuleSetInput, RULE_ACTION_SCOPE_CONSISTENCY_REVIEW,
+    RULE_ACTION_SCOPE_EXPORT, RULE_ACTION_SCOPE_QA, RULE_ACTION_SCOPE_RETRANSLATION,
+    RULE_ACTION_SCOPE_TRANSLATION, RULE_SET_STATUS_ACTIVE, RULE_SET_STATUS_ARCHIVED,
+    RULE_SEVERITY_HIGH, RULE_SEVERITY_LOW, RULE_SEVERITY_MEDIUM, RULE_TYPE_CONSISTENCY,
+    RULE_TYPE_PREFERENCE, RULE_TYPE_RESTRICTION,
 };
 
 const MAX_RULE_SET_NAME_LENGTH: usize = 120;
@@ -282,6 +284,7 @@ fn validate_new_rule(
     Ok(NewRule {
         id: generate_rule_id(timestamp),
         rule_set_id,
+        action_scope: validate_rule_action_scope(&input.action_scope)?,
         rule_type: validate_rule_type(&input.rule_type)?,
         severity: validate_rule_severity(&input.severity)?,
         name: validate_rule_name(&input.name)?,
@@ -308,6 +311,7 @@ fn validate_rule_changes(
     Ok(RuleChanges {
         rule_id: validate_rule_id(&input.rule_id)?,
         rule_set_id,
+        action_scope: validate_rule_action_scope(&input.action_scope)?,
         rule_type: validate_rule_type(&input.rule_type)?,
         severity: validate_rule_severity(&input.severity)?,
         name: validate_rule_name(&input.name)?,
@@ -467,6 +471,22 @@ fn validate_rule_type(rule_type: &str) -> Result<String, DesktopCommandError> {
     }
 }
 
+fn validate_rule_action_scope(action_scope: &str) -> Result<String, DesktopCommandError> {
+    let normalized_action_scope = action_scope.trim().to_ascii_lowercase();
+
+    match normalized_action_scope.as_str() {
+        RULE_ACTION_SCOPE_TRANSLATION
+        | RULE_ACTION_SCOPE_RETRANSLATION
+        | RULE_ACTION_SCOPE_QA
+        | RULE_ACTION_SCOPE_EXPORT
+        | RULE_ACTION_SCOPE_CONSISTENCY_REVIEW => Ok(normalized_action_scope),
+        _ => Err(DesktopCommandError::validation(
+            "The rule action scope must be translation, retranslation, qa, export, or consistency_review.",
+            None,
+        )),
+    }
+}
+
 fn validate_rule_severity(severity: &str) -> Result<String, DesktopCommandError> {
     let normalized_severity = severity.trim().to_ascii_lowercase();
 
@@ -558,8 +578,9 @@ mod tests {
     use crate::persistence::secret_store::load_or_create_encryption_key;
     use crate::rule_sets::{
         CreateRuleInput, CreateRuleSetInput, ListRuleSetRulesInput, UpdateRuleInput,
-        UpdateRuleSetInput, RULE_SEVERITY_HIGH, RULE_SEVERITY_MEDIUM,
-        RULE_SET_STATUS_ARCHIVED, RULE_TYPE_CONSISTENCY, RULE_TYPE_RESTRICTION,
+        UpdateRuleSetInput, RULE_ACTION_SCOPE_QA, RULE_ACTION_SCOPE_TRANSLATION,
+        RULE_SET_STATUS_ARCHIVED, RULE_SEVERITY_HIGH, RULE_SEVERITY_MEDIUM, RULE_TYPE_CONSISTENCY,
+        RULE_TYPE_RESTRICTION,
     };
 
     use super::{
@@ -644,6 +665,7 @@ mod tests {
         let created_rule = create_rule_with_runtime(
             CreateRuleInput {
                 rule_set_id: created_rule_set.id.clone(),
+                action_scope: RULE_ACTION_SCOPE_TRANSLATION.to_owned(),
                 rule_type: RULE_TYPE_RESTRICTION.to_owned(),
                 severity: RULE_SEVERITY_HIGH.to_owned(),
                 name: "Do not euphemize risk".to_owned(),
@@ -659,6 +681,7 @@ mod tests {
             UpdateRuleInput {
                 rule_id: created_rule.id.clone(),
                 rule_set_id: created_rule_set.id.clone(),
+                action_scope: RULE_ACTION_SCOPE_QA.to_owned(),
                 rule_type: RULE_TYPE_CONSISTENCY.to_owned(),
                 severity: RULE_SEVERITY_MEDIUM.to_owned(),
                 name: "Keep warning labels stable".to_owned(),
@@ -680,6 +703,7 @@ mod tests {
 
         assert_eq!(overview.rule_set_id, created_rule_set.id);
         assert_eq!(overview.rules.len(), 1);
+        assert_eq!(updated_rule.action_scope, RULE_ACTION_SCOPE_QA);
         assert_eq!(updated_rule.rule_type, RULE_TYPE_CONSISTENCY);
         assert_eq!(updated_rule.severity, RULE_SEVERITY_MEDIUM);
         assert!(!updated_rule.is_enabled);

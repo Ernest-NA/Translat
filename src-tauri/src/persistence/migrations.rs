@@ -22,12 +22,16 @@ impl Migration {
             ("0008", "style_profiles") => "0008_style_profiles",
             ("0009", "rule_sets") => "0009_rule_sets",
             ("0010", "project_editorial_defaults") => "0010_project_editorial_defaults",
+            ("0011", "translation_chunks") => "0011_translation_chunks",
+            ("0012", "operational_persistence") => "0012_operational_persistence",
+            ("0013", "rule_action_scopes") => "0013_rule_action_scopes",
+            ("0014", "segment_translation_projection") => "0014_segment_translation_projection",
             _ => self.version,
         }
     }
 }
 
-const MIGRATIONS: [Migration; 10] = [
+const MIGRATIONS: [Migration; 14] = [
     Migration {
         version: "0001",
         name: "initial_schema",
@@ -77,6 +81,26 @@ const MIGRATIONS: [Migration; 10] = [
         version: "0010",
         name: "project_editorial_defaults",
         sql: include_str!("../../migrations/0010_project_editorial_defaults.sql"),
+    },
+    Migration {
+        version: "0011",
+        name: "translation_chunks",
+        sql: include_str!("../../migrations/0011_translation_chunks.sql"),
+    },
+    Migration {
+        version: "0012",
+        name: "operational_persistence",
+        sql: include_str!("../../migrations/0012_operational_persistence.sql"),
+    },
+    Migration {
+        version: "0013",
+        name: "rule_action_scopes",
+        sql: include_str!("../../migrations/0013_rule_action_scopes.sql"),
+    },
+    Migration {
+        version: "0014",
+        name: "segment_translation_projection",
+        sql: include_str!("../../migrations/0014_segment_translation_projection.sql"),
     },
 ];
 

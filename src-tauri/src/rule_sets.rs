@@ -6,6 +6,11 @@ pub const RULE_SET_STATUS_ARCHIVED: &str = "archived";
 pub const RULE_TYPE_CONSISTENCY: &str = "consistency";
 pub const RULE_TYPE_PREFERENCE: &str = "preference";
 pub const RULE_TYPE_RESTRICTION: &str = "restriction";
+pub const RULE_ACTION_SCOPE_TRANSLATION: &str = "translation";
+pub const RULE_ACTION_SCOPE_RETRANSLATION: &str = "retranslation";
+pub const RULE_ACTION_SCOPE_QA: &str = "qa";
+pub const RULE_ACTION_SCOPE_EXPORT: &str = "export";
+pub const RULE_ACTION_SCOPE_CONSISTENCY_REVIEW: &str = "consistency_review";
 pub const RULE_SEVERITY_LOW: &str = "low";
 pub const RULE_SEVERITY_MEDIUM: &str = "medium";
 pub const RULE_SEVERITY_HIGH: &str = "high";
@@ -34,6 +39,7 @@ pub struct RuleSetsOverview {
 pub struct RuleSummary {
     pub id: String,
     pub rule_set_id: String,
+    pub action_scope: String,
     pub rule_type: String,
     pub severity: String,
     pub name: String,
@@ -77,6 +83,7 @@ pub struct ListRuleSetRulesInput {
 #[serde(rename_all = "camelCase")]
 pub struct CreateRuleInput {
     pub rule_set_id: String,
+    pub action_scope: String,
     pub rule_type: String,
     pub severity: String,
     pub name: String,
@@ -90,6 +97,7 @@ pub struct CreateRuleInput {
 pub struct UpdateRuleInput {
     pub rule_id: String,
     pub rule_set_id: String,
+    pub action_scope: String,
     pub rule_type: String,
     pub severity: String,
     pub name: String,
@@ -122,6 +130,7 @@ pub struct RuleSetChanges {
 pub struct NewRule {
     pub id: String,
     pub rule_set_id: String,
+    pub action_scope: String,
     pub rule_type: String,
     pub severity: String,
     pub name: String,
@@ -136,6 +145,7 @@ pub struct NewRule {
 pub struct RuleChanges {
     pub rule_id: String,
     pub rule_set_id: String,
+    pub action_scope: String,
     pub rule_type: String,
     pub severity: String,
     pub name: String,

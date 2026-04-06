@@ -1,16 +1,22 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod chapter_contexts;
 mod commands;
+mod context_builder;
 mod documents;
 mod error;
 mod glossaries;
 mod glossary_entries;
 mod persistence;
 mod projects;
+mod qa_findings;
 mod rule_sets;
 mod sections;
 mod segments;
 mod style_profiles;
+mod task_runs;
+mod translate_chunk;
+mod translation_chunks;
 
 use tauri::Manager;
 
@@ -58,7 +64,11 @@ fn main() {
             commands::projects::open_project,
             commands::projects::update_project_editorial_defaults,
             commands::segments::list_document_segments,
-            commands::segments::process_project_document
+            commands::segments::process_project_document,
+            commands::translation_chunks::build_document_translation_chunks,
+            commands::translation_chunks::list_document_translation_chunks,
+            commands::context_builder::build_translation_context,
+            commands::translate_chunk::translate_chunk
         ])
         .run(tauri::generate_context!())
         .expect("error while running the Translat desktop shell");
