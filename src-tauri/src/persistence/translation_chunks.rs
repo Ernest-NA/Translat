@@ -20,7 +20,6 @@ impl<'connection> TranslationChunkRepository<'connection> {
         document_id: &str,
         chunks: &[NewTranslationChunk],
         chunk_segments: &[NewTranslationChunkSegment],
-        _built_at: i64,
     ) -> Result<(), PersistenceError> {
         let transaction = self.connection.transaction().map_err(|error| {
             PersistenceError::with_details(
@@ -462,7 +461,6 @@ mod tests {
                         role: TRANSLATION_CHUNK_SEGMENT_ROLE_CONTEXT_AFTER.to_owned(),
                     },
                 ],
-                now,
             )
             .expect("chunks should persist");
 
@@ -592,7 +590,6 @@ mod tests {
                         role: TRANSLATION_CHUNK_SEGMENT_ROLE_CONTEXT_AFTER.to_owned(),
                     },
                 ],
-                now,
             )
             .expect("initial chunks should persist");
 
@@ -632,7 +629,6 @@ mod tests {
                         role: TRANSLATION_CHUNK_SEGMENT_ROLE_CORE.to_owned(),
                     },
                 ],
-                now + 1,
             )
             .expect("replacement chunks should persist");
 

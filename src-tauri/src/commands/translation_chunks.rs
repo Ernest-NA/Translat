@@ -64,7 +64,7 @@ pub(crate) fn build_document_translation_chunks_with_runtime(
     )?;
 
     TranslationChunkRepository::new(&mut connection)
-        .replace_for_document(&document_id, &chunks, &chunk_segments, built_at)
+        .replace_for_document(&document_id, &chunks, &chunk_segments)
         .map_err(|error| {
             DesktopCommandError::internal(
                 "The desktop shell could not persist translation chunks for the selected document.",
