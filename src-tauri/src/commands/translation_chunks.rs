@@ -2,12 +2,12 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use tauri::State;
 
-use crate::commands::segments::list_document_segments_with_runtime;
+use crate::commands::segments::load_segmented_document_overview;
 use crate::error::DesktopCommandError;
 use crate::persistence::bootstrap::DatabaseRuntime;
 use crate::persistence::translation_chunks::TranslationChunkRepository;
 use crate::sections::{DocumentSectionSummary, DOCUMENT_SECTION_TYPE_DOCUMENT};
-use crate::segments::{ListDocumentSegmentsInput, SegmentSummary};
+use crate::segments::SegmentSummary;
 use crate::translation_chunks::{
     BuildDocumentTranslationChunksInput, DocumentTranslationChunksOverview,
     ListDocumentTranslationChunksInput, NewTranslationChunk, NewTranslationChunkSegment,
@@ -41,27 +41,27 @@ pub(crate) fn build_document_translation_chunks_with_runtime(
 ) -> Result<DocumentTranslationChunksOverview, DesktopCommandError> {
     let project_id = validate_identifier(&input.project_id, "project id")?;
     let document_id = validate_identifier(&input.document_id, "document id")?;
-    let segment_overview = list_document_segments_with_runtime(
-        ListDocumentSegmentsInput {
-            project_id: project_id.clone(),
-            document_id: document_id.clone(),
-        },
-        database_runtime,
-    )?;
     let built_at = current_timestamp()?;
-    let (chunks, chunk_segments) = build_translation_chunks(
-        &document_id,
-        &segment_overview.segments,
-        &segment_overview.sections,
-        built_at,
-    )?;
-
     let mut connection = database_runtime.open_connection().map_err(|error| {
         DesktopCommandError::internal(
             "The desktop shell could not open the encrypted database for chunk building.",
             Some(error.to_string()),
         )
     })?;
+    let segment_overview = load_segmented_document_overview(
+        &mut connection,
+        database_runtime,
+        &project_id,
+        &document_id,
+        false,
+        built_at,
+    )?;
+    let (chunks, chunk_segments) = build_translation_chunks(
+        &document_id,
+        &segment_overview.segments,
+        &segment_overview.sections,
+        built_at,
+    )?;
 
     TranslationChunkRepository::new(&mut connection)
         .replace_for_document(&document_id, &chunks, &chunk_segments, built_at)
@@ -81,21 +81,21 @@ pub(crate) fn list_document_translation_chunks_with_runtime(
 ) -> Result<DocumentTranslationChunksOverview, DesktopCommandError> {
     let project_id = validate_identifier(&input.project_id, "project id")?;
     let document_id = validate_identifier(&input.document_id, "document id")?;
-
-    let _ = list_document_segments_with_runtime(
-        ListDocumentSegmentsInput {
-            project_id: project_id.clone(),
-            document_id: document_id.clone(),
-        },
-        database_runtime,
-    )?;
-
     let mut connection = database_runtime.open_connection().map_err(|error| {
         DesktopCommandError::internal(
             "The desktop shell could not open the encrypted database for chunk listing.",
             Some(error.to_string()),
         )
     })?;
+    let listed_at = current_timestamp()?;
+    let _ = load_segmented_document_overview(
+        &mut connection,
+        database_runtime,
+        &project_id,
+        &document_id,
+        false,
+        listed_at,
+    )?;
 
     load_translation_chunk_overview(&mut connection, &project_id, &document_id)
 }

@@ -55,6 +55,7 @@ export function useDocumentChunks(
       setOverview(null);
       setSelectedChunkId(null);
       setError(null);
+      setIsBuilding(false);
       setIsLoading(false);
       return;
     }
@@ -62,6 +63,7 @@ export function useDocumentChunks(
     const requestId = requestIdRef.current + 1;
     requestIdRef.current = requestId;
 
+    setIsBuilding(false);
     setOverview((currentOverview) =>
       currentOverview?.documentId === activeDocument.id
         ? currentOverview

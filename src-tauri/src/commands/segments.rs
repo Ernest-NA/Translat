@@ -125,14 +125,32 @@ pub(crate) fn list_document_segments_with_runtime(
         )
     })?;
 
-    ensure_project_exists(&mut connection, &project_id)?;
-    ensure_project_is_active(&mut connection, &project_id)?;
-    reconcile_project_document_storage(database_runtime, &mut connection, &project_id)?;
+    load_segmented_document_overview(
+        &mut connection,
+        database_runtime,
+        &project_id,
+        &document_id,
+        true,
+        current_timestamp()?,
+    )
+}
+
+pub(crate) fn load_segmented_document_overview(
+    connection: &mut rusqlite::Connection,
+    database_runtime: &DatabaseRuntime,
+    project_id: &str,
+    document_id: &str,
+    persist_sections: bool,
+    timestamp: i64,
+) -> Result<DocumentSegmentsOverview, DesktopCommandError> {
+    ensure_project_exists(connection, project_id)?;
+    ensure_project_is_active(connection, project_id)?;
+    reconcile_project_document_storage(database_runtime, connection, project_id)?;
 
     let processing_record = {
-        let mut document_repository = DocumentRepository::new(&mut connection);
+        let mut document_repository = DocumentRepository::new(connection);
         document_repository
-            .load_processing_record(&project_id, &document_id)
+            .load_processing_record(project_id, document_id)
             .map_err(|error| {
                 DesktopCommandError::internal(
                     "The desktop shell could not inspect the selected document for segment navigation.",
@@ -154,9 +172,9 @@ pub(crate) fn list_document_segments_with_runtime(
         ));
     }
 
-    let mut segment_repository = SegmentRepository::new(&mut connection);
+    let mut segment_repository = SegmentRepository::new(connection);
     let segments = segment_repository
-        .list_by_document(&document_id)
+        .list_by_document(document_id)
         .map_err(|error| {
             DesktopCommandError::internal(
                 "The desktop shell could not load the persisted segments for the selected document.",
@@ -165,15 +183,16 @@ pub(crate) fn list_document_segments_with_runtime(
         })?;
 
     let sections = ensure_document_sections(
-        &mut connection,
+        connection,
         &processing_record,
         &segments,
-        current_timestamp()?,
+        timestamp,
+        persist_sections,
     )?;
 
     Ok(DocumentSegmentsOverview {
-        project_id,
-        document_id,
+        project_id: project_id.to_owned(),
+        document_id: document_id.to_owned(),
         sections,
         segments,
     })
@@ -184,6 +203,7 @@ fn ensure_document_sections(
     processing_record: &DocumentProcessingRecord,
     segments: &[SegmentSummary],
     timestamp: i64,
+    persist_sections: bool,
 ) -> Result<Vec<DocumentSectionSummary>, DesktopCommandError> {
     let mut repository = DocumentSectionRepository::new(connection);
     let existing_sections =
@@ -205,6 +225,13 @@ fn ensure_document_sections(
 
     if section_summaries_match(&existing_sections, &rebuilt_sections) {
         return Ok(existing_sections);
+    }
+
+    if !persist_sections {
+        return Ok(rebuilt_sections
+            .into_iter()
+            .map(map_new_section_to_summary)
+            .collect());
     }
 
     repository

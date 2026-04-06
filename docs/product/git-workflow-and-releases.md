@@ -26,9 +26,9 @@ Format:
 - `task/{NOTION_TASK_ID}-{slug}`
 
 Examples:
-- `task/A2-adapt-agents-md`
-- `task/B4-sqlite-encrypted-migrations`
-- `task/E6-translate-segment`
+- `task/TR-11-document-structure-base`
+- `task/TR-12-chunk-builder-and-basic-chunking`
+- `task/TR-155-translate-document-job`
 
 ### Release branches
 Format:
@@ -42,8 +42,8 @@ Examples:
 ## Pull request naming
 ### Task PRs
 Format:
-- `[A2] Adapt AGENTS.md to Translat domain`
-- `[E6] Implement translate_segment`
+- `[TR-11] Final validation for document structure base`
+- `[TR-12] Add translation chunk builder`
 
 ### Release PRs
 Format:
@@ -52,11 +52,12 @@ Format:
 
 ## Commit naming
 Recommended prefix:
-- `A2: adapt AGENTS.md`
-- `E6: implement translate_segment`
+- `TR-11: validate document structure base`
+- `TR-12: add translation chunk builder`
 
 ## Planned releases
-### R0.1 — Foundation
+### R0.1 - Foundation
+Legacy refs:
 - A1
 - A2
 - A3
@@ -64,7 +65,8 @@ Recommended prefix:
 - B1
 - B4
 
-### R0.2 — Project and document foundation
+### R0.2 - Project and document foundation
+Legacy refs:
 - C1
 - C2
 - C3
@@ -76,7 +78,8 @@ Recommended prefix:
 - D4
 - D5
 
-### R0.3 — Core AI workflow
+### R0.3 - Core AI workflow
+Legacy refs:
 - E1
 - E2
 - E3
@@ -90,7 +93,8 @@ Recommended prefix:
 - F3
 - F4
 
-### R0.4 — Parallel corpus and document scale
+### R0.4 - Parallel corpus and document scale
+Legacy refs:
 - G1
 - G2
 - G3
@@ -100,7 +104,8 @@ Recommended prefix:
 - H2
 - H3
 
-### R0.5 — QA and hardening
+### R0.5 - QA and hardening
+Legacy refs:
 - I1
 - I2
 - I3
@@ -108,6 +113,7 @@ Recommended prefix:
 
 ## Notes
 - Notion remains the canonical source for backlog items.
-- Git branch and PR naming should reference Notion task identifiers.
+- Git branch, PR, and commit naming should reference canonical `TR-*` Notion task identifiers.
+- Legacy IDs remain release-planning references only and should be preserved as historical mappings, not reused for new task branches or PRs.
 - The repository official URL is `https://github.com/Ernest-NA/Translat`.
 - The `docs-governance` branch is an explicit bootstrap exception used to establish repository governance before regular `task/*` branches are enforced.
