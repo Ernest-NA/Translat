@@ -23,12 +23,13 @@ impl Migration {
             ("0009", "rule_sets") => "0009_rule_sets",
             ("0010", "project_editorial_defaults") => "0010_project_editorial_defaults",
             ("0011", "translation_chunks") => "0011_translation_chunks",
+            ("0012", "operational_persistence") => "0012_operational_persistence",
             _ => self.version,
         }
     }
 }
 
-const MIGRATIONS: [Migration; 11] = [
+const MIGRATIONS: [Migration; 12] = [
     Migration {
         version: "0001",
         name: "initial_schema",
@@ -83,6 +84,11 @@ const MIGRATIONS: [Migration; 11] = [
         version: "0011",
         name: "translation_chunks",
         sql: include_str!("../../migrations/0011_translation_chunks.sql"),
+    },
+    Migration {
+        version: "0012",
+        name: "operational_persistence",
+        sql: include_str!("../../migrations/0012_operational_persistence.sql"),
     },
 ];
 

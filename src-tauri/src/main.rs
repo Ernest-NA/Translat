@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod chapter_contexts;
 mod commands;
 mod documents;
 mod error;
@@ -7,10 +8,12 @@ mod glossaries;
 mod glossary_entries;
 mod persistence;
 mod projects;
+mod qa_findings;
 mod rule_sets;
 mod sections;
 mod segments;
 mod style_profiles;
+mod task_runs;
 mod translation_chunks;
 
 use tauri::Manager;
