@@ -1,3 +1,5 @@
+#![cfg_attr(not(test), allow(dead_code))]
+
 use rusqlite::{params, Connection};
 
 use crate::persistence::error::PersistenceError;
@@ -44,7 +46,6 @@ impl<'connection> QaFindingRepository<'connection> {
                   status = excluded.status,
                   message = excluded.message,
                   details = excluded.details,
-                  created_at = excluded.created_at,
                   updated_at = excluded.updated_at
                 "#,
                 params![
@@ -526,6 +527,8 @@ mod tests {
         assert_eq!(chunk_findings.len(), 1);
         assert_eq!(task_run_findings.len(), 1);
         assert_eq!(job_findings.len(), 1);
+        assert_eq!(document_findings[0].created_at, now);
+        assert_eq!(document_findings[0].updated_at, now + 1);
         assert_eq!(document_findings[0].severity, QA_FINDING_SEVERITY_HIGH);
         assert_eq!(document_findings[0].status, QA_FINDING_STATUS_RESOLVED);
     }

@@ -1,3 +1,5 @@
+#![cfg_attr(not(test), allow(dead_code))]
+
 use rusqlite::{params, Connection};
 
 use crate::chapter_contexts::{ChapterContextSummary, NewChapterContext};
@@ -38,6 +40,13 @@ impl<'connection> ChapterContextRepository<'connection> {
             })?;
 
         for chapter_context in chapter_contexts {
+            if chapter_context.document_id != document_id {
+                return Err(PersistenceError::new(format!(
+                    "The chapter-context repository received context {} for document {}, but replacement was requested for document {}.",
+                    chapter_context.id, chapter_context.document_id, document_id
+                )));
+            }
+
             transaction
                 .execute(
                     r#"
@@ -60,7 +69,7 @@ impl<'connection> ChapterContextRepository<'connection> {
                     "#,
                     params![
                         chapter_context.id,
-                        chapter_context.document_id,
+                        document_id,
                         chapter_context.section_id,
                         chapter_context.task_run_id,
                         chapter_context.scope_type,
@@ -490,6 +499,51 @@ mod tests {
 
         assert_eq!(document_contexts.len(), 1);
         assert_eq!(document_contexts[0].id, "ctx_002");
+    }
+
+    #[test]
+    fn replace_for_document_rejects_cross_document_context_rows() {
+        let temporary_directory = tempdir().expect("temp dir should be created");
+        let database_path = temporary_directory.path().join("translat.sqlite3");
+        let now = 1_743_517_200_i64;
+
+        bootstrap_database(&database_path, TEST_DATABASE_KEY)
+            .expect("database bootstrap should succeed");
+
+        let mut connection = open_database_with_key(&database_path, TEST_DATABASE_KEY)
+            .expect("database connection should open");
+        seed_document_context_graph(&mut connection, now);
+
+        let error = ChapterContextRepository::new(&mut connection)
+            .replace_for_document(
+                "doc_chunk_001",
+                &[NewChapterContext {
+                    id: "ctx_bad_001".to_owned(),
+                    document_id: "doc_other_001".to_owned(),
+                    section_id: None,
+                    task_run_id: None,
+                    scope_type: CHAPTER_CONTEXT_SCOPE_DOCUMENT.to_owned(),
+                    start_segment_sequence: 1,
+                    end_segment_sequence: 4,
+                    context_text: "Mismatched document context.".to_owned(),
+                    source_summary: None,
+                    context_word_count: 3,
+                    context_character_count: 27,
+                    created_at: now,
+                    updated_at: now,
+                }],
+            )
+            .expect_err("cross-document contexts should be rejected");
+
+        assert!(error
+            .to_string()
+            .contains("replacement was requested for document doc_chunk_001"));
+
+        let document_contexts = ChapterContextRepository::new(&mut connection)
+            .list_by_document("doc_chunk_001")
+            .expect("contexts should remain empty");
+
+        assert!(document_contexts.is_empty());
     }
 
     fn seed_document_context_graph(connection: &mut Connection, now: i64) {

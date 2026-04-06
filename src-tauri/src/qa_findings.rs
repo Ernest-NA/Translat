@@ -1,3 +1,5 @@
+#![cfg_attr(not(test), allow(dead_code))]
+
 use serde::{Deserialize, Serialize};
 
 #[allow(dead_code)]

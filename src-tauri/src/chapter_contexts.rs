@@ -1,3 +1,5 @@
+#![cfg_attr(not(test), allow(dead_code))]
+
 use serde::{Deserialize, Serialize};
 
 pub const CHAPTER_CONTEXT_SCOPE_DOCUMENT: &str = "document";

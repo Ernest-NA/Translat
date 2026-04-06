@@ -1,3 +1,5 @@
+#![cfg_attr(not(test), allow(dead_code))]
+
 use rusqlite::{params, Connection};
 
 use crate::persistence::error::PersistenceError;
