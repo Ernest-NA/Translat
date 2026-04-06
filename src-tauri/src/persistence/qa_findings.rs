@@ -18,6 +18,8 @@ impl<'connection> QaFindingRepository<'connection> {
         &mut self,
         qa_finding: &NewQaFinding,
     ) -> Result<QaFindingSummary, PersistenceError> {
+        self.validate_document_links(qa_finding)?;
+
         self.connection
             .execute(
                 r#"
@@ -435,6 +437,61 @@ impl<'connection> QaFindingRepository<'connection> {
 
         Ok(qa_findings)
     }
+
+    fn validate_document_links(&self, qa_finding: &NewQaFinding) -> Result<(), PersistenceError> {
+        self.validate_linked_document(
+            "chunk",
+            qa_finding.id.as_str(),
+            qa_finding.document_id.as_str(),
+            qa_finding.chunk_id.as_deref(),
+            "SELECT document_id FROM translation_chunks WHERE id = ?1",
+        )?;
+        self.validate_linked_document(
+            "task run",
+            qa_finding.id.as_str(),
+            qa_finding.document_id.as_str(),
+            qa_finding.task_run_id.as_deref(),
+            "SELECT document_id FROM task_runs WHERE id = ?1",
+        )?;
+
+        Ok(())
+    }
+
+    fn validate_linked_document(
+        &self,
+        linked_entity: &str,
+        finding_id: &str,
+        document_id: &str,
+        linked_id: Option<&str>,
+        query: &str,
+    ) -> Result<(), PersistenceError> {
+        let Some(linked_id) = linked_id else {
+            return Ok(());
+        };
+
+        let linked_document_id = self
+            .connection
+            .query_row(query, [linked_id], |row| row.get::<_, String>(0))
+            .map_err(|error| match error {
+                rusqlite::Error::QueryReturnedNoRows => PersistenceError::new(format!(
+                    "The QA-finding repository could not find {linked_entity} {linked_id} for finding {finding_id}."
+                )),
+                other => PersistenceError::with_details(
+                    format!(
+                        "The QA-finding repository could not validate {linked_entity} {linked_id} for finding {finding_id}."
+                    ),
+                    other,
+                ),
+            })?;
+
+        if linked_document_id != document_id {
+            return Err(PersistenceError::new(format!(
+                "The QA-finding repository received {linked_entity} {linked_id} for document {linked_document_id}, but finding {finding_id} targets document {document_id}."
+            )));
+        }
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -582,6 +639,76 @@ mod tests {
         assert_eq!(task_runs[0].chunk_id, None);
     }
 
+    #[test]
+    fn upsert_rejects_cross_document_chunk_links() {
+        let temporary_directory = tempdir().expect("temp dir should be created");
+        let database_path = temporary_directory.path().join("translat.sqlite3");
+        let now = 1_743_517_200_i64;
+
+        bootstrap_database(&database_path, TEST_DATABASE_KEY)
+            .expect("database bootstrap should succeed");
+
+        let mut connection = open_database_with_key(&database_path, TEST_DATABASE_KEY)
+            .expect("database connection should open");
+        seed_traceability_graph(&mut connection, now);
+
+        let error = QaFindingRepository::new(&mut connection)
+            .upsert(&NewQaFinding {
+                id: "qaf_bad_001".to_owned(),
+                document_id: "doc_chunk_001".to_owned(),
+                chunk_id: Some("doc_other_001_chunk_0001".to_owned()),
+                task_run_id: None,
+                job_id: Some("job_translate_002".to_owned()),
+                finding_type: "consistency".to_owned(),
+                severity: QA_FINDING_SEVERITY_MEDIUM.to_owned(),
+                status: QA_FINDING_STATUS_OPEN.to_owned(),
+                message: "Cross-document chunk link.".to_owned(),
+                details: None,
+                created_at: now,
+                updated_at: now,
+            })
+            .expect_err("cross-document chunk links should be rejected");
+
+        assert!(error
+            .to_string()
+            .contains("but finding qaf_bad_001 targets document doc_chunk_001"));
+    }
+
+    #[test]
+    fn upsert_rejects_cross_document_task_run_links() {
+        let temporary_directory = tempdir().expect("temp dir should be created");
+        let database_path = temporary_directory.path().join("translat.sqlite3");
+        let now = 1_743_517_200_i64;
+
+        bootstrap_database(&database_path, TEST_DATABASE_KEY)
+            .expect("database bootstrap should succeed");
+
+        let mut connection = open_database_with_key(&database_path, TEST_DATABASE_KEY)
+            .expect("database connection should open");
+        seed_traceability_graph(&mut connection, now);
+
+        let error = QaFindingRepository::new(&mut connection)
+            .upsert(&NewQaFinding {
+                id: "qaf_bad_002".to_owned(),
+                document_id: "doc_chunk_001".to_owned(),
+                chunk_id: None,
+                task_run_id: Some("trun_other_001".to_owned()),
+                job_id: Some("job_translate_002".to_owned()),
+                finding_type: "consistency".to_owned(),
+                severity: QA_FINDING_SEVERITY_MEDIUM.to_owned(),
+                status: QA_FINDING_STATUS_OPEN.to_owned(),
+                message: "Cross-document task-run link.".to_owned(),
+                details: None,
+                created_at: now,
+                updated_at: now,
+            })
+            .expect_err("cross-document task-run links should be rejected");
+
+        assert!(error
+            .to_string()
+            .contains("but finding qaf_bad_002 targets document doc_chunk_001"));
+    }
+
     fn seed_traceability_graph(connection: &mut Connection, now: i64) {
         ProjectRepository::new(connection)
             .create(&NewProject {
@@ -610,6 +737,22 @@ mod tests {
             })
             .expect("document should persist");
 
+        crate::persistence::documents::DocumentRepository::new(connection)
+            .create(&NewDocument {
+                id: "doc_other_001".to_owned(),
+                project_id: "prj_active_001".to_owned(),
+                name: "other.txt".to_owned(),
+                source_kind: DOCUMENT_SOURCE_LOCAL_FILE.to_owned(),
+                format: "txt".to_owned(),
+                mime_type: Some("text/plain".to_owned()),
+                stored_path: "ignored_other".to_owned(),
+                file_size_bytes: 96,
+                status: DOCUMENT_STATUS_SEGMENTED.to_owned(),
+                created_at: now,
+                updated_at: now,
+            })
+            .expect("other document should persist");
+
         SegmentRepository::new(connection)
             .replace_for_document(
                 "prj_active_001",
@@ -628,6 +771,25 @@ mod tests {
                 now,
             )
             .expect("segments should persist");
+
+        SegmentRepository::new(connection)
+            .replace_for_document(
+                "prj_active_001",
+                "doc_other_001",
+                &[NewSegment {
+                    id: "doc_other_001_seg_0001".to_owned(),
+                    document_id: "doc_other_001".to_owned(),
+                    sequence: 1,
+                    source_text: "Other.".to_owned(),
+                    source_word_count: 1,
+                    source_character_count: 6,
+                    status: SEGMENT_STATUS_PENDING_TRANSLATION.to_owned(),
+                    created_at: now,
+                    updated_at: now,
+                }],
+                now,
+            )
+            .expect("other segments should persist");
 
         TranslationChunkRepository::new(connection)
             .replace_for_document(
@@ -659,6 +821,36 @@ mod tests {
             )
             .expect("chunk should persist");
 
+        TranslationChunkRepository::new(connection)
+            .replace_for_document(
+                "doc_other_001",
+                &[NewTranslationChunk {
+                    id: "doc_other_001_chunk_0001".to_owned(),
+                    document_id: "doc_other_001".to_owned(),
+                    sequence: 1,
+                    builder_version: "tr12-basic-v1".to_owned(),
+                    strategy: "section-aware-fixed-word-target-v1".to_owned(),
+                    source_text: "Other.".to_owned(),
+                    context_before_text: None,
+                    context_after_text: None,
+                    start_segment_sequence: 1,
+                    end_segment_sequence: 1,
+                    segment_count: 1,
+                    source_word_count: 1,
+                    source_character_count: 6,
+                    created_at: now,
+                    updated_at: now,
+                }],
+                &[NewTranslationChunkSegment {
+                    chunk_id: "doc_other_001_chunk_0001".to_owned(),
+                    segment_id: "doc_other_001_seg_0001".to_owned(),
+                    segment_sequence: 1,
+                    position: 1,
+                    role: TRANSLATION_CHUNK_SEGMENT_ROLE_CORE.to_owned(),
+                }],
+            )
+            .expect("other chunk should persist");
+
         TaskRunRepository::new(connection)
             .create(&NewTaskRun {
                 id: "trun_001".to_owned(),
@@ -676,5 +868,23 @@ mod tests {
                 updated_at: now + 1,
             })
             .expect("task run should persist");
+
+        TaskRunRepository::new(connection)
+            .create(&NewTaskRun {
+                id: "trun_other_001".to_owned(),
+                document_id: "doc_other_001".to_owned(),
+                chunk_id: Some("doc_other_001_chunk_0001".to_owned()),
+                job_id: Some("job_translate_002".to_owned()),
+                action_type: "translate_chunk".to_owned(),
+                status: TASK_RUN_STATUS_COMPLETED.to_owned(),
+                input_payload: None,
+                output_payload: Some("{\"result\":\"ok\"}".to_owned()),
+                error_message: None,
+                started_at: now,
+                completed_at: Some(now + 1),
+                created_at: now,
+                updated_at: now + 1,
+            })
+            .expect("other task run should persist");
     }
 }

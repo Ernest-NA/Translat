@@ -15,6 +15,8 @@ impl<'connection> TaskRunRepository<'connection> {
     }
 
     pub fn create(&mut self, task_run: &NewTaskRun) -> Result<TaskRunSummary, PersistenceError> {
+        self.validate_chunk_document(task_run.document_id.as_str(), task_run.chunk_id.as_deref())?;
+
         self.connection
             .execute(
                 r#"
@@ -354,6 +356,43 @@ impl<'connection> TaskRunRepository<'connection> {
 
         Ok(task_runs)
     }
+
+    fn validate_chunk_document(
+        &self,
+        document_id: &str,
+        chunk_id: Option<&str>,
+    ) -> Result<(), PersistenceError> {
+        let Some(chunk_id) = chunk_id else {
+            return Ok(());
+        };
+
+        let chunk_document_id = self
+            .connection
+            .query_row(
+                "SELECT document_id FROM translation_chunks WHERE id = ?1",
+                [chunk_id],
+                |row| row.get::<_, String>(0),
+            )
+            .map_err(|error| match error {
+                rusqlite::Error::QueryReturnedNoRows => PersistenceError::new(format!(
+                    "The task-run repository could not find chunk {chunk_id} for document {document_id}."
+                )),
+                other => PersistenceError::with_details(
+                    format!(
+                        "The task-run repository could not validate chunk {chunk_id} for document {document_id}."
+                    ),
+                    other,
+                ),
+            })?;
+
+        if chunk_document_id != document_id {
+            return Err(PersistenceError::new(format!(
+                "The task-run repository received chunk {chunk_id} for document {chunk_document_id}, but the task run targets document {document_id}."
+            )));
+        }
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -472,6 +511,42 @@ mod tests {
         assert_eq!(task_runs[0].chunk_id, None);
     }
 
+    #[test]
+    fn create_rejects_chunks_from_other_documents() {
+        let temporary_directory = tempdir().expect("temp dir should be created");
+        let database_path = temporary_directory.path().join("translat.sqlite3");
+        let now = 1_743_517_200_i64;
+
+        bootstrap_database(&database_path, TEST_DATABASE_KEY)
+            .expect("database bootstrap should succeed");
+
+        let mut connection = open_database_with_key(&database_path, TEST_DATABASE_KEY)
+            .expect("database connection should open");
+        seed_chunked_document(&mut connection, now);
+
+        let error = TaskRunRepository::new(&mut connection)
+            .create(&NewTaskRun {
+                id: "trun_bad_001".to_owned(),
+                document_id: "doc_chunk_001".to_owned(),
+                chunk_id: Some("doc_other_001_chunk_0001".to_owned()),
+                job_id: Some("job_translate_002".to_owned()),
+                action_type: "translate_chunk".to_owned(),
+                status: TASK_RUN_STATUS_RUNNING.to_owned(),
+                input_payload: None,
+                output_payload: None,
+                error_message: None,
+                started_at: now,
+                completed_at: None,
+                created_at: now,
+                updated_at: now,
+            })
+            .expect_err("cross-document chunks should be rejected");
+
+        assert!(error
+            .to_string()
+            .contains("but the task run targets document doc_chunk_001"));
+    }
+
     fn seed_chunked_document(connection: &mut Connection, now: i64) {
         ProjectRepository::new(connection)
             .create(&NewProject {
@@ -500,6 +575,22 @@ mod tests {
             })
             .expect("document should persist");
 
+        crate::persistence::documents::DocumentRepository::new(connection)
+            .create(&NewDocument {
+                id: "doc_other_001".to_owned(),
+                project_id: "prj_active_001".to_owned(),
+                name: "other.txt".to_owned(),
+                source_kind: DOCUMENT_SOURCE_LOCAL_FILE.to_owned(),
+                format: "txt".to_owned(),
+                mime_type: Some("text/plain".to_owned()),
+                stored_path: "ignored_other".to_owned(),
+                file_size_bytes: 80,
+                status: DOCUMENT_STATUS_SEGMENTED.to_owned(),
+                created_at: now,
+                updated_at: now,
+            })
+            .expect("other document should persist");
+
         SegmentRepository::new(connection)
             .replace_for_document(
                 "prj_active_001",
@@ -518,6 +609,25 @@ mod tests {
                 now,
             )
             .expect("segments should persist");
+
+        SegmentRepository::new(connection)
+            .replace_for_document(
+                "prj_active_001",
+                "doc_other_001",
+                &[NewSegment {
+                    id: "doc_other_001_seg_0001".to_owned(),
+                    document_id: "doc_other_001".to_owned(),
+                    sequence: 1,
+                    source_text: "Other.".to_owned(),
+                    source_word_count: 1,
+                    source_character_count: 6,
+                    status: SEGMENT_STATUS_PENDING_TRANSLATION.to_owned(),
+                    created_at: now,
+                    updated_at: now,
+                }],
+                now,
+            )
+            .expect("other segments should persist");
 
         TranslationChunkRepository::new(connection)
             .replace_for_document(
@@ -548,5 +658,35 @@ mod tests {
                 }],
             )
             .expect("chunk should persist");
+
+        TranslationChunkRepository::new(connection)
+            .replace_for_document(
+                "doc_other_001",
+                &[NewTranslationChunk {
+                    id: "doc_other_001_chunk_0001".to_owned(),
+                    document_id: "doc_other_001".to_owned(),
+                    sequence: 1,
+                    builder_version: "tr12-basic-v1".to_owned(),
+                    strategy: "section-aware-fixed-word-target-v1".to_owned(),
+                    source_text: "Other.".to_owned(),
+                    context_before_text: None,
+                    context_after_text: None,
+                    start_segment_sequence: 1,
+                    end_segment_sequence: 1,
+                    segment_count: 1,
+                    source_word_count: 1,
+                    source_character_count: 6,
+                    created_at: now,
+                    updated_at: now,
+                }],
+                &[NewTranslationChunkSegment {
+                    chunk_id: "doc_other_001_chunk_0001".to_owned(),
+                    segment_id: "doc_other_001_seg_0001".to_owned(),
+                    segment_sequence: 1,
+                    position: 1,
+                    role: TRANSLATION_CHUNK_SEGMENT_ROLE_CORE.to_owned(),
+                }],
+            )
+            .expect("other chunk should persist");
     }
 }
