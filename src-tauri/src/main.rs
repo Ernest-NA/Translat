@@ -2,6 +2,7 @@
 
 mod chapter_contexts;
 mod commands;
+mod context_builder;
 mod documents;
 mod error;
 mod glossaries;
@@ -64,7 +65,8 @@ fn main() {
             commands::segments::list_document_segments,
             commands::segments::process_project_document,
             commands::translation_chunks::build_document_translation_chunks,
-            commands::translation_chunks::list_document_translation_chunks
+            commands::translation_chunks::list_document_translation_chunks,
+            commands::context_builder::build_translation_context
         ])
         .run(tauri::generate_context!())
         .expect("error while running the Translat desktop shell");

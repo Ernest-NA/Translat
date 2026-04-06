@@ -5,6 +5,7 @@ export const DESKTOP_COMMANDS = {
   createRule: "create_rule",
   createRuleSet: "create_rule_set",
   createStyleProfile: "create_style_profile",
+  buildTranslationContext: "build_translation_context",
   buildDocumentTranslationChunks: "build_document_translation_chunks",
   healthcheck: "healthcheck",
   importProjectDocument: "import_project_document",
@@ -79,6 +80,12 @@ export type GlossaryStatus = "active" | "archived";
 export type GlossaryEntryStatus = "active" | "archived";
 export type RuleSetStatus = "active" | "archived";
 export type RuleType = "consistency" | "preference" | "restriction";
+export type RuleActionScope =
+  | "translation"
+  | "retranslation"
+  | "qa"
+  | "export"
+  | "consistency_review";
 export type RuleSeverity = "low" | "medium" | "high";
 export type StyleProfileStatus = "active" | "archived";
 export type StyleProfileTone = "neutral" | "direct" | "warm" | "technical";
@@ -166,6 +173,7 @@ export interface RuleSetsOverview {
 export interface RuleSummary {
   id: string;
   ruleSetId: string;
+  actionScope: RuleActionScope;
   ruleType: RuleType;
   severity: RuleSeverity;
   name: string;
@@ -272,6 +280,91 @@ export interface DocumentTranslationChunksOverview {
   chunkSegments: TranslationChunkSegmentSummary[];
 }
 
+export interface ResolvedGlossaryLayer {
+  glossary: GlossarySummary;
+  layer: string;
+  source: string;
+  priority: number;
+}
+
+export interface ResolvedGlossaryEntry {
+  entry: GlossaryEntrySummary;
+  glossaryName: string;
+  layer: string;
+  source: string;
+  priority: number;
+}
+
+export interface ResolvedStyleProfile {
+  styleProfile: StyleProfileSummary;
+  source: string;
+  priority: number;
+}
+
+export interface ResolvedRuleSet {
+  ruleSet: RuleSetSummary;
+  source: string;
+  priority: number;
+}
+
+export interface ResolvedRule {
+  rule: RuleSummary;
+  ruleSetName: string;
+  source: string;
+  priority: number;
+}
+
+export interface TranslationChunkContext {
+  chunk: TranslationChunkSummary;
+  section: DocumentSectionSummary | null;
+  coreSegments: SegmentSummary[];
+  contextBeforeSegments: SegmentSummary[];
+  contextAfterSegments: SegmentSummary[];
+}
+
+export interface ResolvedChapterContext {
+  chapterContext: {
+    id: string;
+    documentId: string;
+    sectionId: string | null;
+    taskRunId: string | null;
+    scopeType: string;
+    startSegmentSequence: number;
+    endSegmentSequence: number;
+    contextText: string;
+    sourceSummary: string | null;
+    contextWordCount: number;
+    contextCharacterCount: number;
+    createdAt: number;
+    updatedAt: number;
+  };
+  matchReason: string;
+  priority: number;
+}
+
+export interface TranslationContextResolution {
+  glossaryIds: string[];
+  styleProfileId: string | null;
+  ruleSetId: string | null;
+  sectionId: string | null;
+  chapterContextIds: string[];
+}
+
+export interface TranslationContextPreview {
+  projectId: string;
+  documentId: string;
+  chunkId: string;
+  actionScope: RuleActionScope;
+  glossaryLayers: ResolvedGlossaryLayer[];
+  glossaryEntries: ResolvedGlossaryEntry[];
+  styleProfile: ResolvedStyleProfile | null;
+  ruleSet: ResolvedRuleSet | null;
+  rules: ResolvedRule[];
+  chunkContext: TranslationChunkContext;
+  accumulatedContexts: ResolvedChapterContext[];
+  resolution: TranslationContextResolution;
+}
+
 export interface CreateProjectInput {
   name: string;
   description?: string;
@@ -310,6 +403,7 @@ export interface CreateRuleSetInput {
 
 export interface CreateRuleInput {
   ruleSetId: string;
+  actionScope: RuleActionScope;
   ruleType: RuleType;
   severity: RuleSeverity;
   name: string;
@@ -391,6 +485,7 @@ export interface UpdateRuleSetInput {
 export interface UpdateRuleInput {
   ruleId: string;
   ruleSetId: string;
+  actionScope: RuleActionScope;
   ruleType: RuleType;
   severity: RuleSeverity;
   name: string;
@@ -418,6 +513,13 @@ export interface ProcessDocumentInput {
 export interface BuildDocumentTranslationChunksInput {
   projectId: string;
   documentId: string;
+}
+
+export interface BuildTranslationContextInput {
+  projectId: string;
+  documentId: string;
+  chunkId: string;
+  actionScope: RuleActionScope;
 }
 
 export interface ListDocumentSegmentsInput {
