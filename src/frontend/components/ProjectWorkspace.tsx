@@ -7,27 +7,37 @@ import type {
   RuleSetSummary,
   SegmentSummary,
   StyleProfileSummary,
+  TranslationChunkSegmentSummary,
+  TranslationChunkSummary,
   UpdateProjectEditorialDefaultsInput,
 } from "../../shared/desktop";
 import type { DesktopCommandError } from "../lib/desktop";
+import { ChunkBrowser } from "./ChunkBrowser";
 import { DocumentImporter } from "./DocumentImporter";
 import { DocumentList } from "./DocumentList";
 import { SegmentBrowser } from "./SegmentBrowser";
 
 interface ProjectWorkspaceProps {
   activeDocument: DocumentSummary | null;
+  chunkError: DesktopCommandError | null;
+  chunkSegments: TranslationChunkSegmentSummary[];
+  chunks: TranslationChunkSummary[];
   documents: DocumentSummary[];
   glossaries: GlossarySummary[];
   importError: DesktopCommandError | null;
+  isBuildingChunks: boolean;
   isImportingDocuments: boolean;
   isLoadingDocuments: boolean;
+  isLoadingChunks: boolean;
   isLoadingSegments: boolean;
   isSavingEditorialDefaults: boolean;
   loadError: DesktopCommandError | null;
+  onBuildChunks: () => Promise<void>;
   onDirtyChange: (isDirty: boolean) => void;
   onOpenDocument: (documentId: string) => Promise<void>;
   onImportDocuments: (files: FileList) => Promise<number>;
   onProcessDocument: (documentId: string) => Promise<void>;
+  onSelectChunk: (chunkId: string) => void;
   onSaveEditorialDefaults: (
     input: UpdateProjectEditorialDefaultsInput,
   ) => Promise<boolean>;
@@ -41,6 +51,9 @@ interface ProjectWorkspaceProps {
   segmentError: DesktopCommandError | null;
   segmentLoadingDocumentId: string | null;
   sections: DocumentSectionSummary[];
+  selectedChunk: TranslationChunkSummary | null;
+  selectedChunkId: string | null;
+  selectedChunkSegments: TranslationChunkSegmentSummary[];
   selectedSection: DocumentSectionSummary | null;
   segments: SegmentSummary[];
   selectedSegment: SegmentSummary | null;
@@ -66,18 +79,25 @@ function formatStatusSuffix(status: "active" | "archived") {
 
 export function ProjectWorkspace({
   activeDocument,
+  chunkError,
+  chunkSegments,
+  chunks,
   documents,
   glossaries,
   importError,
+  isBuildingChunks,
   isImportingDocuments,
   isLoadingDocuments,
+  isLoadingChunks,
   isLoadingSegments,
   isSavingEditorialDefaults,
   loadError,
+  onBuildChunks,
   onDirtyChange,
   onOpenDocument,
   onImportDocuments,
   onProcessDocument,
+  onSelectChunk,
   onSaveEditorialDefaults,
   onSelectSection,
   onSelectSegment,
@@ -89,6 +109,9 @@ export function ProjectWorkspace({
   segmentError,
   segmentLoadingDocumentId,
   sections,
+  selectedChunk,
+  selectedChunkId,
+  selectedChunkSegments,
   selectedSection,
   segments,
   selectedSegment,
@@ -419,6 +442,21 @@ export function ProjectWorkspace({
         selectedSegmentId={selectedSegmentId}
       />
 
+      <ChunkBrowser
+        activeDocument={activeDocument}
+        chunkSegments={chunkSegments}
+        chunks={chunks}
+        error={chunkError}
+        isBuilding={isBuildingChunks}
+        isLoading={isLoadingChunks}
+        onBuildChunks={onBuildChunks}
+        onSelectChunk={onSelectChunk}
+        segments={segments}
+        selectedChunk={selectedChunk}
+        selectedChunkId={selectedChunkId}
+        selectedChunkSegments={selectedChunkSegments}
+      />
+
       <section className="workspace-readiness">
         <p className="surface-card__eyebrow">Project foundation</p>
         <h3>
@@ -436,6 +474,10 @@ export function ProjectWorkspace({
           </li>
           <li>
             Segment processing persists ordered source segments per document.
+          </li>
+          <li>
+            Chunk building persists reproducible translation cores and overlap
+            links without changing the document ingestion model.
           </li>
         </ul>
       </section>

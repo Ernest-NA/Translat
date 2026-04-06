@@ -30,6 +30,20 @@ impl<'connection> SegmentRepository<'connection> {
         })?;
 
         transaction
+            .execute(
+                "DELETE FROM translation_chunks WHERE document_id = ?1",
+                [document_id],
+            )
+            .map_err(|error| {
+                PersistenceError::with_details(
+                    format!(
+                        "The segment repository could not clear previous translation chunks for document {document_id}."
+                    ),
+                    error,
+                )
+            })?;
+
+        transaction
             .execute("DELETE FROM segments WHERE document_id = ?1", [document_id])
             .map_err(|error| {
                 PersistenceError::with_details(

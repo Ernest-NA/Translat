@@ -5,8 +5,10 @@ export const DESKTOP_COMMANDS = {
   createRule: "create_rule",
   createRuleSet: "create_rule_set",
   createStyleProfile: "create_style_profile",
+  buildDocumentTranslationChunks: "build_document_translation_chunks",
   healthcheck: "healthcheck",
   importProjectDocument: "import_project_document",
+  listDocumentTranslationChunks: "list_document_translation_chunks",
   listGlossaryEntries: "list_glossary_entries",
   listGlossaries: "list_glossaries",
   listProjects: "list_projects",
@@ -232,6 +234,44 @@ export interface DocumentSegmentsOverview {
   segments: SegmentSummary[];
 }
 
+export interface TranslationChunkSummary {
+  id: string;
+  documentId: string;
+  sequence: number;
+  builderVersion: string;
+  strategy: string;
+  sourceText: string;
+  contextBeforeText: string | null;
+  contextAfterText: string | null;
+  startSegmentSequence: number;
+  endSegmentSequence: number;
+  segmentCount: number;
+  sourceWordCount: number;
+  sourceCharacterCount: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export type TranslationChunkSegmentRole =
+  | "core"
+  | "context_before"
+  | "context_after";
+
+export interface TranslationChunkSegmentSummary {
+  chunkId: string;
+  segmentId: string;
+  segmentSequence: number;
+  position: number;
+  role: TranslationChunkSegmentRole;
+}
+
+export interface DocumentTranslationChunksOverview {
+  projectId: string;
+  documentId: string;
+  chunks: TranslationChunkSummary[];
+  chunkSegments: TranslationChunkSegmentSummary[];
+}
+
 export interface CreateProjectInput {
   name: string;
   description?: string;
@@ -375,7 +415,17 @@ export interface ProcessDocumentInput {
   documentId: string;
 }
 
+export interface BuildDocumentTranslationChunksInput {
+  projectId: string;
+  documentId: string;
+}
+
 export interface ListDocumentSegmentsInput {
+  projectId: string;
+  documentId: string;
+}
+
+export interface ListDocumentTranslationChunksInput {
   projectId: string;
   documentId: string;
 }

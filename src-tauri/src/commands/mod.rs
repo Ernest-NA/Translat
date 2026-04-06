@@ -6,3 +6,4 @@ pub mod projects;
 pub mod rule_sets;
 pub mod segments;
 pub mod style_profiles;
+pub mod translation_chunks;
