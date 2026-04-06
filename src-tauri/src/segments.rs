@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::sections::DocumentSectionSummary;
 
 pub const SEGMENT_STATUS_PENDING_TRANSLATION: &str = "pending_translation";
+pub const SEGMENT_STATUS_TRANSLATED: &str = "translated";
 
 #[cfg_attr(not(test), allow(dead_code))]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -54,4 +55,10 @@ pub struct NewSegment {
     pub status: String,
     pub created_at: i64,
     pub updated_at: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SegmentTranslationWrite {
+    pub segment_id: String,
+    pub target_text: String,
 }

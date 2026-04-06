@@ -10,6 +10,7 @@ export const DESKTOP_COMMANDS = {
   healthcheck: "healthcheck",
   importProjectDocument: "import_project_document",
   listDocumentTranslationChunks: "list_document_translation_chunks",
+  translateChunk: "translate_chunk",
   listGlossaryEntries: "list_glossary_entries",
   listGlossaries: "list_glossaries",
   listProjects: "list_projects",
@@ -280,6 +281,40 @@ export interface DocumentTranslationChunksOverview {
   chunkSegments: TranslationChunkSegmentSummary[];
 }
 
+export interface TaskRunSummary {
+  id: string;
+  documentId: string;
+  chunkId: string | null;
+  jobId: string | null;
+  actionType: string;
+  status: string;
+  inputPayload: string | null;
+  outputPayload: string | null;
+  errorMessage: string | null;
+  startedAt: number;
+  completedAt: number | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface TranslatedChunkSegmentSummary {
+  segmentId: string;
+  sequence: number;
+  targetText: string;
+}
+
+export interface TranslateChunkResult {
+  projectId: string;
+  documentId: string;
+  chunkId: string;
+  taskRun: TaskRunSummary;
+  provider: string;
+  model: string;
+  actionVersion: string;
+  promptVersion: string;
+  translatedSegments: TranslatedChunkSegmentSummary[];
+}
+
 export interface ResolvedGlossaryLayer {
   glossary: GlossarySummary;
   layer: string;
@@ -520,6 +555,13 @@ export interface BuildTranslationContextInput {
   documentId: string;
   chunkId: string;
   actionScope: RuleActionScope;
+}
+
+export interface TranslateChunkInput {
+  projectId: string;
+  documentId: string;
+  chunkId: string;
+  jobId?: string;
 }
 
 export interface ListDocumentSegmentsInput {

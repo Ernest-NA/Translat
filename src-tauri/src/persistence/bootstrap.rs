@@ -287,7 +287,8 @@ mod tests {
                 "0010_project_editorial_defaults".to_owned(),
                 "0011_translation_chunks".to_owned(),
                 "0012_operational_persistence".to_owned(),
-                "0013_rule_action_scopes".to_owned()
+                "0013_rule_action_scopes".to_owned(),
+                "0014_segment_translation_projection".to_owned()
             ]
         );
         assert_eq!(
@@ -305,7 +306,8 @@ mod tests {
                 "0010_project_editorial_defaults".to_owned(),
                 "0011_translation_chunks".to_owned(),
                 "0012_operational_persistence".to_owned(),
-                "0013_rule_action_scopes".to_owned()
+                "0013_rule_action_scopes".to_owned(),
+                "0014_segment_translation_projection".to_owned()
             ]
         );
         assert!(bootstrap_report.schema_ready);
@@ -338,7 +340,8 @@ mod tests {
                 "0010_project_editorial_defaults".to_owned(),
                 "0011_translation_chunks".to_owned(),
                 "0012_operational_persistence".to_owned(),
-                "0013_rule_action_scopes".to_owned()
+                "0013_rule_action_scopes".to_owned(),
+                "0014_segment_translation_projection".to_owned()
             ]
         );
         assert!(second_report.schema_ready);
@@ -477,7 +480,7 @@ mod tests {
             )
             .expect("rules table should be queryable");
 
-        assert_eq!(migration_count, 13);
+        assert_eq!(migration_count, 14);
         assert_eq!(app_metadata_table_count, 1);
         assert_eq!(projects_table_count, 1);
         assert_eq!(documents_table_count, 1);
@@ -494,7 +497,7 @@ mod tests {
         assert_eq!(style_profiles_table_count, 1);
         assert_eq!(rule_sets_table_count, 1);
         assert_eq!(rules_table_count, 1);
-        assert_eq!(database_status.migration_count, 13);
+        assert_eq!(database_status.migration_count, 14);
         assert_eq!(
             database_status.applied_migrations,
             vec![
@@ -510,7 +513,8 @@ mod tests {
                 "0010_project_editorial_defaults".to_owned(),
                 "0011_translation_chunks".to_owned(),
                 "0012_operational_persistence".to_owned(),
-                "0013_rule_action_scopes".to_owned()
+                "0013_rule_action_scopes".to_owned(),
+                "0014_segment_translation_projection".to_owned()
             ]
         );
         assert!(database_status.schema_ready);

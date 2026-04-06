@@ -357,6 +357,37 @@ impl<'connection> TaskRunRepository<'connection> {
         Ok(task_runs)
     }
 
+    pub fn mark_completed(
+        &mut self,
+        task_run_id: &str,
+        output_payload: &str,
+        completed_at: i64,
+    ) -> Result<TaskRunSummary, PersistenceError> {
+        self.update_terminal_state(
+            task_run_id,
+            crate::task_runs::TASK_RUN_STATUS_COMPLETED,
+            Some(output_payload),
+            None,
+            completed_at,
+        )
+    }
+
+    pub fn mark_failed(
+        &mut self,
+        task_run_id: &str,
+        error_message: &str,
+        output_payload: Option<&str>,
+        completed_at: i64,
+    ) -> Result<TaskRunSummary, PersistenceError> {
+        self.update_terminal_state(
+            task_run_id,
+            crate::task_runs::TASK_RUN_STATUS_FAILED,
+            output_payload,
+            Some(error_message),
+            completed_at,
+        )
+    }
+
     fn validate_chunk_document(
         &self,
         document_id: &str,
@@ -392,6 +423,57 @@ impl<'connection> TaskRunRepository<'connection> {
         }
 
         Ok(())
+    }
+
+    fn update_terminal_state(
+        &mut self,
+        task_run_id: &str,
+        status: &str,
+        output_payload: Option<&str>,
+        error_message: Option<&str>,
+        completed_at: i64,
+    ) -> Result<TaskRunSummary, PersistenceError> {
+        let updated_rows = self
+            .connection
+            .execute(
+                r#"
+                UPDATE task_runs
+                SET
+                  status = ?2,
+                  output_payload = ?3,
+                  error_message = ?4,
+                  completed_at = ?5,
+                  updated_at = ?5
+                WHERE id = ?1
+                "#,
+                params![
+                    task_run_id,
+                    status,
+                    output_payload,
+                    error_message,
+                    completed_at
+                ],
+            )
+            .map_err(|error| {
+                PersistenceError::with_details(
+                    format!(
+                        "The task-run repository could not update task run {task_run_id}."
+                    ),
+                    error,
+                )
+            })?;
+
+        if updated_rows != 1 {
+            return Err(PersistenceError::new(format!(
+                "The task-run repository could not find task run {task_run_id} while updating its terminal state."
+            )));
+        }
+
+        self.load_by_id(task_run_id)?.ok_or_else(|| {
+            PersistenceError::new(format!(
+                "The task-run repository could not reload task run {task_run_id} after its terminal update."
+            ))
+        })
     }
 }
 
