@@ -63,13 +63,15 @@ impl<'connection> SegmentRepository<'connection> {
                       document_id,
                       sequence,
                       source_text,
+                      target_text,
                       source_word_count,
                       source_character_count,
                       status,
+                      last_task_run_id,
                       created_at,
                       updated_at
                     )
-                    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+                    VALUES (?1, ?2, ?3, ?4, NULL, ?5, ?6, ?7, NULL, ?8, ?9)
                     "#,
                     params![
                         segment.id,
@@ -158,6 +160,7 @@ impl<'connection> SegmentRepository<'connection> {
                   document_id,
                   sequence,
                   source_text,
+                  target_text,
                   source_word_count,
                   source_character_count,
                   status,
@@ -184,12 +187,12 @@ impl<'connection> SegmentRepository<'connection> {
                     document_id: row.get(1)?,
                     sequence: row.get(2)?,
                     source_text: row.get(3)?,
-                    target_text: None,
-                    source_word_count: row.get(4)?,
-                    source_character_count: row.get(5)?,
-                    status: row.get(6)?,
-                    created_at: row.get(7)?,
-                    updated_at: row.get(8)?,
+                    target_text: row.get(4)?,
+                    source_word_count: row.get(5)?,
+                    source_character_count: row.get(6)?,
+                    status: row.get(7)?,
+                    created_at: row.get(8)?,
+                    updated_at: row.get(9)?,
                 })
             })
             .map_err(|error| {

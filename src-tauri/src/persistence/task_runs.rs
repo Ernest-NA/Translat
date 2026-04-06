@@ -3,6 +3,7 @@
 use rusqlite::{params, Connection};
 
 use crate::persistence::error::PersistenceError;
+use crate::segments::{SegmentTranslationWrite, SEGMENT_STATUS_TRANSLATED};
 use crate::task_runs::{NewTaskRun, TaskRunSummary};
 
 pub struct TaskRunRepository<'connection> {
@@ -357,6 +358,157 @@ impl<'connection> TaskRunRepository<'connection> {
         Ok(task_runs)
     }
 
+    pub fn mark_completed_with_translation_projection(
+        &mut self,
+        project_id: &str,
+        document_id: &str,
+        task_run_id: &str,
+        output_payload: &str,
+        segment_translations: &[SegmentTranslationWrite],
+        completed_at: i64,
+    ) -> Result<TaskRunSummary, PersistenceError> {
+        let transaction = self.connection.transaction().map_err(|error| {
+            PersistenceError::with_details(
+                format!(
+                    "The task-run repository could not start the completion transaction for task run {task_run_id}."
+                ),
+                error,
+            )
+        })?;
+
+        for segment_translation in segment_translations {
+            let updated_rows = transaction
+                .execute(
+                    r#"
+                    UPDATE segments
+                    SET
+                      target_text = ?3,
+                      status = ?4,
+                      last_task_run_id = ?5,
+                      updated_at = ?6
+                    WHERE id = ?1 AND document_id = ?2
+                    "#,
+                    params![
+                        segment_translation.segment_id,
+                        document_id,
+                        segment_translation.target_text,
+                        SEGMENT_STATUS_TRANSLATED,
+                        task_run_id,
+                        completed_at
+                    ],
+                )
+                .map_err(|error| {
+                    PersistenceError::with_details(
+                        format!(
+                            "The task-run repository could not project translation output onto segment {} while finalizing task run {task_run_id}.",
+                            segment_translation.segment_id
+                        ),
+                        error,
+                    )
+                })?;
+
+            if updated_rows != 1 {
+                return Err(PersistenceError::new(format!(
+                    "The task-run repository could not find segment {} in document {document_id} while finalizing task run {task_run_id}.",
+                    segment_translation.segment_id
+                )));
+            }
+        }
+
+        transaction
+            .execute(
+                "UPDATE documents SET updated_at = ?2 WHERE id = ?1",
+                params![document_id, completed_at],
+            )
+            .map_err(|error| {
+                PersistenceError::with_details(
+                    format!(
+                        "The task-run repository could not update document {document_id} while finalizing task run {task_run_id}."
+                    ),
+                    error,
+                )
+            })?;
+
+        transaction
+            .execute(
+                "UPDATE projects SET updated_at = ?2 WHERE id = ?1",
+                params![project_id, completed_at],
+            )
+            .map_err(|error| {
+                PersistenceError::with_details(
+                    format!(
+                        "The task-run repository could not update project {project_id} while finalizing task run {task_run_id}."
+                    ),
+                    error,
+                )
+            })?;
+
+        let updated_rows = transaction
+            .execute(
+                r#"
+                UPDATE task_runs
+                SET
+                  status = ?2,
+                  output_payload = ?3,
+                  error_message = NULL,
+                  completed_at = ?4,
+                  updated_at = ?4
+                WHERE id = ?1
+                "#,
+                params![
+                    task_run_id,
+                    crate::task_runs::TASK_RUN_STATUS_COMPLETED,
+                    output_payload,
+                    completed_at
+                ],
+            )
+            .map_err(|error| {
+                PersistenceError::with_details(
+                    format!(
+                        "The task-run repository could not finalize task run {task_run_id}."
+                    ),
+                    error,
+                )
+            })?;
+
+        if updated_rows != 1 {
+            return Err(PersistenceError::new(format!(
+                "The task-run repository could not find task run {task_run_id} while finalizing translation projection."
+            )));
+        }
+
+        transaction.commit().map_err(|error| {
+            PersistenceError::with_details(
+                format!(
+                    "The task-run repository could not commit the completion transaction for task run {task_run_id}."
+                ),
+                error,
+            )
+        })?;
+
+        self.load_by_id(task_run_id)?.ok_or_else(|| {
+            PersistenceError::new(format!(
+                "The task-run repository could not reload task run {task_run_id} after translation finalization."
+            ))
+        })
+    }
+
+    pub fn mark_failed(
+        &mut self,
+        task_run_id: &str,
+        error_message: &str,
+        output_payload: Option<&str>,
+        completed_at: i64,
+    ) -> Result<TaskRunSummary, PersistenceError> {
+        self.update_terminal_state(
+            task_run_id,
+            crate::task_runs::TASK_RUN_STATUS_FAILED,
+            output_payload,
+            Some(error_message),
+            completed_at,
+        )
+    }
+
     fn validate_chunk_document(
         &self,
         document_id: &str,
@@ -393,6 +545,57 @@ impl<'connection> TaskRunRepository<'connection> {
 
         Ok(())
     }
+
+    fn update_terminal_state(
+        &mut self,
+        task_run_id: &str,
+        status: &str,
+        output_payload: Option<&str>,
+        error_message: Option<&str>,
+        completed_at: i64,
+    ) -> Result<TaskRunSummary, PersistenceError> {
+        let updated_rows = self
+            .connection
+            .execute(
+                r#"
+                UPDATE task_runs
+                SET
+                  status = ?2,
+                  output_payload = ?3,
+                  error_message = ?4,
+                  completed_at = ?5,
+                  updated_at = ?5
+                WHERE id = ?1
+                "#,
+                params![
+                    task_run_id,
+                    status,
+                    output_payload,
+                    error_message,
+                    completed_at
+                ],
+            )
+            .map_err(|error| {
+                PersistenceError::with_details(
+                    format!(
+                        "The task-run repository could not update task run {task_run_id}."
+                    ),
+                    error,
+                )
+            })?;
+
+        if updated_rows != 1 {
+            return Err(PersistenceError::new(format!(
+                "The task-run repository could not find task run {task_run_id} while updating its terminal state."
+            )));
+        }
+
+        self.load_by_id(task_run_id)?.ok_or_else(|| {
+            PersistenceError::new(format!(
+                "The task-run repository could not reload task run {task_run_id} after its terminal update."
+            ))
+        })
+    }
 }
 
 #[cfg(test)]
@@ -407,7 +610,10 @@ mod tests {
     use crate::persistence::segments::SegmentRepository;
     use crate::persistence::translation_chunks::TranslationChunkRepository;
     use crate::projects::NewProject;
-    use crate::segments::{NewSegment, SEGMENT_STATUS_PENDING_TRANSLATION};
+    use crate::segments::{
+        NewSegment, SegmentTranslationWrite, SEGMENT_STATUS_PENDING_TRANSLATION,
+        SEGMENT_STATUS_TRANSLATED,
+    };
     use crate::task_runs::{NewTaskRun, TASK_RUN_STATUS_RUNNING};
     use crate::translation_chunks::{
         NewTranslationChunk, NewTranslationChunkSegment, TRANSLATION_CHUNK_SEGMENT_ROLE_CORE,
@@ -545,6 +751,136 @@ mod tests {
         assert!(error
             .to_string()
             .contains("but the task run targets document doc_chunk_001"));
+    }
+
+    #[test]
+    fn complete_with_translation_projection_updates_segments_project_and_task_run() {
+        let temporary_directory = tempdir().expect("temp dir should be created");
+        let database_path = temporary_directory.path().join("translat.sqlite3");
+        let now = 1_743_517_200_i64;
+        let completed_at = now + 300;
+
+        bootstrap_database(&database_path, TEST_DATABASE_KEY)
+            .expect("database bootstrap should succeed");
+
+        let mut connection = open_database_with_key(&database_path, TEST_DATABASE_KEY)
+            .expect("database connection should open");
+        seed_chunked_document(&mut connection, now);
+
+        TaskRunRepository::new(&mut connection)
+            .create(&NewTaskRun {
+                id: "trun_001".to_owned(),
+                document_id: "doc_chunk_001".to_owned(),
+                chunk_id: Some("doc_chunk_001_chunk_0001".to_owned()),
+                job_id: Some("job_translate_001".to_owned()),
+                action_type: "translate_chunk".to_owned(),
+                status: TASK_RUN_STATUS_RUNNING.to_owned(),
+                input_payload: Some("{\"chunkId\":\"doc_chunk_001_chunk_0001\"}".to_owned()),
+                output_payload: None,
+                error_message: None,
+                started_at: now,
+                completed_at: None,
+                created_at: now,
+                updated_at: now,
+            })
+            .expect("task run should persist");
+
+        let completed_task_run = TaskRunRepository::new(&mut connection)
+            .mark_completed_with_translation_projection(
+                "prj_active_001",
+                "doc_chunk_001",
+                "trun_001",
+                "{\"translations\":[]}",
+                &[SegmentTranslationWrite {
+                    segment_id: "doc_chunk_001_seg_0001".to_owned(),
+                    target_text: "Segmento uno".to_owned(),
+                }],
+                completed_at,
+            )
+            .expect("completion should commit atomically");
+
+        assert_eq!(
+            completed_task_run.status,
+            crate::task_runs::TASK_RUN_STATUS_COMPLETED
+        );
+        assert_eq!(completed_task_run.completed_at, Some(completed_at));
+
+        let segments = SegmentRepository::new(&mut connection)
+            .list_by_document("doc_chunk_001")
+            .expect("segments should load");
+        assert_eq!(segments[0].status, SEGMENT_STATUS_TRANSLATED);
+        assert_eq!(segments[0].target_text.as_deref(), Some("Segmento uno"));
+
+        let project_updated_at = connection
+            .query_row(
+                "SELECT updated_at FROM projects WHERE id = ?1",
+                ["prj_active_001"],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("project timestamp should load");
+        assert_eq!(project_updated_at, completed_at);
+    }
+
+    #[test]
+    fn completion_with_invalid_segment_rolls_back_task_run_finalization() {
+        let temporary_directory = tempdir().expect("temp dir should be created");
+        let database_path = temporary_directory.path().join("translat.sqlite3");
+        let now = 1_743_517_200_i64;
+        let completed_at = now + 300;
+
+        bootstrap_database(&database_path, TEST_DATABASE_KEY)
+            .expect("database bootstrap should succeed");
+
+        let mut connection = open_database_with_key(&database_path, TEST_DATABASE_KEY)
+            .expect("database connection should open");
+        seed_chunked_document(&mut connection, now);
+
+        TaskRunRepository::new(&mut connection)
+            .create(&NewTaskRun {
+                id: "trun_rollback_001".to_owned(),
+                document_id: "doc_chunk_001".to_owned(),
+                chunk_id: Some("doc_chunk_001_chunk_0001".to_owned()),
+                job_id: None,
+                action_type: "translate_chunk".to_owned(),
+                status: TASK_RUN_STATUS_RUNNING.to_owned(),
+                input_payload: None,
+                output_payload: None,
+                error_message: None,
+                started_at: now,
+                completed_at: None,
+                created_at: now,
+                updated_at: now,
+            })
+            .expect("task run should persist");
+
+        let error = TaskRunRepository::new(&mut connection)
+            .mark_completed_with_translation_projection(
+                "prj_active_001",
+                "doc_chunk_001",
+                "trun_rollback_001",
+                "{\"translations\":[]}",
+                &[SegmentTranslationWrite {
+                    segment_id: "seg_missing_9999".to_owned(),
+                    target_text: "No debe persistir".to_owned(),
+                }],
+                completed_at,
+            )
+            .expect_err("invalid projection should abort the transaction");
+
+        assert!(error.to_string().contains("seg_missing_9999"));
+
+        let task_run = TaskRunRepository::new(&mut connection)
+            .load_by_id("trun_rollback_001")
+            .expect("task run should reload")
+            .expect("task run should exist");
+        assert_eq!(task_run.status, TASK_RUN_STATUS_RUNNING);
+        assert_eq!(task_run.completed_at, None);
+        assert_eq!(task_run.output_payload, None);
+
+        let segments = SegmentRepository::new(&mut connection)
+            .list_by_document("doc_chunk_001")
+            .expect("segments should load");
+        assert!(segments.iter().all(|segment| segment.target_text.is_none()));
     }
 
     fn seed_chunked_document(connection: &mut Connection, now: i64) {
