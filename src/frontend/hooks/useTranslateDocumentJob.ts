@@ -204,6 +204,10 @@ export function useTranslateDocumentJob({
   const [trackedJobId, setTrackedJobId] = useState<string | null>(null);
   const latestDocumentKeyRef = useRef<string | null>(null);
   const latestSyncFingerprintRef = useRef<string | null>(null);
+  const commandRequestIdRef = useRef(0);
+  const cancelRequestIdRef = useRef(0);
+  const commandInFlightRef = useRef(false);
+  const cancelInFlightRef = useRef(false);
   const refreshRequestIdRef = useRef(0);
 
   const syncDocumentState = useCallback(
@@ -323,10 +327,13 @@ export function useTranslateDocumentJob({
       jobId: string,
       command: "resume_translate_document_job" | "translate_document",
     ) => {
-      if (!activeProjectId || !activeDocument) {
+      if (!activeProjectId || !activeDocument || commandInFlightRef.current) {
         return;
       }
 
+      commandInFlightRef.current = true;
+      const commandRequestId = commandRequestIdRef.current + 1;
+      commandRequestIdRef.current = commandRequestId;
       const documentJobKey = buildDocumentJobKey(
         activeProjectId,
         activeDocument.id,
@@ -378,7 +385,10 @@ export function useTranslateDocumentJob({
           });
         }
 
-        if (latestDocumentKeyRef.current !== documentJobKey) {
+        if (
+          commandRequestIdRef.current !== commandRequestId ||
+          latestDocumentKeyRef.current !== documentJobKey
+        ) {
           return;
         }
 
@@ -387,7 +397,10 @@ export function useTranslateDocumentJob({
           silent: true,
         });
       } catch (caughtError) {
-        if (latestDocumentKeyRef.current !== documentJobKey) {
+        if (
+          commandRequestIdRef.current !== commandRequestId ||
+          latestDocumentKeyRef.current !== documentJobKey
+        ) {
           return;
         }
 
@@ -419,7 +432,8 @@ export function useTranslateDocumentJob({
           });
         }
       } finally {
-        if (latestDocumentKeyRef.current === documentJobKey) {
+        if (commandRequestIdRef.current === commandRequestId) {
+          commandInFlightRef.current = false;
           setIsResuming(false);
           setIsStarting(false);
         }
@@ -429,6 +443,16 @@ export function useTranslateDocumentJob({
   );
 
   useEffect(() => {
+    commandRequestIdRef.current += 1;
+    cancelRequestIdRef.current += 1;
+    refreshRequestIdRef.current += 1;
+    commandInFlightRef.current = false;
+    cancelInFlightRef.current = false;
+    setIsCancelling(false);
+    setIsRefreshing(false);
+    setIsResuming(false);
+    setIsStarting(false);
+
     if (!activeProjectId || !activeDocument) {
       latestDocumentKeyRef.current = null;
       latestSyncFingerprintRef.current = null;
@@ -489,7 +513,13 @@ export function useTranslateDocumentJob({
   }, [isResuming, isStarting, jobStatus?.status, refreshStatus, trackedJobId]);
 
   const startTranslation = useCallback(async () => {
-    if (!activeProjectId || !activeDocument || chunks.length === 0) {
+    if (
+      !activeProjectId ||
+      !activeDocument ||
+      chunks.length === 0 ||
+      commandInFlightRef.current ||
+      cancelInFlightRef.current
+    ) {
       return null;
     }
 
@@ -500,7 +530,13 @@ export function useTranslateDocumentJob({
   }, [activeDocument, activeProjectId, chunks.length, runDocumentCommand]);
 
   const resumeTranslation = useCallback(async () => {
-    if (!(activeProjectId && activeDocument && trackedJobId)) {
+    if (
+      !activeProjectId ||
+      !activeDocument ||
+      !trackedJobId ||
+      commandInFlightRef.current ||
+      cancelInFlightRef.current
+    ) {
       return null;
     }
 
@@ -510,10 +546,18 @@ export function useTranslateDocumentJob({
   }, [activeDocument, activeProjectId, runDocumentCommand, trackedJobId]);
 
   const cancelJob = useCallback(async () => {
-    if (!(activeProjectId && activeDocument && trackedJobId)) {
+    if (
+      !activeProjectId ||
+      !activeDocument ||
+      !trackedJobId ||
+      cancelInFlightRef.current
+    ) {
       return null;
     }
 
+    cancelInFlightRef.current = true;
+    const cancelRequestId = cancelRequestIdRef.current + 1;
+    cancelRequestIdRef.current = cancelRequestId;
     const documentJobKey = buildDocumentJobKey(
       activeProjectId,
       activeDocument.id,
@@ -528,7 +572,10 @@ export function useTranslateDocumentJob({
         projectId: activeProjectId,
       });
 
-      if (latestDocumentKeyRef.current !== documentJobKey) {
+      if (
+        cancelRequestIdRef.current !== cancelRequestId ||
+        latestDocumentKeyRef.current !== documentJobKey
+      ) {
         return null;
       }
 
@@ -537,7 +584,10 @@ export function useTranslateDocumentJob({
 
       return nextStatus;
     } catch (caughtError) {
-      if (latestDocumentKeyRef.current !== documentJobKey) {
+      if (
+        cancelRequestIdRef.current !== cancelRequestId ||
+        latestDocumentKeyRef.current !== documentJobKey
+      ) {
         return null;
       }
 
@@ -551,7 +601,8 @@ export function useTranslateDocumentJob({
 
       return null;
     } finally {
-      if (latestDocumentKeyRef.current === documentJobKey) {
+      if (cancelRequestIdRef.current === cancelRequestId) {
+        cancelInFlightRef.current = false;
         setIsCancelling(false);
       }
     }
@@ -566,11 +617,18 @@ export function useTranslateDocumentJob({
       activeProjectId,
       activeDocument.id,
     );
+    commandRequestIdRef.current += 1;
+    cancelRequestIdRef.current += 1;
     refreshRequestIdRef.current += 1;
+    commandInFlightRef.current = false;
+    cancelInFlightRef.current = false;
     clearTrackedJobState(documentJobKey, setTrackedJobId, setJobStatus);
     setError(null);
+    setIsCancelling(false);
     setIsRefreshing(false);
     setIsRestoringTrackedJob(false);
+    setIsResuming(false);
+    setIsStarting(false);
   }, [activeDocument, activeProjectId]);
 
   return {
