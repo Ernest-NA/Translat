@@ -464,9 +464,7 @@ impl<'connection> TaskRunRepository<'connection> {
             )
             .map_err(|error| {
                 PersistenceError::with_details(
-                    format!(
-                        "The task-run repository could not finalize task run {task_run_id}."
-                    ),
+                    format!("The task-run repository could not finalize task run {task_run_id}."),
                     error,
                 )
             })?;
@@ -505,6 +503,21 @@ impl<'connection> TaskRunRepository<'connection> {
             crate::task_runs::TASK_RUN_STATUS_FAILED,
             output_payload,
             Some(error_message),
+            completed_at,
+        )
+    }
+
+    pub fn mark_completed(
+        &mut self,
+        task_run_id: &str,
+        output_payload: &str,
+        completed_at: i64,
+    ) -> Result<TaskRunSummary, PersistenceError> {
+        self.update_terminal_state(
+            task_run_id,
+            crate::task_runs::TASK_RUN_STATUS_COMPLETED,
+            Some(output_payload),
+            None,
             completed_at,
         )
     }
@@ -577,9 +590,7 @@ impl<'connection> TaskRunRepository<'connection> {
             )
             .map_err(|error| {
                 PersistenceError::with_details(
-                    format!(
-                        "The task-run repository could not update task run {task_run_id}."
-                    ),
+                    format!("The task-run repository could not update task run {task_run_id}."),
                     error,
                 )
             })?;

@@ -16,6 +16,7 @@ mod segments;
 mod style_profiles;
 mod task_runs;
 mod translate_chunk;
+mod translate_document;
 mod translation_chunks;
 
 use tauri::Manager;
@@ -68,7 +69,8 @@ fn main() {
             commands::translation_chunks::build_document_translation_chunks,
             commands::translation_chunks::list_document_translation_chunks,
             commands::context_builder::build_translation_context,
-            commands::translate_chunk::translate_chunk
+            commands::translate_chunk::translate_chunk,
+            commands::translate_document::translate_document
         ])
         .run(tauri::generate_context!())
         .expect("error while running the Translat desktop shell");

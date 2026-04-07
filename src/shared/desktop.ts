@@ -11,6 +11,7 @@ export const DESKTOP_COMMANDS = {
   importProjectDocument: "import_project_document",
   listDocumentTranslationChunks: "list_document_translation_chunks",
   translateChunk: "translate_chunk",
+  translateDocument: "translate_document",
   listGlossaryEntries: "list_glossary_entries",
   listGlossaries: "list_glossaries",
   listProjects: "list_projects",
@@ -315,6 +316,34 @@ export interface TranslateChunkResult {
   translatedSegments: TranslatedChunkSegmentSummary[];
 }
 
+export type TranslateDocumentStatus =
+  | "completed"
+  | "completed_with_errors"
+  | "failed";
+
+export interface TranslateDocumentChunkResult {
+  chunkId: string;
+  chunkSequence: number;
+  status: "completed" | "failed";
+  taskRun: TaskRunSummary | null;
+  translatedSegmentCount: number;
+  errorMessage: string | null;
+}
+
+export interface TranslateDocumentResult {
+  projectId: string;
+  documentId: string;
+  jobId: string;
+  status: TranslateDocumentStatus;
+  actionVersion: string;
+  taskRun: TaskRunSummary;
+  totalChunks: number;
+  completedChunks: number;
+  failedChunks: number;
+  chunkResults: TranslateDocumentChunkResult[];
+  errorMessages: string[];
+}
+
 export interface ResolvedGlossaryLayer {
   glossary: GlossarySummary;
   layer: string;
@@ -561,6 +590,12 @@ export interface TranslateChunkInput {
   projectId: string;
   documentId: string;
   chunkId: string;
+  jobId?: string;
+}
+
+export interface TranslateDocumentInput {
+  projectId: string;
+  documentId: string;
   jobId?: string;
 }
 
