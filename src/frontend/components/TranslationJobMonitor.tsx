@@ -74,7 +74,11 @@ export function TranslationJobMonitor({
   onResumeTranslation,
   trackedJobId,
 }: TranslationJobMonitorProps) {
-  const canCancel = jobStatus?.status === "running" || isStarting || isResuming;
+  const canCancel =
+    jobStatus?.status === "pending" ||
+    jobStatus?.status === "running" ||
+    isStarting ||
+    isResuming;
   const canResume =
     jobStatus?.status === "cancelled" ||
     jobStatus?.status === "completed_with_errors" ||

@@ -322,6 +322,7 @@ export function useTranslateDocumentJob({
         activeDocument.id,
       );
 
+      persistTrackedJob(documentJobKey, jobId);
       setTrackedJobId(jobId);
       setError(null);
 
@@ -371,7 +372,6 @@ export function useTranslateDocumentJob({
           return;
         }
 
-        persistTrackedJob(documentJobKey, jobId);
         await refreshStatus(jobId, {
           clearMissingJob: true,
           silent: true,
