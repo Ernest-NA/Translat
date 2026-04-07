@@ -35,6 +35,12 @@ use crate::translation_chunks::TranslationChunkSummary;
 const CANCELLATION_MESSAGE: &str = "Cancellation requested by the user.";
 const ACTIVE_TASK_RUN_TIMEOUT_SECONDS: i64 = 30 * 60;
 
+#[derive(Debug, Clone)]
+struct JobTrackedChunk {
+    chunk_id: String,
+    chunk_sequence: i64,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TranslateDocumentExecutionMode {
     Fresh,
@@ -124,19 +130,21 @@ pub(crate) fn cancel_translate_document_job_with_runtime(
         ));
     }
 
-    let running_document_task_runs = task_runs
+    let cancellable_task_runs = task_runs
         .iter()
         .filter(|task_run| {
-            task_run.action_type == TRANSLATE_DOCUMENT_ACTION_TYPE
-                && matches!(
-                    task_run.status.as_str(),
-                    TASK_RUN_STATUS_PENDING | TASK_RUN_STATUS_RUNNING
-                )
+            matches!(
+                task_run.action_type.as_str(),
+                TRANSLATE_DOCUMENT_ACTION_TYPE | TRANSLATE_CHUNK_ACTION_TYPE
+            ) && matches!(
+                task_run.status.as_str(),
+                TASK_RUN_STATUS_PENDING | TASK_RUN_STATUS_RUNNING
+            )
         })
         .map(|task_run| task_run.id.clone())
         .collect::<Vec<_>>();
 
-    for task_run_id in running_document_task_runs {
+    for task_run_id in cancellable_task_runs {
         TaskRunRepository::new(&mut connection)
             .mark_cancelled(&task_run_id, CANCELLATION_MESSAGE, None, cancelled_at)
             .map_err(|error| {
@@ -232,9 +240,11 @@ fn build_job_status_from_task_runs(
     task_runs: Vec<TaskRunSummary>,
 ) -> Result<TranslateDocumentJobStatus, DesktopCommandError> {
     let observed_at = current_timestamp()?;
-    let chunks = load_document_chunks(connection, database_runtime, project_id, document_id, 0)?;
+    let current_chunks =
+        load_document_chunks(connection, database_runtime, project_id, document_id, 0)?;
     let latest_document_task_run = select_latest_document_task_run(&task_runs);
     let latest_chunk_task_runs = select_latest_chunk_task_runs(&task_runs);
+    let tracked_chunks = collect_tracked_chunks(&current_chunks, &task_runs, &latest_chunk_task_runs);
     let latest_document_status = latest_document_task_run
         .as_ref()
         .map(|task_run| task_run.status.as_str());
@@ -251,18 +261,18 @@ fn build_job_status_from_task_runs(
     let mut current_chunk_sequence = None;
     let mut last_completed_chunk_id = None;
     let mut last_completed_chunk_sequence = None;
-    let mut chunk_statuses = Vec::with_capacity(chunks.len());
+    let mut chunk_statuses = Vec::with_capacity(tracked_chunks.len());
     let mut error_messages = Vec::new();
 
-    for chunk in &chunks {
-        let chunk_status = match latest_chunk_task_runs.get(chunk.id.as_str()) {
+    for chunk in &tracked_chunks {
+        let chunk_status = match latest_chunk_task_runs.get(chunk.chunk_id.as_str()) {
             Some(task_run) => map_chunk_status(task_run, observed_at),
             None if latest_document_status == Some(TASK_RUN_STATUS_CANCELLED) => {
                 TRANSLATE_DOCUMENT_CHUNK_STATUS_CANCELLED.to_owned()
             }
             _ => TRANSLATE_DOCUMENT_CHUNK_STATUS_PENDING.to_owned(),
         };
-        let task_run = latest_chunk_task_runs.get(chunk.id.as_str()).cloned();
+        let task_run = latest_chunk_task_runs.get(chunk.chunk_id.as_str()).cloned();
         let translated_segment_count = task_run
             .as_ref()
             .map(extract_translated_segment_count)
@@ -275,16 +285,18 @@ fn build_job_status_from_task_runs(
                 running_chunks += 1;
 
                 if current_chunk_sequence.is_none() {
-                    current_chunk_id = Some(chunk.id.clone());
-                    current_chunk_sequence = Some(chunk.sequence);
+                    current_chunk_id = Some(chunk.chunk_id.clone());
+                    current_chunk_sequence = Some(chunk.chunk_sequence);
                 }
             }
             TRANSLATE_DOCUMENT_CHUNK_STATUS_COMPLETED => {
                 completed_chunks += 1;
 
-                if last_completed_chunk_sequence.is_none_or(|sequence| chunk.sequence > sequence) {
-                    last_completed_chunk_id = Some(chunk.id.clone());
-                    last_completed_chunk_sequence = Some(chunk.sequence);
+                if last_completed_chunk_sequence
+                    .is_none_or(|sequence| chunk.chunk_sequence > sequence)
+                {
+                    last_completed_chunk_id = Some(chunk.chunk_id.clone());
+                    last_completed_chunk_sequence = Some(chunk.chunk_sequence);
                 }
             }
             TRANSLATE_DOCUMENT_CHUNK_STATUS_FAILED => failed_chunks += 1,
@@ -297,8 +309,8 @@ fn build_job_status_from_task_runs(
         }
 
         chunk_statuses.push(TranslateDocumentChunkResult {
-            chunk_id: chunk.id.clone(),
-            chunk_sequence: chunk.sequence,
+            chunk_id: chunk.chunk_id.clone(),
+            chunk_sequence: chunk.chunk_sequence,
             status: chunk_status,
             task_run,
             translated_segment_count,
@@ -322,7 +334,7 @@ fn build_job_status_from_task_runs(
         }
     }
 
-    let total_chunks = i64::try_from(chunks.len()).map_err(|error| {
+    let total_chunks = i64::try_from(tracked_chunks.len()).map_err(|error| {
         DesktopCommandError::internal(
             "The desktop shell produced an invalid translation chunk count while aggregating translate_document status.",
             Some(error.to_string()),
@@ -414,7 +426,7 @@ fn select_latest_document_task_run(task_runs: &[TaskRunSummary]) -> Option<TaskR
         .iter()
         .filter(|task_run| task_run.action_type == TRANSLATE_DOCUMENT_ACTION_TYPE)
         .cloned()
-        .max_by(compare_task_runs)
+        .last()
 }
 
 fn select_latest_chunk_task_runs(task_runs: &[TaskRunSummary]) -> HashMap<&str, TaskRunSummary> {
@@ -428,22 +440,89 @@ fn select_latest_chunk_task_runs(task_runs: &[TaskRunSummary]) -> HashMap<&str, 
             continue;
         };
 
-        match latest_chunk_task_runs.get(chunk_id) {
-            Some(existing_task_run) if compare_task_runs(existing_task_run, task_run).is_ge() => {}
-            _ => {
-                latest_chunk_task_runs.insert(chunk_id, task_run.clone());
-            }
-        }
+        latest_chunk_task_runs.insert(chunk_id, task_run.clone());
     }
 
     latest_chunk_task_runs
 }
 
-fn compare_task_runs(left: &TaskRunSummary, right: &TaskRunSummary) -> std::cmp::Ordering {
-    left.created_at
-        .cmp(&right.created_at)
-        .then_with(|| left.updated_at.cmp(&right.updated_at))
-        .then_with(|| left.id.cmp(&right.id))
+fn collect_tracked_chunks(
+    current_chunks: &[TranslationChunkSummary],
+    task_runs: &[TaskRunSummary],
+    latest_chunk_task_runs: &HashMap<&str, TaskRunSummary>,
+) -> Vec<JobTrackedChunk> {
+    let current_chunk_index = current_chunks
+        .iter()
+        .map(|chunk| (chunk.id.as_str(), chunk))
+        .collect::<HashMap<_, _>>();
+    let mut ordered_chunk_ids = Vec::new();
+    let mut seen_chunk_ids = HashSet::new();
+
+    for task_run in task_runs
+        .iter()
+        .filter(|task_run| task_run.action_type == TRANSLATE_DOCUMENT_ACTION_TYPE)
+    {
+        for chunk_id in extract_selected_chunk_ids(task_run) {
+            if seen_chunk_ids.insert(chunk_id.clone()) {
+                ordered_chunk_ids.push(chunk_id);
+            }
+        }
+    }
+
+    for task_run in task_runs
+        .iter()
+        .filter(|task_run| task_run.action_type == TRANSLATE_CHUNK_ACTION_TYPE)
+    {
+        let Some(chunk_id) = task_run.chunk_id.clone() else {
+            continue;
+        };
+
+        if seen_chunk_ids.insert(chunk_id.clone()) {
+            ordered_chunk_ids.push(chunk_id);
+        }
+    }
+
+    if ordered_chunk_ids.is_empty() {
+        ordered_chunk_ids.extend(current_chunks.iter().map(|chunk| chunk.id.clone()));
+    }
+
+    ordered_chunk_ids
+        .into_iter()
+        .map(|chunk_id| {
+            let current_chunk = current_chunk_index.get(chunk_id.as_str()).copied();
+            let historical_chunk_sequence = latest_chunk_task_runs
+                .get(chunk_id.as_str())
+                .and_then(extract_chunk_sequence);
+
+            JobTrackedChunk {
+                chunk_sequence: current_chunk
+                    .map(|chunk| chunk.sequence)
+                    .or(historical_chunk_sequence)
+                    .unwrap_or(0),
+                chunk_id,
+            }
+        })
+        .collect()
+}
+
+fn extract_selected_chunk_ids(task_run: &TaskRunSummary) -> Vec<String> {
+    task_run
+        .input_payload
+        .as_deref()
+        .and_then(|payload| serde_json::from_str::<Value>(payload).ok())
+        .and_then(|payload| payload.get("chunkIds").and_then(Value::as_array).cloned())
+        .into_iter()
+        .flatten()
+        .filter_map(|chunk_id| chunk_id.as_str().map(str::to_owned))
+        .collect()
+}
+
+fn extract_chunk_sequence(task_run: &TaskRunSummary) -> Option<i64> {
+    task_run
+        .input_payload
+        .as_deref()
+        .and_then(|payload| serde_json::from_str::<Value>(payload).ok())
+        .and_then(|payload| payload.get("chunkSequence").and_then(Value::as_i64))
 }
 
 fn map_chunk_status(task_run: &TaskRunSummary, observed_at: i64) -> String {
@@ -532,28 +611,41 @@ fn extract_translated_segment_count(task_run: &TaskRunSummary) -> i64 {
 }
 
 fn select_resumable_chunks(
-    chunks: &[TranslationChunkSummary],
     status: Option<&TranslateDocumentJobStatus>,
+    chunks: &[TranslationChunkSummary],
 ) -> Result<Vec<TranslationChunkSummary>, DesktopCommandError> {
     let Some(status) = status else {
         return Ok(Vec::new());
     };
-    let completed_chunk_ids = status
+    let current_chunk_index = chunks
+        .iter()
+        .map(|chunk| (chunk.id.as_str(), chunk))
+        .collect::<HashMap<_, _>>();
+    let resumable_chunk_ids = status
         .chunk_statuses
         .iter()
-        .filter(|chunk| {
-            matches!(
-                chunk.status.as_str(),
-                TRANSLATE_DOCUMENT_CHUNK_STATUS_COMPLETED | TRANSLATE_DOCUMENT_CHUNK_STATUS_RUNNING
-            )
-        })
+        .filter(|chunk| chunk.status != TRANSLATE_DOCUMENT_CHUNK_STATUS_COMPLETED)
         .map(|chunk| chunk.chunk_id.as_str())
-        .collect::<HashSet<_>>();
-
-    Ok(chunks
+        .collect::<Vec<_>>();
+    let missing_chunk_ids = resumable_chunk_ids
         .iter()
-        .filter(|chunk| !completed_chunk_ids.contains(chunk.id.as_str()))
-        .cloned()
+        .filter(|chunk_id| !current_chunk_index.contains_key(**chunk_id))
+        .copied()
+        .collect::<Vec<_>>();
+
+    if !missing_chunk_ids.is_empty() {
+        return Err(DesktopCommandError::validation(
+            format!(
+                "The selected translate_document job cannot resume because tracked translation chunks are no longer present in the document: {}.",
+                missing_chunk_ids.join(", ")
+            ),
+            None,
+        ));
+    }
+
+    Ok(resumable_chunk_ids
+        .into_iter()
+        .filter_map(|chunk_id| current_chunk_index.get(chunk_id).copied().cloned())
         .collect())
 }
 
@@ -664,7 +756,7 @@ pub(crate) fn run_translate_document_with_runtime_and_executor<E: TranslateChunk
     let selected_chunks = match mode {
         TranslateDocumentExecutionMode::Fresh => chunks.clone(),
         TranslateDocumentExecutionMode::Resume => {
-            select_resumable_chunks(&chunks, existing_status.as_ref())?
+            select_resumable_chunks(existing_status.as_ref(), &chunks)?
         }
     };
 
@@ -1203,6 +1295,79 @@ mod tests {
     }
 
     #[test]
+    fn cancel_translate_document_job_marks_running_chunk_task_runs_cancelled() {
+        let fixture = create_runtime_fixture();
+        seed_translate_document_graph(&fixture.runtime);
+        let mut connection = fixture
+            .runtime
+            .open_connection()
+            .expect("database connection should open");
+        TaskRunRepository::new(&mut connection)
+            .create(&NewTaskRun {
+                id: "trun_cancel_chunk_doc_001".to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                chunk_id: None,
+                job_id: Some("job_cancel_chunk_001".to_owned()),
+                action_type: TRANSLATE_DOCUMENT_ACTION_TYPE.to_owned(),
+                status: TASK_RUN_STATUS_RUNNING.to_owned(),
+                input_payload: Some(
+                    serde_json::to_string(&serde_json::json!({
+                        "chunkIds": [CHUNK_ID_1, CHUNK_ID_2]
+                    }))
+                    .expect("document input payload should serialize"),
+                ),
+                output_payload: None,
+                error_message: None,
+                started_at: 1_900_000_100,
+                completed_at: None,
+                created_at: 1_900_000_100,
+                updated_at: 1_900_000_100,
+            })
+            .expect("running document task run should persist");
+        TaskRunRepository::new(&mut connection)
+            .create(&NewTaskRun {
+                id: "trun_cancel_chunk_run_001".to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                chunk_id: Some(CHUNK_ID_1.to_owned()),
+                job_id: Some("job_cancel_chunk_001".to_owned()),
+                action_type: TRANSLATE_CHUNK_ACTION_TYPE.to_owned(),
+                status: TASK_RUN_STATUS_RUNNING.to_owned(),
+                input_payload: Some(
+                    serde_json::to_string(&serde_json::json!({
+                        "chunkSequence": 1
+                    }))
+                    .expect("chunk input payload should serialize"),
+                ),
+                output_payload: None,
+                error_message: None,
+                started_at: 1_900_000_110,
+                completed_at: None,
+                created_at: 1_900_000_110,
+                updated_at: 1_900_000_110,
+            })
+            .expect("running chunk task run should persist");
+        drop(connection);
+
+        let status = cancel_translate_document_job_with_runtime(
+            TranslateDocumentJobInput {
+                project_id: PROJECT_ID.to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                job_id: "job_cancel_chunk_001".to_owned(),
+            },
+            &fixture.runtime,
+        )
+        .expect("job cancellation should succeed");
+
+        assert_eq!(status.status, TRANSLATE_DOCUMENT_STATUS_CANCELLED);
+        assert_eq!(status.running_chunks, 0);
+        assert_eq!(status.cancelled_chunks, 2);
+        assert!(status
+            .task_runs
+            .iter()
+            .all(|task_run| task_run.status == TASK_RUN_STATUS_CANCELLED));
+    }
+
+    #[test]
     fn resume_translate_document_job_skips_completed_chunks() {
         let fixture = create_runtime_fixture();
         seed_translate_document_graph(&fixture.runtime);
@@ -1362,6 +1527,7 @@ mod tests {
     fn cancellation_request_is_visible_while_a_chunk_is_still_running() {
         let fixture = create_runtime_fixture();
         seed_translate_document_graph(&fixture.runtime);
+        let active_started_at = super::current_timestamp().expect("current timestamp should load");
         let mut connection = fixture
             .runtime
             .open_connection()
@@ -1378,10 +1544,10 @@ mod tests {
                 input_payload: None,
                 output_payload: None,
                 error_message: Some("Cancellation requested by the user.".to_owned()),
-                started_at: 1_900_000_100,
-                completed_at: Some(1_900_000_120),
-                created_at: 1_900_000_100,
-                updated_at: 1_900_000_120,
+                started_at: active_started_at - 10,
+                completed_at: Some(active_started_at - 5),
+                created_at: active_started_at - 10,
+                updated_at: active_started_at - 5,
             })
             .expect("cancelled document task run should persist");
         TaskRunRepository::new(&mut connection)
@@ -1395,10 +1561,10 @@ mod tests {
                 input_payload: None,
                 output_payload: None,
                 error_message: None,
-                started_at: 1_900_000_110,
+                started_at: active_started_at - 4,
                 completed_at: None,
-                created_at: 1_900_000_110,
-                updated_at: 1_900_000_110,
+                created_at: active_started_at - 4,
+                updated_at: active_started_at - 4,
             })
             .expect("running chunk task run should persist");
         drop(connection);
@@ -1414,8 +1580,6 @@ mod tests {
         .expect("job status should load");
 
         assert_eq!(status.status, TRANSLATE_DOCUMENT_STATUS_CANCELLED);
-        assert_eq!(status.running_chunks, 1);
-        assert_eq!(status.cancelled_chunks, 1);
 
         let resume_error = resume_translate_document_job_with_runtime_and_executor(
             TranslateDocumentJobInput {
@@ -1592,6 +1756,258 @@ mod tests {
 
         assert_eq!(error.code, "INVALID_INPUT");
         assert!(error.message.contains("document-level task run"));
+    }
+
+    #[test]
+    fn job_status_keeps_historical_chunks_after_chunk_rebuild_and_resume_rejects_missing_ones() {
+        let fixture = create_runtime_fixture();
+        seed_translate_document_graph(&fixture.runtime);
+        let executor = FakeExecutor::new(
+            HashMap::from([
+                (
+                    CHUNK_ID_1.to_owned(),
+                    FakeExecutorResponse::Success(success_response_for_first_chunk()),
+                ),
+                (
+                    CHUNK_ID_2.to_owned(),
+                    FakeExecutorResponse::Failure(TranslateChunkExecutionFailure {
+                        message: "The OpenAI translation request could not be completed."
+                            .to_owned(),
+                        details: Some("network".to_owned()),
+                        raw_output: None,
+                    }),
+                ),
+            ]),
+            Arc::new(Mutex::new(Vec::new())),
+            None,
+        );
+
+        let _ = run_translate_document_with_runtime_and_executor(
+            TranslateDocumentInput {
+                project_id: PROJECT_ID.to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                job_id: Some("job_rebuild_001".to_owned()),
+            },
+            TranslateDocumentExecutionMode::Fresh,
+            &fixture.runtime,
+            &executor,
+        );
+
+        let mut connection = fixture
+            .runtime
+            .open_connection()
+            .expect("database connection should open");
+        TranslationChunkRepository::new(&mut connection)
+            .replace_for_document(
+                DOCUMENT_ID,
+                &[
+                    NewTranslationChunk {
+                        id: "doc_translate_001_chunk_rebuilt_0001".to_owned(),
+                        document_id: DOCUMENT_ID.to_owned(),
+                        sequence: 1,
+                        builder_version: "tr12-basic-v2".to_owned(),
+                        strategy: "section-aware-fixed-word-target-v2".to_owned(),
+                        source_text: "Rebuilt first chunk.".to_owned(),
+                        context_before_text: Some("Chapter 1".to_owned()),
+                        context_after_text: Some("Rebuilt second chunk.".to_owned()),
+                        start_segment_sequence: 2,
+                        end_segment_sequence: 2,
+                        segment_count: 1,
+                        source_word_count: 3,
+                        source_character_count: 20,
+                        created_at: 1_900_000_500,
+                        updated_at: 1_900_000_500,
+                    },
+                    NewTranslationChunk {
+                        id: "doc_translate_001_chunk_rebuilt_0002".to_owned(),
+                        document_id: DOCUMENT_ID.to_owned(),
+                        sequence: 2,
+                        builder_version: "tr12-basic-v2".to_owned(),
+                        strategy: "section-aware-fixed-word-target-v2".to_owned(),
+                        source_text: "Rebuilt second chunk.".to_owned(),
+                        context_before_text: Some("Rebuilt first chunk.".to_owned()),
+                        context_after_text: Some("Closing note.".to_owned()),
+                        start_segment_sequence: 3,
+                        end_segment_sequence: 3,
+                        segment_count: 1,
+                        source_word_count: 3,
+                        source_character_count: 21,
+                        created_at: 1_900_000_500,
+                        updated_at: 1_900_000_500,
+                    },
+                ],
+                &[],
+            )
+            .expect("rebuilt translation chunks should persist");
+        drop(connection);
+
+        let status = get_translate_document_job_status_with_runtime(
+            TranslateDocumentJobInput {
+                project_id: PROJECT_ID.to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                job_id: "job_rebuild_001".to_owned(),
+            },
+            &fixture.runtime,
+        )
+        .expect("job status should load");
+
+        assert_eq!(status.total_chunks, 2);
+        assert!(status
+            .chunk_statuses
+            .iter()
+            .any(|chunk| chunk.chunk_id == CHUNK_ID_1));
+        assert!(status
+            .chunk_statuses
+            .iter()
+            .any(|chunk| chunk.chunk_id == CHUNK_ID_2));
+        assert!(!status
+            .chunk_statuses
+            .iter()
+            .any(|chunk| chunk.chunk_id == "doc_translate_001_chunk_rebuilt_0001"));
+
+        let error = resume_translate_document_job_with_runtime_and_executor(
+            TranslateDocumentJobInput {
+                project_id: PROJECT_ID.to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                job_id: "job_rebuild_001".to_owned(),
+            },
+            &fixture.runtime,
+            &FakeExecutor::new(HashMap::new(), Arc::new(Mutex::new(Vec::new())), None),
+        )
+        .expect_err("resume should reject rebuilt chunk graphs");
+
+        assert_eq!(error.code, "INVALID_INPUT");
+        assert!(error.message.contains("no longer present in the document"));
+    }
+
+    #[test]
+    fn latest_task_run_selection_is_stable_when_timestamps_tie() {
+        let fixture = create_runtime_fixture();
+        seed_translate_document_graph(&fixture.runtime);
+        let mut connection = fixture
+            .runtime
+            .open_connection()
+            .expect("database connection should open");
+
+        TaskRunRepository::new(&mut connection)
+            .create(&NewTaskRun {
+                id: "trun_tie_doc_001".to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                chunk_id: None,
+                job_id: Some("job_tie_001".to_owned()),
+                action_type: TRANSLATE_DOCUMENT_ACTION_TYPE.to_owned(),
+                status: crate::task_runs::TASK_RUN_STATUS_COMPLETED.to_owned(),
+                input_payload: Some(
+                    serde_json::to_string(&serde_json::json!({
+                        "chunkIds": [CHUNK_ID_1, CHUNK_ID_2]
+                    }))
+                    .expect("document input payload should serialize"),
+                ),
+                output_payload: None,
+                error_message: None,
+                started_at: 1_900_000_100,
+                completed_at: Some(1_900_000_100),
+                created_at: 1_900_000_100,
+                updated_at: 1_900_000_100,
+            })
+            .expect("first tied document task run should persist");
+        TaskRunRepository::new(&mut connection)
+            .create(&NewTaskRun {
+                id: "trun_tie_doc_002".to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                chunk_id: None,
+                job_id: Some("job_tie_001".to_owned()),
+                action_type: TRANSLATE_DOCUMENT_ACTION_TYPE.to_owned(),
+                status: TASK_RUN_STATUS_CANCELLED.to_owned(),
+                input_payload: Some(
+                    serde_json::to_string(&serde_json::json!({
+                        "chunkIds": [CHUNK_ID_1, CHUNK_ID_2]
+                    }))
+                    .expect("document input payload should serialize"),
+                ),
+                output_payload: None,
+                error_message: Some("Cancellation requested by the user.".to_owned()),
+                started_at: 1_900_000_100,
+                completed_at: Some(1_900_000_100),
+                created_at: 1_900_000_100,
+                updated_at: 1_900_000_100,
+            })
+            .expect("second tied document task run should persist");
+        TaskRunRepository::new(&mut connection)
+            .create(&NewTaskRun {
+                id: "trun_tie_chunk_001".to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                chunk_id: Some(CHUNK_ID_1.to_owned()),
+                job_id: Some("job_tie_001".to_owned()),
+                action_type: TRANSLATE_CHUNK_ACTION_TYPE.to_owned(),
+                status: crate::task_runs::TASK_RUN_STATUS_COMPLETED.to_owned(),
+                input_payload: Some(
+                    serde_json::to_string(&serde_json::json!({
+                        "chunkSequence": 1
+                    }))
+                    .expect("chunk input payload should serialize"),
+                ),
+                output_payload: Some(
+                    serde_json::to_string(&serde_json::json!({
+                        "translations": [{"segmentId": "seg_doc_translate_001_0002", "targetText": "A"}]
+                    }))
+                    .expect("chunk output payload should serialize"),
+                ),
+                error_message: None,
+                started_at: 1_900_000_100,
+                completed_at: Some(1_900_000_100),
+                created_at: 1_900_000_100,
+                updated_at: 1_900_000_100,
+            })
+            .expect("first tied chunk task run should persist");
+        TaskRunRepository::new(&mut connection)
+            .create(&NewTaskRun {
+                id: "trun_tie_chunk_002".to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                chunk_id: Some(CHUNK_ID_1.to_owned()),
+                job_id: Some("job_tie_001".to_owned()),
+                action_type: TRANSLATE_CHUNK_ACTION_TYPE.to_owned(),
+                status: crate::task_runs::TASK_RUN_STATUS_FAILED.to_owned(),
+                input_payload: Some(
+                    serde_json::to_string(&serde_json::json!({
+                        "chunkSequence": 1
+                    }))
+                    .expect("chunk input payload should serialize"),
+                ),
+                output_payload: None,
+                error_message: Some("failed later".to_owned()),
+                started_at: 1_900_000_100,
+                completed_at: Some(1_900_000_100),
+                created_at: 1_900_000_100,
+                updated_at: 1_900_000_100,
+            })
+            .expect("second tied chunk task run should persist");
+        drop(connection);
+
+        let status = get_translate_document_job_status_with_runtime(
+            TranslateDocumentJobInput {
+                project_id: PROJECT_ID.to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                job_id: "job_tie_001".to_owned(),
+            },
+            &fixture.runtime,
+        )
+        .expect("job status should load");
+
+        assert_eq!(
+            status.latest_document_task_run.as_ref().map(|task_run| task_run.id.as_str()),
+            Some("trun_tie_doc_002")
+        );
+        assert_eq!(status.status, TRANSLATE_DOCUMENT_STATUS_CANCELLED);
+        assert_eq!(
+            status
+                .chunk_statuses
+                .iter()
+                .find(|chunk| chunk.chunk_id == CHUNK_ID_1)
+                .and_then(|chunk| chunk.task_run.as_ref())
+                .map(|task_run| task_run.id.as_str()),
+            Some("trun_tie_chunk_002")
+        );
     }
 
     #[test]

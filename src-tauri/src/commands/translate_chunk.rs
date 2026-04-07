@@ -12,7 +12,7 @@ use crate::context_builder::{
 use crate::error::DesktopCommandError;
 use crate::persistence::bootstrap::DatabaseRuntime;
 use crate::persistence::task_runs::TaskRunRepository;
-use crate::task_runs::{NewTaskRun, TASK_RUN_STATUS_RUNNING};
+use crate::task_runs::{NewTaskRun, TASK_RUN_STATUS_CANCELLED, TASK_RUN_STATUS_RUNNING};
 use crate::translate_chunk::{
     build_action_request, parse_action_response, serialize_task_run_output,
     validate_action_response, OpenAiTranslateChunkExecutor, TranslateChunkExecutionFailure,
@@ -96,6 +96,10 @@ pub(crate) fn translate_chunk_with_runtime_and_executor<E: TranslateChunkExecuto
             )
         })?;
 
+    if is_task_run_cancelled(&mut connection, &task_run_id)? {
+        return Err(cancellation_error());
+    }
+
     let model_output = match executor.execute(&action_request) {
         Ok(model_output) => model_output,
         Err(execution_error) => {
@@ -140,6 +144,11 @@ pub(crate) fn translate_chunk_with_runtime_and_executor<E: TranslateChunkExecuto
             return Err(error);
         }
     };
+
+    if is_task_run_cancelled(&mut connection, &task_run_id)? {
+        return Err(cancellation_error());
+    }
+
     let completed_at = current_timestamp()?;
     let segment_writes = validated_segments
         .iter()
@@ -249,6 +258,30 @@ fn validate_identifier(value: &str, label: &str) -> Result<String, DesktopComman
     }
 
     Ok(trimmed.to_owned())
+}
+
+fn is_task_run_cancelled(
+    connection: &mut rusqlite::Connection,
+    task_run_id: &str,
+) -> Result<bool, DesktopCommandError> {
+    TaskRunRepository::new(connection)
+        .load_by_id(task_run_id)
+        .map(|task_run| {
+            task_run.is_some_and(|task_run| task_run.status == TASK_RUN_STATUS_CANCELLED)
+        })
+        .map_err(|error| {
+            DesktopCommandError::internal(
+                "The desktop shell could not inspect translate_chunk cancellation state.",
+                Some(error.to_string()),
+            )
+        })
+}
+
+fn cancellation_error() -> DesktopCommandError {
+    DesktopCommandError::internal(
+        "The translate_chunk action was cancelled before translated output could be finalized.",
+        None,
+    )
 }
 
 fn generate_task_run_id(timestamp: i64) -> String {
