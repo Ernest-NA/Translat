@@ -400,17 +400,23 @@ export function useTranslateDocumentJob({
         );
         setError(normalizedError);
 
-        const refreshedStatus = await refreshStatus(jobId, {
-          clearMissingJob: true,
-          silent: true,
-        });
+        if (command === "translate_document") {
+          const refreshedStatus = await refreshStatus(jobId, {
+            clearMissingJob: true,
+            silent: true,
+          });
 
-        if (
-          command === "translate_document" &&
-          refreshedStatus === null &&
-          latestDocumentKeyRef.current === documentJobKey
-        ) {
-          clearTrackedJobState(documentJobKey, setTrackedJobId, setJobStatus);
+          if (
+            refreshedStatus === null &&
+            latestDocumentKeyRef.current === documentJobKey
+          ) {
+            clearTrackedJobState(documentJobKey, setTrackedJobId, setJobStatus);
+          }
+        } else {
+          await refreshStatus(jobId, {
+            clearMissingJob: true,
+            silent: true,
+          });
         }
       } finally {
         if (latestDocumentKeyRef.current === documentJobKey) {

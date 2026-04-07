@@ -369,11 +369,12 @@ export function ProjectWorkspace({
       jobStatus?.status === "failed") &&
     !isResuming;
   const handleBuildChunks = useCallback(async () => {
-    if (canResumeTranslation) {
+    const shouldClearResumableJob = canResumeTranslation;
+    await onBuildChunks();
+
+    if (shouldClearResumableJob) {
       clearTrackedJob();
     }
-
-    await onBuildChunks();
   }, [canResumeTranslation, clearTrackedJob, onBuildChunks]);
   const disableChunkBuildActions =
     isRestoringTrackedJob ||
