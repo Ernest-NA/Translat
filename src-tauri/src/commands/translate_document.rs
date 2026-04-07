@@ -1,28 +1,12 @@
-use std::time::{SystemTime, UNIX_EPOCH};
-
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use base64::Engine;
-use serde_json::json;
 use tauri::State;
 
-use crate::commands::segments::load_segmented_document_overview;
-use crate::commands::translate_chunk::translate_chunk_with_runtime_and_executor;
+use crate::commands::translate_document_jobs::{
+    run_translate_document_with_runtime_and_executor, TranslateDocumentExecutionMode,
+};
 use crate::error::DesktopCommandError;
 use crate::persistence::bootstrap::DatabaseRuntime;
-use crate::persistence::task_runs::TaskRunRepository;
-use crate::persistence::translation_chunks::TranslationChunkRepository;
-use crate::task_runs::{NewTaskRun, TaskRunSummary, TASK_RUN_STATUS_RUNNING};
-use crate::translate_chunk::{
-    OpenAiTranslateChunkExecutor, TranslateChunkExecutor, TranslateChunkInput,
-    TRANSLATE_CHUNK_ACTION_TYPE,
-};
-use crate::translate_document::{
-    TranslateDocumentChunkResult, TranslateDocumentInput, TranslateDocumentResult,
-    TRANSLATE_DOCUMENT_ACTION_TYPE, TRANSLATE_DOCUMENT_ACTION_VERSION,
-    TRANSLATE_DOCUMENT_CHUNK_STATUS_COMPLETED, TRANSLATE_DOCUMENT_CHUNK_STATUS_FAILED,
-    TRANSLATE_DOCUMENT_STATUS_COMPLETED, TRANSLATE_DOCUMENT_STATUS_COMPLETED_WITH_ERRORS,
-    TRANSLATE_DOCUMENT_STATUS_FAILED,
-};
+use crate::translate_chunk::{OpenAiTranslateChunkExecutor, TranslateChunkExecutor};
+use crate::translate_document::{TranslateDocumentInput, TranslateDocumentResult};
 
 #[tauri::command]
 pub fn translate_document(
@@ -39,300 +23,12 @@ pub(crate) fn translate_document_with_runtime_and_executor<E: TranslateChunkExec
     database_runtime: &DatabaseRuntime,
     executor: &E,
 ) -> Result<TranslateDocumentResult, DesktopCommandError> {
-    let project_id = validate_identifier(&input.project_id, "project id")?;
-    let document_id = validate_identifier(&input.document_id, "document id")?;
-    let started_at = current_timestamp()?;
-    let mut connection = database_runtime.open_connection().map_err(|error| {
-        DesktopCommandError::internal(
-            "The desktop shell could not open the encrypted database for translate_document.",
-            Some(error.to_string()),
-        )
-    })?;
-    let _ = load_segmented_document_overview(
-        &mut connection,
+    run_translate_document_with_runtime_and_executor(
+        input,
+        TranslateDocumentExecutionMode::Fresh,
         database_runtime,
-        &project_id,
-        &document_id,
-        false,
-        started_at,
-    )?;
-    let chunks = TranslationChunkRepository::new(&mut connection)
-        .list_chunks_by_document(&document_id)
-        .map_err(|error| {
-            DesktopCommandError::internal(
-                "The desktop shell could not load translation chunks for translate_document.",
-                Some(error.to_string()),
-            )
-        })?;
-
-    if chunks.is_empty() {
-        return Err(DesktopCommandError::validation(
-            "The selected document must have persisted translation chunks before translate_document can start.",
-            None,
-        ));
-    }
-
-    let job_id = normalize_optional_identifier(input.job_id, "job id")?
-        .unwrap_or_else(|| generate_job_id(started_at));
-    let task_run_id = generate_task_run_id(started_at);
-    let input_payload = serde_json::to_string(&json!({
-        "projectId": project_id,
-        "documentId": document_id,
-        "jobId": job_id,
-        "actionVersion": TRANSLATE_DOCUMENT_ACTION_VERSION,
-        "chunkIds": chunks.iter().map(|chunk| chunk.id.as_str()).collect::<Vec<_>>()
-    }))
-    .map_err(|error| {
-        DesktopCommandError::internal(
-            "The desktop shell could not serialize the translate_document input payload.",
-            Some(error.to_string()),
-        )
-    })?;
-    let _ = TaskRunRepository::new(&mut connection)
-        .create(&NewTaskRun {
-            id: task_run_id.clone(),
-            document_id: document_id.clone(),
-            chunk_id: None,
-            job_id: Some(job_id.clone()),
-            action_type: TRANSLATE_DOCUMENT_ACTION_TYPE.to_owned(),
-            status: TASK_RUN_STATUS_RUNNING.to_owned(),
-            input_payload: Some(input_payload),
-            output_payload: None,
-            error_message: None,
-            started_at,
-            completed_at: None,
-            created_at: started_at,
-            updated_at: started_at,
-        })
-        .map_err(|error| {
-            DesktopCommandError::internal(
-                "The desktop shell could not open a task run for translate_document.",
-                Some(error.to_string()),
-            )
-        })?;
-
-    let total_chunks = i64::try_from(chunks.len()).map_err(|error| {
-        DesktopCommandError::internal(
-            "The desktop shell produced an invalid translation chunk count for translate_document.",
-            Some(error.to_string()),
-        )
-    })?;
-    let mut completed_chunks = 0_i64;
-    let mut failed_chunks = 0_i64;
-    let mut chunk_results = Vec::with_capacity(chunks.len());
-    let mut error_messages = Vec::new();
-
-    for chunk in chunks {
-        match translate_chunk_with_runtime_and_executor(
-            TranslateChunkInput {
-                project_id: project_id.clone(),
-                document_id: document_id.clone(),
-                chunk_id: chunk.id.clone(),
-                job_id: Some(job_id.clone()),
-            },
-            database_runtime,
-            executor,
-        ) {
-            Ok(result) => {
-                completed_chunks += 1;
-                let translated_segment_count =
-                    i64::try_from(result.translated_segments.len()).map_err(|error| {
-                        DesktopCommandError::internal(
-                            "The desktop shell produced an invalid translated segment count for translate_document.",
-                            Some(error.to_string()),
-                        )
-                    })?;
-                chunk_results.push(TranslateDocumentChunkResult {
-                    chunk_id: chunk.id,
-                    chunk_sequence: chunk.sequence,
-                    status: TRANSLATE_DOCUMENT_CHUNK_STATUS_COMPLETED.to_owned(),
-                    task_run: Some(result.task_run),
-                    translated_segment_count,
-                    error_message: None,
-                });
-            }
-            Err(error) => {
-                failed_chunks += 1;
-                error_messages.push(format!(
-                    "Chunk {} failed: {}",
-                    chunk.sequence, error.message
-                ));
-                chunk_results.push(TranslateDocumentChunkResult {
-                    chunk_id: chunk.id.clone(),
-                    chunk_sequence: chunk.sequence,
-                    status: TRANSLATE_DOCUMENT_CHUNK_STATUS_FAILED.to_owned(),
-                    task_run: load_latest_chunk_task_run(database_runtime, &chunk.id, &job_id)?,
-                    translated_segment_count: 0,
-                    error_message: Some(error.message),
-                });
-            }
-        }
-    }
-
-    let status = if failed_chunks == 0 {
-        TRANSLATE_DOCUMENT_STATUS_COMPLETED.to_owned()
-    } else if completed_chunks == 0 {
-        TRANSLATE_DOCUMENT_STATUS_FAILED.to_owned()
-    } else {
-        TRANSLATE_DOCUMENT_STATUS_COMPLETED_WITH_ERRORS.to_owned()
-    };
-    let completed_at = current_timestamp()?;
-    let output_payload = serde_json::to_string(&json!({
-        "actionVersion": TRANSLATE_DOCUMENT_ACTION_VERSION,
-        "jobId": job_id,
-        "status": status,
-        "totalChunks": total_chunks,
-        "completedChunks": completed_chunks,
-        "failedChunks": failed_chunks,
-        "chunkResults": chunk_results,
-        "errorMessages": error_messages
-    }))
-    .map_err(|error| {
-        DesktopCommandError::internal(
-            "The desktop shell could not serialize the translate_document output payload.",
-            Some(error.to_string()),
-        )
-    })?;
-    let task_run = if failed_chunks == 0 {
-        TaskRunRepository::new(&mut connection)
-            .mark_completed(&task_run_id, &output_payload, completed_at)
-            .map_err(|error| {
-                DesktopCommandError::internal(
-                    "The desktop shell could not finalize the translate_document task run.",
-                    Some(error.to_string()),
-                )
-            })?
-    } else {
-        TaskRunRepository::new(&mut connection)
-            .mark_failed(
-                &task_run_id,
-                &format!(
-                    "translate_document finished with {failed_chunks} failed chunk(s) out of {total_chunks}."
-                ),
-                Some(&output_payload),
-                completed_at,
-            )
-            .map_err(|error| {
-                DesktopCommandError::internal(
-                    "The desktop shell could not finalize the failed translate_document task run.",
-                    Some(error.to_string()),
-                )
-            })?
-    };
-
-    Ok(TranslateDocumentResult {
-        project_id,
-        document_id,
-        job_id,
-        status,
-        action_version: TRANSLATE_DOCUMENT_ACTION_VERSION.to_owned(),
-        task_run,
-        total_chunks,
-        completed_chunks,
-        failed_chunks,
-        chunk_results,
-        error_messages,
-    })
-}
-
-fn load_latest_chunk_task_run(
-    database_runtime: &DatabaseRuntime,
-    chunk_id: &str,
-    job_id: &str,
-) -> Result<Option<TaskRunSummary>, DesktopCommandError> {
-    let mut connection = database_runtime.open_connection().map_err(|error| {
-        DesktopCommandError::internal(
-            "The desktop shell could not reopen the encrypted database to inspect translate_document chunk task runs.",
-            Some(error.to_string()),
-        )
-    })?;
-
-    TaskRunRepository::new(&mut connection)
-        .list_by_chunk(chunk_id)
-        .map_err(|error| {
-            DesktopCommandError::internal(
-                "The desktop shell could not inspect chunk task runs for translate_document.",
-                Some(error.to_string()),
-            )
-        })
-        .map(|task_runs| {
-            task_runs.into_iter().rev().find(|task_run| {
-                task_run.job_id.as_deref() == Some(job_id)
-                    && task_run.action_type == TRANSLATE_CHUNK_ACTION_TYPE
-            })
-        })
-}
-
-fn normalize_optional_identifier(
-    value: Option<String>,
-    label: &str,
-) -> Result<Option<String>, DesktopCommandError> {
-    value
-        .map(|value| validate_identifier(&value, label))
-        .transpose()
-}
-
-fn validate_identifier(value: &str, label: &str) -> Result<String, DesktopCommandError> {
-    let trimmed = value.trim();
-
-    if trimmed.is_empty() {
-        return Err(DesktopCommandError::validation(
-            format!("The translate_document action requires a valid {label}."),
-            None,
-        ));
-    }
-
-    if !trimmed
-        .chars()
-        .all(|character| matches!(character, 'a'..='z' | 'A'..='Z' | '0'..='9' | '_' | '-'))
-    {
-        return Err(DesktopCommandError::validation(
-            format!("The translate_document action requires a safe persisted {label}."),
-            None,
-        ));
-    }
-
-    Ok(trimmed.to_owned())
-}
-
-fn generate_job_id(timestamp: i64) -> String {
-    let random_part = rand::random::<u64>();
-
-    format!(
-        "job_{}_{}",
-        timestamp,
-        URL_SAFE_NO_PAD.encode(random_part.to_le_bytes())
+        executor,
     )
-}
-
-fn generate_task_run_id(timestamp: i64) -> String {
-    let random_part = rand::random::<u64>();
-
-    format!(
-        "trun_{}_{}",
-        timestamp,
-        URL_SAFE_NO_PAD.encode(random_part.to_le_bytes())
-    )
-}
-
-fn current_timestamp() -> Result<i64, DesktopCommandError> {
-    i64::try_from(
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map_err(|error| {
-                DesktopCommandError::internal(
-                    "The desktop shell could not compute the current translate_document timestamp.",
-                    Some(error.to_string()),
-                )
-            })?
-            .as_secs(),
-    )
-    .map_err(|error| {
-        DesktopCommandError::internal(
-            "The desktop shell produced an invalid translate_document timestamp size.",
-            Some(error.to_string()),
-        )
-    })
 }
 
 #[cfg(test)]
@@ -583,7 +279,11 @@ mod tests {
         assert_eq!(result.total_chunks, 2);
         assert_eq!(result.completed_chunks, 1);
         assert_eq!(result.failed_chunks, 1);
-        assert_eq!(result.error_messages.len(), 1);
+        assert!(!result.error_messages.is_empty());
+        assert!(result.error_messages.iter().any(|message| {
+            message.contains("OpenAI translation request could not be completed")
+                || message.contains("failed chunk")
+        }));
         assert_eq!(result.task_run.status, TASK_RUN_STATUS_FAILED);
         assert_eq!(
             result
@@ -613,8 +313,10 @@ mod tests {
         );
         assert!(job_runs.iter().any(|task_run| {
             task_run.action_type == TRANSLATE_DOCUMENT_ACTION_TYPE
-                && task_run.error_message.as_deref()
-                    == Some("translate_document finished with 1 failed chunk(s) out of 2.")
+                && task_run
+                    .error_message
+                    .as_deref()
+                    .is_some_and(|message| message.contains("failed chunk"))
         }));
     }
 

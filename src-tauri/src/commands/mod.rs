@@ -9,4 +9,5 @@ pub mod segments;
 pub mod style_profiles;
 pub mod translate_chunk;
 pub mod translate_document;
+pub mod translate_document_jobs;
 pub mod translation_chunks;
