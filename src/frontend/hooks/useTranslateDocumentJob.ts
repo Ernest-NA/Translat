@@ -43,6 +43,14 @@ function normalizeUnexpectedError(
   });
 }
 
+function isMissingTrackedJobError(error: DesktopCommandError) {
+  return (
+    error.code === "NOT_FOUND" ||
+    error.code === "INVALID_INPUT" ||
+    error.message.toLowerCase().includes("does not exist")
+  );
+}
+
 function buildDocumentJobKey(projectId: string, documentId: string) {
   return `${projectId}:${documentId}`;
 }
@@ -165,7 +173,7 @@ function buildOptimisticJobStatus(
 }
 
 function shouldSyncDocumentState(status: TranslateDocumentJobStatus) {
-  return status.completedChunks > 0 || isTerminalStatus(status.status);
+  return isTerminalStatus(status.status);
 }
 
 export function useTranslateDocumentJob({
@@ -177,6 +185,7 @@ export function useTranslateDocumentJob({
   const [error, setError] = useState<DesktopCommandError | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isRestoringTrackedJob, setIsRestoringTrackedJob] = useState(false);
   const [isResuming, setIsResuming] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
   const [jobStatus, setJobStatus] = useState<TranslateDocumentJobStatus | null>(
@@ -213,7 +222,13 @@ export function useTranslateDocumentJob({
   );
 
   const refreshStatus = useCallback(
-    async (nextJobId?: string | null, options?: { silent?: boolean }) => {
+    async (
+      nextJobId?: string | null,
+      options?: {
+        clearMissingJob?: boolean;
+        silent?: boolean;
+      },
+    ) => {
       if (!activeProjectId || !activeDocument) {
         setJobStatus(null);
         return null;
@@ -253,6 +268,7 @@ export function useTranslateDocumentJob({
 
         setError(null);
         setJobStatus(nextStatus);
+        setIsRestoringTrackedJob(false);
         await syncDocumentState(nextStatus);
 
         return nextStatus;
@@ -264,13 +280,23 @@ export function useTranslateDocumentJob({
           return null;
         }
 
-        setError(
-          normalizeUnexpectedError(
-            "get_translate_document_job_status",
-            "The desktop shell could not load translate_document job status for the active document.",
-            caughtError,
-          ),
+        const normalizedError = normalizeUnexpectedError(
+          "get_translate_document_job_status",
+          "The desktop shell could not load translate_document job status for the active document.",
+          caughtError,
         );
+
+        if (
+          options?.clearMissingJob &&
+          isMissingTrackedJobError(normalizedError)
+        ) {
+          persistTrackedJob(documentJobKey, null);
+          setTrackedJobId(null);
+          setJobStatus(null);
+        }
+
+        setIsRestoringTrackedJob(false);
+        setError(normalizedError);
 
         return null;
       } finally {
@@ -296,7 +322,6 @@ export function useTranslateDocumentJob({
         activeDocument.id,
       );
 
-      persistTrackedJob(documentJobKey, jobId);
       setTrackedJobId(jobId);
       setError(null);
 
@@ -346,7 +371,11 @@ export function useTranslateDocumentJob({
           return;
         }
 
-        await refreshStatus(jobId, { silent: true });
+        persistTrackedJob(documentJobKey, jobId);
+        await refreshStatus(jobId, {
+          clearMissingJob: true,
+          silent: true,
+        });
       } catch (caughtError) {
         if (latestDocumentKeyRef.current !== documentJobKey) {
           return;
@@ -362,7 +391,15 @@ export function useTranslateDocumentJob({
           ),
         );
 
-        await refreshStatus(jobId, { silent: true });
+        const refreshedStatus = await refreshStatus(jobId, {
+          clearMissingJob: true,
+          silent: true,
+        });
+
+        if (!refreshedStatus && command === "translate_document") {
+          setTrackedJobId(null);
+          setJobStatus(null);
+        }
       } finally {
         if (latestDocumentKeyRef.current === documentJobKey) {
           setIsResuming(false);
@@ -378,6 +415,7 @@ export function useTranslateDocumentJob({
       latestDocumentKeyRef.current = null;
       latestSyncFingerprintRef.current = null;
       setError(null);
+      setIsRestoringTrackedJob(false);
       setJobStatus(null);
       setTrackedJobId(null);
       return;
@@ -391,16 +429,23 @@ export function useTranslateDocumentJob({
     latestSyncFingerprintRef.current = null;
     setError(null);
     setJobStatus(null);
-    setTrackedJobId(readTrackedJobs()[documentJobKey] ?? null);
+    const restoredTrackedJobId = readTrackedJobs()[documentJobKey] ?? null;
+
+    setTrackedJobId(restoredTrackedJobId);
+    setIsRestoringTrackedJob(restoredTrackedJobId !== null);
   }, [activeDocument, activeProjectId]);
 
   useEffect(() => {
     if (!trackedJobId) {
+      setIsRestoringTrackedJob(false);
       setJobStatus(null);
       return;
     }
 
-    void refreshStatus(trackedJobId, { silent: true });
+    void refreshStatus(trackedJobId, {
+      clearMissingJob: true,
+      silent: true,
+    });
   }, [refreshStatus, trackedJobId]);
 
   useEffect(() => {
@@ -512,6 +557,7 @@ export function useTranslateDocumentJob({
     error,
     isCancelling,
     isRefreshing,
+    isRestoringTrackedJob,
     isResuming,
     isStarting,
     jobStatus,

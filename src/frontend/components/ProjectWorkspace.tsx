@@ -261,6 +261,7 @@ export function ProjectWorkspace({
     error: translateJobError,
     isCancelling,
     isRefreshing,
+    isRestoringTrackedJob,
     isResuming,
     isStarting,
     jobStatus,
@@ -357,6 +358,8 @@ export function ProjectWorkspace({
     chunks.length > 0 &&
     jobStatus?.status !== "pending" &&
     jobStatus?.status !== "running" &&
+    (trackedJobId === null || jobStatus !== null) &&
+    !isRestoringTrackedJob &&
     !isStarting &&
     !isResuming;
   const canResumeTranslation =
@@ -613,7 +616,11 @@ export function ProjectWorkspace({
               onClick={() => void startTranslation()}
               type="button"
             >
-              {isStarting ? "Launching..." : "Translate document"}
+              {isRestoringTrackedJob
+                ? "Restoring job..."
+                : isStarting
+                  ? "Launching..."
+                  : "Translate document"}
             </button>
             <button
               className="document-action-button"
@@ -661,6 +668,11 @@ export function ProjectWorkspace({
           </span>
           <span className="status-pill">
             {trackedJobId ? `Tracked job ${trackedJobId}` : "No tracked job"}
+          </span>
+          <span className="status-pill">
+            {isRestoringTrackedJob
+              ? "Restoring tracked job"
+              : "Job restore idle"}
           </span>
         </div>
 
