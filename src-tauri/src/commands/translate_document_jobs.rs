@@ -460,13 +460,13 @@ fn derive_job_status(
     cancelled_chunks: i64,
     total_chunks: i64,
 ) -> String {
+    if latest_document_status == Some(TASK_RUN_STATUS_RUNNING) || running_chunks > 0 {
+        return TRANSLATE_DOCUMENT_STATUS_RUNNING.to_owned();
+    }
+
     if latest_document_status == Some(TASK_RUN_STATUS_CANCELLED) || cancelled_chunks == total_chunks
     {
         return TRANSLATE_DOCUMENT_STATUS_CANCELLED.to_owned();
-    }
-
-    if latest_document_status == Some(TASK_RUN_STATUS_RUNNING) || running_chunks > 0 {
-        return TRANSLATE_DOCUMENT_STATUS_RUNNING.to_owned();
     }
 
     if latest_document_status == Some(TASK_RUN_STATUS_PENDING) || pending_chunks == total_chunks {
@@ -521,7 +521,12 @@ fn select_resumable_chunks(
     let completed_chunk_ids = status
         .chunk_statuses
         .iter()
-        .filter(|chunk| chunk.status == TRANSLATE_DOCUMENT_CHUNK_STATUS_COMPLETED)
+        .filter(|chunk| {
+            matches!(
+                chunk.status.as_str(),
+                TRANSLATE_DOCUMENT_CHUNK_STATUS_COMPLETED | TRANSLATE_DOCUMENT_CHUNK_STATUS_RUNNING
+            )
+        })
         .map(|chunk| chunk.chunk_id.as_str())
         .collect::<HashSet<_>>();
 
@@ -644,7 +649,7 @@ pub(crate) fn run_translate_document_with_runtime_and_executor<E: TranslateChunk
             )
         })?;
 
-        return Ok(job_status_to_result(existing_status));
+        return job_status_to_result(existing_status);
     }
 
     let task_run_id = generate_task_run_id(started_at);
@@ -704,7 +709,7 @@ pub(crate) fn run_translate_document_with_runtime_and_executor<E: TranslateChunk
                 &document_id,
                 &job_id,
             )
-            .map(job_status_to_result);
+            .and_then(job_status_to_result);
         }
 
         if translate_chunk_with_runtime_and_executor(
@@ -748,7 +753,7 @@ pub(crate) fn run_translate_document_with_runtime_and_executor<E: TranslateChunk
         &document_id,
         &job_id,
     )
-    .map(job_status_to_result)
+    .and_then(job_status_to_result)
 }
 
 fn finalize_document_attempt(
@@ -842,7 +847,9 @@ fn is_document_task_run_cancelled(
         })
 }
 
-fn job_status_to_result(status: TranslateDocumentJobStatus) -> TranslateDocumentResult {
+fn job_status_to_result(
+    status: TranslateDocumentJobStatus,
+) -> Result<TranslateDocumentResult, DesktopCommandError> {
     let TranslateDocumentJobStatus {
         project_id,
         document_id,
@@ -857,20 +864,26 @@ fn job_status_to_result(status: TranslateDocumentJobStatus) -> TranslateDocument
         ..
     } = status;
 
-    TranslateDocumentResult {
+    let task_run = latest_document_task_run.ok_or_else(|| {
+        DesktopCommandError::validation(
+            "The selected translate_document job cannot be converted into a document result because it has no document-level task run.",
+            None,
+        )
+    })?;
+
+    Ok(TranslateDocumentResult {
         project_id,
         document_id,
         job_id,
         status,
         action_version: TRANSLATE_DOCUMENT_ACTION_VERSION.to_owned(),
-        task_run: latest_document_task_run
-            .expect("job status should include a latest document task run"),
+        task_run,
         total_chunks,
         completed_chunks,
         failed_chunks,
         chunk_results: chunk_statuses,
         error_messages,
-    }
+    })
 }
 
 pub(crate) fn validate_identifier(value: &str, label: &str) -> Result<String, DesktopCommandError> {
@@ -973,11 +986,12 @@ mod tests {
     use crate::translate_chunk::{
         TranslateChunkActionRequest, TranslateChunkActionResponse, TranslateChunkExecutionFailure,
         TranslateChunkExecutor, TranslateChunkModelOutput, TranslateChunkTranslation,
+        TRANSLATE_CHUNK_ACTION_TYPE,
     };
     use crate::translate_document::{
         TranslateDocumentInput, TranslateDocumentJobInput, TRANSLATE_DOCUMENT_ACTION_TYPE,
         TRANSLATE_DOCUMENT_STATUS_CANCELLED, TRANSLATE_DOCUMENT_STATUS_COMPLETED,
-        TRANSLATE_DOCUMENT_STATUS_COMPLETED_WITH_ERRORS,
+        TRANSLATE_DOCUMENT_STATUS_COMPLETED_WITH_ERRORS, TRANSLATE_DOCUMENT_STATUS_RUNNING,
     };
     use crate::translation_chunks::{
         NewTranslationChunk, NewTranslationChunkSegment,
@@ -1315,6 +1329,140 @@ mod tests {
         assert_eq!(status.status, TRANSLATE_DOCUMENT_STATUS_CANCELLED);
         assert_eq!(status.completed_chunks, 1);
         assert_eq!(status.cancelled_chunks, 1);
+    }
+
+    #[test]
+    fn cancellation_request_keeps_job_running_while_a_chunk_is_still_running() {
+        let fixture = create_runtime_fixture();
+        seed_translate_document_graph(&fixture.runtime);
+        let mut connection = fixture
+            .runtime
+            .open_connection()
+            .expect("database connection should open");
+
+        TaskRunRepository::new(&mut connection)
+            .create(&NewTaskRun {
+                id: "trun_cancel_race_doc_001".to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                chunk_id: None,
+                job_id: Some("job_cancel_race_001".to_owned()),
+                action_type: TRANSLATE_DOCUMENT_ACTION_TYPE.to_owned(),
+                status: TASK_RUN_STATUS_CANCELLED.to_owned(),
+                input_payload: None,
+                output_payload: None,
+                error_message: Some("Cancellation requested by the user.".to_owned()),
+                started_at: 1_900_000_100,
+                completed_at: Some(1_900_000_120),
+                created_at: 1_900_000_100,
+                updated_at: 1_900_000_120,
+            })
+            .expect("cancelled document task run should persist");
+        TaskRunRepository::new(&mut connection)
+            .create(&NewTaskRun {
+                id: "trun_cancel_race_chunk_001".to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                chunk_id: Some(CHUNK_ID_1.to_owned()),
+                job_id: Some("job_cancel_race_001".to_owned()),
+                action_type: TRANSLATE_CHUNK_ACTION_TYPE.to_owned(),
+                status: TASK_RUN_STATUS_RUNNING.to_owned(),
+                input_payload: None,
+                output_payload: None,
+                error_message: None,
+                started_at: 1_900_000_110,
+                completed_at: None,
+                created_at: 1_900_000_110,
+                updated_at: 1_900_000_110,
+            })
+            .expect("running chunk task run should persist");
+        drop(connection);
+
+        let status = get_translate_document_job_status_with_runtime(
+            TranslateDocumentJobInput {
+                project_id: PROJECT_ID.to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                job_id: "job_cancel_race_001".to_owned(),
+            },
+            &fixture.runtime,
+        )
+        .expect("job status should load");
+
+        assert_eq!(status.status, TRANSLATE_DOCUMENT_STATUS_RUNNING);
+        assert_eq!(status.running_chunks, 1);
+        assert_eq!(status.cancelled_chunks, 1);
+
+        let resume_error = resume_translate_document_job_with_runtime_and_executor(
+            TranslateDocumentJobInput {
+                project_id: PROJECT_ID.to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                job_id: "job_cancel_race_001".to_owned(),
+            },
+            &fixture.runtime,
+            &FakeExecutor::new(HashMap::new(), Arc::new(Mutex::new(Vec::new())), None),
+        )
+        .expect_err("resume should reject jobs with an in-flight chunk");
+
+        assert_eq!(resume_error.code, "INVALID_INPUT");
+        assert!(resume_error.message.contains("already running"));
+    }
+
+    #[test]
+    fn resume_translate_document_job_rejects_chunk_only_completed_history() {
+        let fixture = create_runtime_fixture();
+        seed_translate_document_graph(&fixture.runtime);
+        let mut connection = fixture
+            .runtime
+            .open_connection()
+            .expect("database connection should open");
+
+        TaskRunRepository::new(&mut connection)
+            .create(&NewTaskRun {
+                id: "trun_chunk_only_001".to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                chunk_id: Some(CHUNK_ID_1.to_owned()),
+                job_id: Some("job_chunk_only_001".to_owned()),
+                action_type: TRANSLATE_CHUNK_ACTION_TYPE.to_owned(),
+                status: crate::task_runs::TASK_RUN_STATUS_COMPLETED.to_owned(),
+                input_payload: None,
+                output_payload: None,
+                error_message: None,
+                started_at: 1_900_000_100,
+                completed_at: Some(1_900_000_110),
+                created_at: 1_900_000_100,
+                updated_at: 1_900_000_110,
+            })
+            .expect("first completed chunk task run should persist");
+        TaskRunRepository::new(&mut connection)
+            .create(&NewTaskRun {
+                id: "trun_chunk_only_002".to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                chunk_id: Some(CHUNK_ID_2.to_owned()),
+                job_id: Some("job_chunk_only_001".to_owned()),
+                action_type: TRANSLATE_CHUNK_ACTION_TYPE.to_owned(),
+                status: crate::task_runs::TASK_RUN_STATUS_COMPLETED.to_owned(),
+                input_payload: None,
+                output_payload: None,
+                error_message: None,
+                started_at: 1_900_000_120,
+                completed_at: Some(1_900_000_130),
+                created_at: 1_900_000_120,
+                updated_at: 1_900_000_130,
+            })
+            .expect("second completed chunk task run should persist");
+        drop(connection);
+
+        let error = resume_translate_document_job_with_runtime_and_executor(
+            TranslateDocumentJobInput {
+                project_id: PROJECT_ID.to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                job_id: "job_chunk_only_001".to_owned(),
+            },
+            &fixture.runtime,
+            &FakeExecutor::new(HashMap::new(), Arc::new(Mutex::new(Vec::new())), None),
+        )
+        .expect_err("resume should reject chunk-only completed histories");
+
+        assert_eq!(error.code, "INVALID_INPUT");
+        assert!(error.message.contains("document-level task run"));
     }
 
     #[test]

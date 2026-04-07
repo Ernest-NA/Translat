@@ -280,7 +280,9 @@ export function translateDocument(input: TranslateDocumentInput) {
   );
 }
 
-export function getTranslateDocumentJobStatus(input: TranslateDocumentJobInput) {
+export function getTranslateDocumentJobStatus(
+  input: TranslateDocumentJobInput,
+) {
   return invokeDesktopCommand<TranslateDocumentJobStatus>(
     DESKTOP_COMMANDS.getTranslateDocumentJobStatus,
     {
