@@ -38,6 +38,7 @@ export function useTranslationContextPreview({
 
     setError(null);
     setIsLoading(true);
+    setPreview(null);
 
     void buildTranslationContext({
       actionScope: "translation",
@@ -57,6 +58,7 @@ export function useTranslationContextPreview({
           return;
         }
 
+        setPreview(null);
         setError(
           caughtError instanceof DesktopCommandError
             ? caughtError

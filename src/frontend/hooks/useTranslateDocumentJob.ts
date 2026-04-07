@@ -397,6 +397,7 @@ export function useTranslateDocumentJob({
         });
 
         if (!refreshedStatus && command === "translate_document") {
+          persistTrackedJob(documentJobKey, null);
           setTrackedJobId(null);
           setJobStatus(null);
         }

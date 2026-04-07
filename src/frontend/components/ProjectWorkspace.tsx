@@ -372,6 +372,7 @@ export function ProjectWorkspace({
     isStarting ||
     isResuming ||
     isCancelling ||
+    canResumeTranslation ||
     jobStatus?.status === "pending" ||
     jobStatus?.status === "running";
 
