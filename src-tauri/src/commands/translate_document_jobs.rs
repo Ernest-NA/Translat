@@ -33,6 +33,7 @@ use crate::translate_document::{
 use crate::translation_chunks::TranslationChunkSummary;
 
 const CANCELLATION_MESSAGE: &str = "Cancellation requested by the user.";
+const ACTIVE_TASK_RUN_TIMEOUT_SECONDS: i64 = 30 * 60;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TranslateDocumentExecutionMode {
@@ -230,12 +231,16 @@ fn build_job_status_from_task_runs(
     job_id: &str,
     task_runs: Vec<TaskRunSummary>,
 ) -> Result<TranslateDocumentJobStatus, DesktopCommandError> {
+    let observed_at = current_timestamp()?;
     let chunks = load_document_chunks(connection, database_runtime, project_id, document_id, 0)?;
     let latest_document_task_run = select_latest_document_task_run(&task_runs);
     let latest_chunk_task_runs = select_latest_chunk_task_runs(&task_runs);
     let latest_document_status = latest_document_task_run
         .as_ref()
         .map(|task_run| task_run.status.as_str());
+    let has_active_document_attempt = latest_document_task_run
+        .as_ref()
+        .is_some_and(|task_run| is_task_run_active(task_run, observed_at));
     let last_updated_at = task_runs.iter().map(|task_run| task_run.updated_at).max();
     let mut pending_chunks = 0_i64;
     let mut running_chunks = 0_i64;
@@ -251,7 +256,7 @@ fn build_job_status_from_task_runs(
 
     for chunk in &chunks {
         let chunk_status = match latest_chunk_task_runs.get(chunk.id.as_str()) {
-            Some(task_run) => map_chunk_status(task_run),
+            Some(task_run) => map_chunk_status(task_run, observed_at),
             None if latest_document_status == Some(TASK_RUN_STATUS_CANCELLED) => {
                 TRANSLATE_DOCUMENT_CHUNK_STATUS_CANCELLED.to_owned()
             }
@@ -325,6 +330,7 @@ fn build_job_status_from_task_runs(
     })?;
     let status = derive_job_status(
         latest_document_status,
+        has_active_document_attempt,
         pending_chunks,
         running_chunks,
         completed_chunks,
@@ -440,10 +446,16 @@ fn compare_task_runs(left: &TaskRunSummary, right: &TaskRunSummary) -> std::cmp:
         .then_with(|| left.id.cmp(&right.id))
 }
 
-fn map_chunk_status(task_run: &TaskRunSummary) -> String {
+fn map_chunk_status(task_run: &TaskRunSummary, observed_at: i64) -> String {
     match task_run.status.as_str() {
         TASK_RUN_STATUS_PENDING => TRANSLATE_DOCUMENT_CHUNK_STATUS_PENDING.to_owned(),
-        TASK_RUN_STATUS_RUNNING => TRANSLATE_DOCUMENT_CHUNK_STATUS_RUNNING.to_owned(),
+        TASK_RUN_STATUS_RUNNING => {
+            if is_task_run_active(task_run, observed_at) {
+                TRANSLATE_DOCUMENT_CHUNK_STATUS_RUNNING.to_owned()
+            } else {
+                TRANSLATE_DOCUMENT_CHUNK_STATUS_PENDING.to_owned()
+            }
+        }
         TASK_RUN_STATUS_COMPLETED => TRANSLATE_DOCUMENT_CHUNK_STATUS_COMPLETED.to_owned(),
         TASK_RUN_STATUS_FAILED => TRANSLATE_DOCUMENT_CHUNK_STATUS_FAILED.to_owned(),
         TASK_RUN_STATUS_CANCELLED => TRANSLATE_DOCUMENT_CHUNK_STATUS_CANCELLED.to_owned(),
@@ -453,6 +465,7 @@ fn map_chunk_status(task_run: &TaskRunSummary) -> String {
 
 fn derive_job_status(
     latest_document_status: Option<&str>,
+    has_active_document_attempt: bool,
     pending_chunks: i64,
     running_chunks: i64,
     completed_chunks: i64,
@@ -460,13 +473,13 @@ fn derive_job_status(
     cancelled_chunks: i64,
     total_chunks: i64,
 ) -> String {
-    if latest_document_status == Some(TASK_RUN_STATUS_RUNNING) || running_chunks > 0 {
-        return TRANSLATE_DOCUMENT_STATUS_RUNNING.to_owned();
-    }
-
     if latest_document_status == Some(TASK_RUN_STATUS_CANCELLED) || cancelled_chunks == total_chunks
     {
         return TRANSLATE_DOCUMENT_STATUS_CANCELLED.to_owned();
+    }
+
+    if has_active_document_attempt || running_chunks > 0 {
+        return TRANSLATE_DOCUMENT_STATUS_RUNNING.to_owned();
     }
 
     if latest_document_status == Some(TASK_RUN_STATUS_PENDING) || pending_chunks == total_chunks {
@@ -494,6 +507,13 @@ fn derive_job_status(
     }
 
     TRANSLATE_DOCUMENT_STATUS_PENDING.to_owned()
+}
+
+fn is_task_run_active(task_run: &TaskRunSummary, observed_at: i64) -> bool {
+    matches!(
+        task_run.status.as_str(),
+        TASK_RUN_STATUS_PENDING | TASK_RUN_STATUS_RUNNING
+    ) && task_run.updated_at >= observed_at - ACTIVE_TASK_RUN_TIMEOUT_SECONDS
 }
 
 fn extract_translated_segment_count(task_run: &TaskRunSummary) -> i64 {
@@ -535,6 +555,13 @@ fn select_resumable_chunks(
         .filter(|chunk| !completed_chunk_ids.contains(chunk.id.as_str()))
         .cloned()
         .collect())
+}
+
+fn has_active_job_execution(status: &TranslateDocumentJobStatus, observed_at: i64) -> bool {
+    status
+        .task_runs
+        .iter()
+        .any(|task_run| is_task_run_active(task_run, observed_at))
 }
 
 fn serialize_document_attempt_input_payload(
@@ -619,7 +646,7 @@ pub(crate) fn run_translate_document_with_runtime_and_executor<E: TranslateChunk
 
     if existing_status
         .as_ref()
-        .is_some_and(|status| status.status == TRANSLATE_DOCUMENT_STATUS_RUNNING)
+        .is_some_and(|status| has_active_job_execution(status, started_at))
     {
         return Err(DesktopCommandError::validation(
             "The selected translate_document job is already running.",
@@ -991,7 +1018,7 @@ mod tests {
     use crate::translate_document::{
         TranslateDocumentInput, TranslateDocumentJobInput, TRANSLATE_DOCUMENT_ACTION_TYPE,
         TRANSLATE_DOCUMENT_STATUS_CANCELLED, TRANSLATE_DOCUMENT_STATUS_COMPLETED,
-        TRANSLATE_DOCUMENT_STATUS_COMPLETED_WITH_ERRORS, TRANSLATE_DOCUMENT_STATUS_RUNNING,
+        TRANSLATE_DOCUMENT_STATUS_COMPLETED_WITH_ERRORS,
     };
     use crate::translation_chunks::{
         NewTranslationChunk, NewTranslationChunkSegment,
@@ -1332,7 +1359,7 @@ mod tests {
     }
 
     #[test]
-    fn cancellation_request_keeps_job_running_while_a_chunk_is_still_running() {
+    fn cancellation_request_is_visible_while_a_chunk_is_still_running() {
         let fixture = create_runtime_fixture();
         seed_translate_document_graph(&fixture.runtime);
         let mut connection = fixture
@@ -1386,7 +1413,7 @@ mod tests {
         )
         .expect("job status should load");
 
-        assert_eq!(status.status, TRANSLATE_DOCUMENT_STATUS_RUNNING);
+        assert_eq!(status.status, TRANSLATE_DOCUMENT_STATUS_CANCELLED);
         assert_eq!(status.running_chunks, 1);
         assert_eq!(status.cancelled_chunks, 1);
 
@@ -1403,6 +1430,108 @@ mod tests {
 
         assert_eq!(resume_error.code, "INVALID_INPUT");
         assert!(resume_error.message.contains("already running"));
+    }
+
+    #[test]
+    fn resume_translate_document_job_recovers_stale_running_job() {
+        let fixture = create_runtime_fixture();
+        seed_translate_document_graph(&fixture.runtime);
+        let stale_started_at = 1_500_000_100_i64;
+        let mut connection = fixture
+            .runtime
+            .open_connection()
+            .expect("database connection should open");
+
+        TaskRunRepository::new(&mut connection)
+            .create(&NewTaskRun {
+                id: "trun_stale_doc_001".to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                chunk_id: None,
+                job_id: Some("job_stale_001".to_owned()),
+                action_type: TRANSLATE_DOCUMENT_ACTION_TYPE.to_owned(),
+                status: TASK_RUN_STATUS_RUNNING.to_owned(),
+                input_payload: None,
+                output_payload: None,
+                error_message: None,
+                started_at: stale_started_at,
+                completed_at: None,
+                created_at: stale_started_at,
+                updated_at: stale_started_at,
+            })
+            .expect("stale document task run should persist");
+        TaskRunRepository::new(&mut connection)
+            .create(&NewTaskRun {
+                id: "trun_stale_chunk_001".to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                chunk_id: Some(CHUNK_ID_1.to_owned()),
+                job_id: Some("job_stale_001".to_owned()),
+                action_type: TRANSLATE_CHUNK_ACTION_TYPE.to_owned(),
+                status: crate::task_runs::TASK_RUN_STATUS_COMPLETED.to_owned(),
+                input_payload: None,
+                output_payload: Some(
+                    serde_json::to_string(&serde_json::json!({
+                        "translations": [{
+                            "segmentId": "seg_doc_translate_001_0002",
+                            "targetText": "El guardia mantiene la puerta."
+                        }]
+                    }))
+                    .expect("completed chunk payload should serialize"),
+                ),
+                error_message: None,
+                started_at: stale_started_at + 10,
+                completed_at: Some(stale_started_at + 20),
+                created_at: stale_started_at + 10,
+                updated_at: stale_started_at + 20,
+            })
+            .expect("completed chunk task run should persist");
+        TaskRunRepository::new(&mut connection)
+            .create(&NewTaskRun {
+                id: "trun_stale_chunk_002".to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                chunk_id: Some(CHUNK_ID_2.to_owned()),
+                job_id: Some("job_stale_001".to_owned()),
+                action_type: TRANSLATE_CHUNK_ACTION_TYPE.to_owned(),
+                status: TASK_RUN_STATUS_RUNNING.to_owned(),
+                input_payload: None,
+                output_payload: None,
+                error_message: None,
+                started_at: stale_started_at + 30,
+                completed_at: None,
+                created_at: stale_started_at + 30,
+                updated_at: stale_started_at + 30,
+            })
+            .expect("stale running chunk task run should persist");
+        drop(connection);
+
+        let observed_chunk_ids = Arc::new(Mutex::new(Vec::new()));
+        let resume_executor = FakeExecutor::new(
+            HashMap::from([(
+                CHUNK_ID_2.to_owned(),
+                FakeExecutorResponse::Success(success_response_for_second_chunk()),
+            )]),
+            observed_chunk_ids.clone(),
+            None,
+        );
+
+        let result = resume_translate_document_job_with_runtime_and_executor(
+            TranslateDocumentJobInput {
+                project_id: PROJECT_ID.to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                job_id: "job_stale_001".to_owned(),
+            },
+            &fixture.runtime,
+            &resume_executor,
+        )
+        .expect("resume should recover stale running jobs");
+
+        assert_eq!(result.status, TRANSLATE_DOCUMENT_STATUS_COMPLETED);
+        assert_eq!(
+            observed_chunk_ids
+                .lock()
+                .expect("chunk order lock should open")
+                .clone(),
+            vec![CHUNK_ID_2.to_owned()]
+        );
     }
 
     #[test]
