@@ -377,6 +377,7 @@ export function ProjectWorkspace({
     }
   }, [canResumeTranslation, clearTrackedJob, onBuildChunks]);
   const disableChunkBuildActions =
+    isLoadingChunks ||
     isRestoringTrackedJob ||
     isStarting ||
     isResuming ||

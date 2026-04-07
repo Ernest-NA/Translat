@@ -90,10 +90,15 @@ function readTrackedJobs(): Record<string, string> {
 
 function writeTrackedJobs(trackedJobs: Record<string, string>) {
   if (typeof window === "undefined") {
-    return;
+    return false;
   }
 
-  window.localStorage.setItem(JOB_STORAGE_KEY, JSON.stringify(trackedJobs));
+  try {
+    window.localStorage.setItem(JOB_STORAGE_KEY, JSON.stringify(trackedJobs));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function persistTrackedJob(documentJobKey: string, jobId: string | null) {
@@ -105,7 +110,7 @@ function persistTrackedJob(documentJobKey: string, jobId: string | null) {
     delete trackedJobs[documentJobKey];
   }
 
-  writeTrackedJobs(trackedJobs);
+  return writeTrackedJobs(trackedJobs);
 }
 
 function clearTrackedJobState(
