@@ -41,6 +41,27 @@ struct JobTrackedChunk {
     chunk_sequence: i64,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct JobStatusCounts {
+    pending_chunks: i64,
+    running_chunks: i64,
+    completed_chunks: i64,
+    failed_chunks: i64,
+    cancelled_chunks: i64,
+    total_chunks: i64,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct DocumentAttemptFinalization<'a> {
+    task_run_id: &'a str,
+    job_id: &'a str,
+    mode: TranslateDocumentExecutionMode,
+    selected_chunk_ids: &'a [String],
+    completed_chunks: i64,
+    failed_chunks: i64,
+    cancellation_message: Option<&'a str>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TranslateDocumentExecutionMode {
     Fresh,
@@ -343,12 +364,14 @@ fn build_job_status_from_task_runs(
     let status = derive_job_status(
         latest_document_status,
         has_active_document_attempt,
-        pending_chunks,
-        running_chunks,
-        completed_chunks,
-        failed_chunks,
-        cancelled_chunks,
-        total_chunks,
+        JobStatusCounts {
+            pending_chunks,
+            running_chunks,
+            completed_chunks,
+            failed_chunks,
+            cancelled_chunks,
+            total_chunks,
+        },
     );
 
     Ok(TranslateDocumentJobStatus {
@@ -424,9 +447,8 @@ fn list_job_task_runs_for_document(
 fn select_latest_document_task_run(task_runs: &[TaskRunSummary]) -> Option<TaskRunSummary> {
     task_runs
         .iter()
-        .filter(|task_run| task_run.action_type == TRANSLATE_DOCUMENT_ACTION_TYPE)
+        .rfind(|task_run| task_run.action_type == TRANSLATE_DOCUMENT_ACTION_TYPE)
         .cloned()
-        .last()
 }
 
 fn select_latest_chunk_task_runs(task_runs: &[TaskRunSummary]) -> HashMap<&str, TaskRunSummary> {
@@ -545,13 +567,17 @@ fn map_chunk_status(task_run: &TaskRunSummary, observed_at: i64) -> String {
 fn derive_job_status(
     latest_document_status: Option<&str>,
     has_active_document_attempt: bool,
-    pending_chunks: i64,
-    running_chunks: i64,
-    completed_chunks: i64,
-    failed_chunks: i64,
-    cancelled_chunks: i64,
-    total_chunks: i64,
+    counts: JobStatusCounts,
 ) -> String {
+    let JobStatusCounts {
+        pending_chunks,
+        running_chunks,
+        completed_chunks,
+        failed_chunks,
+        cancelled_chunks,
+        total_chunks,
+    } = counts;
+
     if latest_document_status == Some(TASK_RUN_STATUS_CANCELLED) || cancelled_chunks == total_chunks
     {
         return TRANSLATE_DOCUMENT_STATUS_CANCELLED.to_owned();
@@ -813,13 +839,15 @@ pub(crate) fn run_translate_document_with_runtime_and_executor<E: TranslateChunk
         if is_document_task_run_cancelled(&mut connection, &task_run_id)? {
             finalize_document_attempt(
                 &mut connection,
-                &task_run_id,
-                &job_id,
-                mode,
-                &selected_chunk_ids,
-                completed_chunks_in_attempt,
-                failed_chunks_in_attempt,
-                Some(CANCELLATION_MESSAGE),
+                DocumentAttemptFinalization {
+                    task_run_id: &task_run_id,
+                    job_id: &job_id,
+                    mode,
+                    selected_chunk_ids: &selected_chunk_ids,
+                    completed_chunks: completed_chunks_in_attempt,
+                    failed_chunks: failed_chunks_in_attempt,
+                    cancellation_message: Some(CANCELLATION_MESSAGE),
+                },
             )?;
             return build_job_status(
                 &mut connection,
@@ -856,13 +884,15 @@ pub(crate) fn run_translate_document_with_runtime_and_executor<E: TranslateChunk
     };
     finalize_document_attempt(
         &mut connection,
-        &task_run_id,
-        &job_id,
-        mode,
-        &selected_chunk_ids,
-        completed_chunks_in_attempt,
-        failed_chunks_in_attempt,
-        cancellation_message,
+        DocumentAttemptFinalization {
+            task_run_id: &task_run_id,
+            job_id: &job_id,
+            mode,
+            selected_chunk_ids: &selected_chunk_ids,
+            completed_chunks: completed_chunks_in_attempt,
+            failed_chunks: failed_chunks_in_attempt,
+            cancellation_message,
+        },
     )?;
 
     build_job_status(
@@ -877,14 +907,17 @@ pub(crate) fn run_translate_document_with_runtime_and_executor<E: TranslateChunk
 
 fn finalize_document_attempt(
     connection: &mut rusqlite::Connection,
-    task_run_id: &str,
-    job_id: &str,
-    mode: TranslateDocumentExecutionMode,
-    selected_chunk_ids: &[String],
-    completed_chunks: i64,
-    failed_chunks: i64,
-    cancellation_message: Option<&str>,
+    finalization: DocumentAttemptFinalization<'_>,
 ) -> Result<TaskRunSummary, DesktopCommandError> {
+    let DocumentAttemptFinalization {
+        task_run_id,
+        job_id,
+        mode,
+        selected_chunk_ids,
+        completed_chunks,
+        failed_chunks,
+        cancellation_message,
+    } = finalization;
     let completed_at = current_timestamp()?;
     let attempt_status = if cancellation_message.is_some() {
         TRANSLATE_DOCUMENT_STATUS_CANCELLED

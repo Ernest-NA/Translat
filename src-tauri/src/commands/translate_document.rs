@@ -279,7 +279,7 @@ mod tests {
         assert_eq!(result.total_chunks, 2);
         assert_eq!(result.completed_chunks, 1);
         assert_eq!(result.failed_chunks, 1);
-        assert!(result.error_messages.len() >= 1);
+        assert!(!result.error_messages.is_empty());
         assert!(result.error_messages.iter().any(|message| {
             message.contains("OpenAI translation request could not be completed")
                 || message.contains("failed chunk")
