@@ -108,6 +108,16 @@ function persistTrackedJob(documentJobKey: string, jobId: string | null) {
   writeTrackedJobs(trackedJobs);
 }
 
+function clearTrackedJobState(
+  documentJobKey: string,
+  updateTrackedJobId: (jobId: string | null) => void,
+  updateJobStatus: (status: TranslateDocumentJobStatus | null) => void,
+) {
+  persistTrackedJob(documentJobKey, null);
+  updateTrackedJobId(null);
+  updateJobStatus(null);
+}
+
 function generateJobId() {
   if (
     typeof globalThis.crypto !== "undefined" &&
@@ -381,22 +391,27 @@ export function useTranslateDocumentJob({
           return;
         }
 
-        setError(
-          normalizeUnexpectedError(
-            command,
-            command === "translate_document"
-              ? "The desktop shell could not launch translate_document for the active document."
-              : "The desktop shell could not resume the tracked translate_document job.",
-            caughtError,
-          ),
+        const normalizedError = normalizeUnexpectedError(
+          command,
+          command === "translate_document"
+            ? "The desktop shell could not launch translate_document for the active document."
+            : "The desktop shell could not resume the tracked translate_document job.",
+          caughtError,
         );
+        setError(normalizedError);
 
         const refreshedStatus = await refreshStatus(jobId, {
           clearMissingJob: true,
           silent: true,
         });
 
-        void refreshedStatus;
+        if (
+          command === "translate_document" &&
+          refreshedStatus === null &&
+          latestDocumentKeyRef.current === documentJobKey
+        ) {
+          clearTrackedJobState(documentJobKey, setTrackedJobId, setJobStatus);
+        }
       } finally {
         if (latestDocumentKeyRef.current === documentJobKey) {
           setIsResuming(false);
@@ -449,7 +464,10 @@ export function useTranslateDocumentJob({
     if (
       !(
         trackedJobId &&
-        (jobStatus?.status === "running" || isStarting || isResuming)
+        (jobStatus?.status === "pending" ||
+          jobStatus?.status === "running" ||
+          isStarting ||
+          isResuming)
       )
     ) {
       return;
