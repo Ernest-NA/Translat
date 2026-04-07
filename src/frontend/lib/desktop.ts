@@ -41,6 +41,8 @@ import {
   type StyleProfilesOverview,
   type TranslateChunkInput,
   type TranslateChunkResult,
+  type TranslateDocumentInput,
+  type TranslateDocumentResult,
   type TranslationContextPreview,
   type UpdateGlossaryEntryInput,
   type UpdateGlossaryInput,
@@ -261,6 +263,15 @@ export function listDocumentTranslationChunks(
 export function translateChunk(input: TranslateChunkInput) {
   return invokeDesktopCommand<TranslateChunkResult>(
     DESKTOP_COMMANDS.translateChunk,
+    {
+      input,
+    },
+  );
+}
+
+export function translateDocument(input: TranslateDocumentInput) {
+  return invokeDesktopCommand<TranslateDocumentResult>(
+    DESKTOP_COMMANDS.translateDocument,
     {
       input,
     },
