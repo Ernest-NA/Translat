@@ -237,12 +237,12 @@ export function AppShell() {
       <header className="app-shell__header">
         <div>
           <p className="app-shell__eyebrow">Translat</p>
-          <h1>Project editorial defaults</h1>
+          <h1>Translation workspace</h1>
           <p className="app-shell__lead">
-            D5 consolidates the editorial baseline of each project by letting it
-            persist one default glossary, one default style profile, and one
-            default rule set, while keeping AI usage, precedence logic, and
-            automatic orchestration out of scope.
+            The shell now keeps project defaults, document intake, chunk
+            readiness, and document-level translation control in the same
+            workspace. Translation stays document-first, with the job visible as
+            an execution envelope and the chunk as the main inspection unit.
           </p>
         </div>
 
@@ -271,6 +271,11 @@ export function AppShell() {
             {activeProject
               ? `${documents.length} project documents`
               : "No active project"}
+          </span>
+          <span>
+            {activeDocument
+              ? `${chunks.length} loaded chunks for ${activeDocument.name}`
+              : "No active document"}
           </span>
           <span>
             {activeProjectDefaultGlossary

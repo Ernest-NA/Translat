@@ -1,4 +1,11 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type {
   DocumentSectionSummary,
   DocumentSummary,
@@ -11,11 +18,14 @@ import type {
   TranslationChunkSummary,
   UpdateProjectEditorialDefaultsInput,
 } from "../../shared/desktop";
+import { useTranslateDocumentJob } from "../hooks/useTranslateDocumentJob";
+import { useTranslationContextPreview } from "../hooks/useTranslationContextPreview";
 import type { DesktopCommandError } from "../lib/desktop";
 import { ChunkBrowser } from "./ChunkBrowser";
 import { DocumentImporter } from "./DocumentImporter";
 import { DocumentList } from "./DocumentList";
 import { SegmentBrowser } from "./SegmentBrowser";
+import { TranslationJobMonitor } from "./TranslationJobMonitor";
 
 interface ProjectWorkspaceProps {
   activeDocument: DocumentSummary | null;
@@ -75,6 +85,34 @@ function toOptionalSelection(value: string) {
 
 function formatStatusSuffix(status: "active" | "archived") {
   return status === "archived" ? " (archived)" : "";
+}
+
+function formatWorkspaceStatusLabel(
+  status:
+    | "blocked"
+    | "empty"
+    | "incidents"
+    | "ready"
+    | "review"
+    | "running"
+    | "stale",
+) {
+  switch (status) {
+    case "blocked":
+      return "Blocked";
+    case "empty":
+      return "No document";
+    case "incidents":
+      return "With incidents";
+    case "review":
+      return "Pending review";
+    case "running":
+      return "In progress";
+    case "stale":
+      return "Needs refresh";
+    default:
+      return "Ready";
+  }
 }
 
 export function ProjectWorkspace({
@@ -210,6 +248,129 @@ export function ProjectWorkspace({
       null,
     [project?.defaultRuleSetId, ruleSets],
   );
+  const syncActiveDocumentState = useCallback(async () => {
+    if (!activeDocument) {
+      return;
+    }
+
+    await onOpenDocument(activeDocument.id);
+  }, [activeDocument, onOpenDocument]);
+  const {
+    cancelJob,
+    clearTrackedJob,
+    error: translateJobError,
+    isCancelling,
+    isRefreshing,
+    isResuming,
+    isStarting,
+    jobStatus,
+    refreshStatus,
+    resumeTranslation,
+    startTranslation,
+    trackedJobId,
+  } = useTranslateDocumentJob({
+    activeDocument,
+    activeProjectId: project?.id ?? null,
+    chunks,
+    onDocumentStateSync: syncActiveDocumentState,
+  });
+  const {
+    error: contextPreviewError,
+    isLoading: isLoadingContextPreview,
+    preview: contextPreview,
+  } = useTranslationContextPreview({
+    activeDocument,
+    activeProjectId: project?.id ?? null,
+    selectedChunk,
+  });
+  const workspaceState = useMemo(() => {
+    if (!activeDocument) {
+      return {
+        detail:
+          "Select a document to evaluate readiness, launch document translation, and inspect chunk execution.",
+        state: "empty" as const,
+      };
+    }
+
+    if (activeDocument.status !== "segmented") {
+      return {
+        detail:
+          "This document must be segmented before the translation workspace can load chunks or launch document translation.",
+        state: "blocked" as const,
+      };
+    }
+
+    if (chunks.length === 0) {
+      return {
+        detail:
+          "The document is segmented but still needs persisted translation chunks. Build chunks to unlock translate_document.",
+        state: "blocked" as const,
+      };
+    }
+
+    if (trackedJobId && !jobStatus) {
+      return {
+        detail:
+          "A tracked translate_document job exists for this document, but this session still needs a status refresh to recover its progress.",
+        state: "stale" as const,
+      };
+    }
+
+    switch (jobStatus?.status) {
+      case "running":
+      case "pending":
+        return {
+          detail:
+            "Document translation is active. Keep the chunk detail open to inspect context, results, and incidents as the job advances.",
+          state: "running" as const,
+        };
+      case "completed":
+        return {
+          detail:
+            "The tracked document job completed successfully. The document is ready for result inspection and review handoff.",
+          state: "review" as const,
+        };
+      case "completed_with_errors":
+        return {
+          detail:
+            "The last document run completed with incidents. Failed or cancelled chunks remain visible and resumable from the job monitor.",
+          state: "incidents" as const,
+        };
+      case "cancelled":
+      case "failed":
+        return {
+          detail:
+            "The tracked document job stopped before completion. Resume it to continue only the unresolved chunks without reopening the workflow.",
+          state: "incidents" as const,
+        };
+      default:
+        return {
+          detail:
+            "The document has persisted chunks and can launch translate_document directly from this workspace header.",
+          state: "ready" as const,
+        };
+    }
+  }, [activeDocument, chunks.length, jobStatus, trackedJobId]);
+  const canLaunchTranslation =
+    Boolean(activeDocument) &&
+    activeDocument?.status === "segmented" &&
+    chunks.length > 0 &&
+    jobStatus?.status !== "pending" &&
+    jobStatus?.status !== "running" &&
+    !isStarting &&
+    !isResuming;
+  const canResumeTranslation =
+    trackedJobId !== null &&
+    (jobStatus?.status === "cancelled" ||
+      jobStatus?.status === "completed_with_errors" ||
+      jobStatus?.status === "failed") &&
+    !isResuming;
+  const disableChunkBuildActions =
+    isStarting ||
+    isResuming ||
+    isCancelling ||
+    jobStatus?.status === "pending" ||
+    jobStatus?.status === "running";
 
   async function handleSaveEditorialDefaults(
     event: React.FormEvent<HTMLFormElement>,
@@ -428,6 +589,158 @@ export function ProjectWorkspace({
         />
       </div>
 
+      <section
+        className="workspace-panel translation-workspace-header"
+        data-state={workspaceState.state}
+      >
+        <div className="surface-card__heading">
+          <div>
+            <p className="surface-card__eyebrow">Translation workspace</p>
+            <h3>
+              {activeDocument
+                ? activeDocument.name
+                : "Select a document to start"}
+            </h3>
+          </div>
+
+          <div className="translation-workspace-header__actions">
+            <span className="document-status-pill">
+              {formatWorkspaceStatusLabel(workspaceState.state)}
+            </span>
+            <button
+              className="document-action-button"
+              disabled={!canLaunchTranslation}
+              onClick={() => void startTranslation()}
+              type="button"
+            >
+              {isStarting ? "Launching..." : "Translate document"}
+            </button>
+            <button
+              className="document-action-button"
+              disabled={
+                activeDocument?.status !== "segmented" ||
+                disableChunkBuildActions ||
+                isBuildingChunks
+              }
+              onClick={() => void onBuildChunks()}
+              type="button"
+            >
+              {isBuildingChunks ? "Building..." : "Build chunks"}
+            </button>
+            <button
+              className="document-action-button"
+              disabled={!canResumeTranslation}
+              onClick={() => void resumeTranslation()}
+              type="button"
+            >
+              {isResuming ? "Resuming..." : "Resume translation"}
+            </button>
+          </div>
+        </div>
+
+        <p className="surface-card__copy">{workspaceState.detail}</p>
+
+        <div className="translation-workspace-header__badges">
+          <span className="status-pill">
+            {activeDocument ? activeDocument.status : "No active document"}
+          </span>
+          <span className="status-pill">
+            {activeDocument
+              ? `${chunks.length} chunks loaded`
+              : "Chunk list idle"}
+          </span>
+          <span className="status-pill">
+            {jobStatus
+              ? `${jobStatus.completedChunks}/${jobStatus.totalChunks} completed`
+              : "No job progress yet"}
+          </span>
+          <span className="status-pill">
+            {jobStatus?.failedChunks
+              ? `${jobStatus.failedChunks} failed chunks`
+              : "No failed chunks"}
+          </span>
+          <span className="status-pill">
+            {trackedJobId ? `Tracked job ${trackedJobId}` : "No tracked job"}
+          </span>
+        </div>
+
+        {activeDocument ? (
+          <dl className="detail-list">
+            <div>
+              <dt>Document id</dt>
+              <dd>{activeDocument.id}</dd>
+            </div>
+            <div>
+              <dt>Segments</dt>
+              <dd>{segments.length}</dd>
+            </div>
+            <div>
+              <dt>Chunks ready</dt>
+              <dd>{chunks.length}</dd>
+            </div>
+            <div>
+              <dt>Current chunk</dt>
+              <dd>
+                {jobStatus?.currentChunkSequence
+                  ? `Chunk #${jobStatus.currentChunkSequence}`
+                  : selectedChunk
+                    ? `Chunk #${selectedChunk.sequence}`
+                    : "None"}
+              </dd>
+            </div>
+            <div>
+              <dt>Last completed chunk</dt>
+              <dd>
+                {jobStatus?.lastCompletedChunkSequence
+                  ? `Chunk #${jobStatus.lastCompletedChunkSequence}`
+                  : "None"}
+              </dd>
+            </div>
+            <div>
+              <dt>Last job state</dt>
+              <dd>{jobStatus?.status ?? "No persisted job loaded"}</dd>
+            </div>
+          </dl>
+        ) : null}
+      </section>
+
+      <div className="translation-workspace-layout">
+        <ChunkBrowser
+          activeDocument={activeDocument}
+          chunkSegments={chunkSegments}
+          chunkStatuses={jobStatus?.chunkStatuses}
+          contextError={contextPreviewError}
+          contextPreview={contextPreview}
+          disableBuild={disableChunkBuildActions}
+          chunks={chunks}
+          error={chunkError}
+          isBuilding={isBuildingChunks}
+          isLoading={isLoadingChunks}
+          isLoadingContext={isLoadingContextPreview}
+          onBuildChunks={onBuildChunks}
+          onSelectChunk={onSelectChunk}
+          segments={segments}
+          selectedChunk={selectedChunk}
+          selectedChunkId={selectedChunkId}
+          selectedChunkSegments={selectedChunkSegments}
+        />
+
+        <TranslationJobMonitor
+          activeDocument={activeDocument}
+          error={translateJobError}
+          isCancelling={isCancelling}
+          isRefreshing={isRefreshing}
+          isResuming={isResuming}
+          isStarting={isStarting}
+          jobStatus={jobStatus}
+          onCancelJob={cancelJob}
+          onClearTrackedJob={clearTrackedJob}
+          onRefreshStatus={() => refreshStatus()}
+          onResumeTranslation={resumeTranslation}
+          trackedJobId={trackedJobId}
+        />
+      </div>
+
       <SegmentBrowser
         activeDocument={activeDocument}
         error={segmentError}
@@ -442,42 +755,26 @@ export function ProjectWorkspace({
         selectedSegmentId={selectedSegmentId}
       />
 
-      <ChunkBrowser
-        activeDocument={activeDocument}
-        chunkSegments={chunkSegments}
-        chunks={chunks}
-        error={chunkError}
-        isBuilding={isBuildingChunks}
-        isLoading={isLoadingChunks}
-        onBuildChunks={onBuildChunks}
-        onSelectChunk={onSelectChunk}
-        segments={segments}
-        selectedChunk={selectedChunk}
-        selectedChunkId={selectedChunkId}
-        selectedChunkSegments={selectedChunkSegments}
-      />
-
       <section className="workspace-readiness">
-        <p className="surface-card__eyebrow">Project foundation</p>
-        <h3>
-          Document workflow stays available with explicit editorial defaults
-        </h3>
+        <p className="surface-card__eyebrow">Workspace behavior</p>
+        <h3>Document, job, and chunk stay aligned in one workspace</h3>
         <ul className="readiness-list">
           <li>Imported documents are linked explicitly to this project id.</li>
           <li>
-            The project can persist one default glossary, style profile, and
-            rule set at the same time.
+            The active document remains the primary operating object in the
+            workspace header.
           </li>
           <li>
-            Defaults remain editable and optional, with no automatic prompt or
-            AI integration in this phase.
+            The tracked `job_id` acts as the visible execution envelope for
+            translate_document.
           </li>
           <li>
-            Segment processing persists ordered source segments per document.
+            Chunk navigation stays persistent while the selected chunk becomes
+            the main inspection surface.
           </li>
           <li>
-            Chunk building persists reproducible translation cores and overlap
-            links without changing the document ingestion model.
+            Segment-level target text remains available as the atomic review
+            trace after chunk execution.
           </li>
         </ul>
       </section>
