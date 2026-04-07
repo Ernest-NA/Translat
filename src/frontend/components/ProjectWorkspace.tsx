@@ -168,6 +168,13 @@ export function ProjectWorkspace({
   const previousProjectIdRef = useRef<string | null>(null);
   const pendingDefaultsSyncRef =
     useRef<UpdateProjectEditorialDefaultsInput | null>(null);
+  const currentActiveDocumentIdRef = useRef<string | null>(
+    activeDocument?.id ?? null,
+  );
+
+  useEffect(() => {
+    currentActiveDocumentIdRef.current = activeDocument?.id ?? null;
+  }, [activeDocument?.id]);
 
   useEffect(() => {
     const nextProjectId = project?.id ?? null;
@@ -249,11 +256,16 @@ export function ProjectWorkspace({
     [project?.defaultRuleSetId, ruleSets],
   );
   const syncActiveDocumentState = useCallback(async () => {
-    if (!activeDocument) {
+    const observedDocumentId = activeDocument?.id ?? null;
+
+    if (
+      !observedDocumentId ||
+      currentActiveDocumentIdRef.current !== observedDocumentId
+    ) {
       return;
     }
 
-    await onOpenDocument(activeDocument.id);
+    await onOpenDocument(observedDocumentId);
   }, [activeDocument, onOpenDocument]);
   const {
     cancelJob,
@@ -369,13 +381,8 @@ export function ProjectWorkspace({
       jobStatus?.status === "failed") &&
     !isResuming;
   const handleBuildChunks = useCallback(async () => {
-    const shouldClearResumableJob = canResumeTranslation;
     await onBuildChunks();
-
-    if (shouldClearResumableJob) {
-      clearTrackedJob();
-    }
-  }, [canResumeTranslation, clearTrackedJob, onBuildChunks]);
+  }, [onBuildChunks]);
   const disableChunkBuildActions =
     isLoadingChunks ||
     isRestoringTrackedJob ||
