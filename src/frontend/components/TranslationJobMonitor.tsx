@@ -11,6 +11,7 @@ interface TranslationJobMonitorProps {
   error: DesktopCommandError | null;
   isCancelling: boolean;
   isRefreshing: boolean;
+  isRestoringTrackedJob: boolean;
   isResuming: boolean;
   isStarting: boolean;
   jobStatus: TranslateDocumentJobStatus | null;
@@ -65,6 +66,7 @@ export function TranslationJobMonitor({
   error,
   isCancelling,
   isRefreshing,
+  isRestoringTrackedJob,
   isResuming,
   isStarting,
   jobStatus,
@@ -79,6 +81,8 @@ export function TranslationJobMonitor({
     jobStatus?.status === "running" ||
     isStarting ||
     isResuming;
+  const canClearTrackedJob =
+    trackedJobId !== null && !canCancel && !isRestoringTrackedJob;
   const canResume =
     jobStatus?.status === "cancelled" ||
     jobStatus?.status === "completed_with_errors" ||
@@ -172,7 +176,7 @@ export function TranslationJobMonitor({
         </button>
         <button
           className="document-action-button"
-          disabled={!trackedJobId}
+          disabled={!canClearTrackedJob}
           onClick={onClearTrackedJob}
           type="button"
         >

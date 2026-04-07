@@ -376,6 +376,7 @@ export function ProjectWorkspace({
     await onBuildChunks();
   }, [canResumeTranslation, clearTrackedJob, onBuildChunks]);
   const disableChunkBuildActions =
+    isRestoringTrackedJob ||
     isStarting ||
     isResuming ||
     isCancelling ||
@@ -749,6 +750,7 @@ export function ProjectWorkspace({
           error={translateJobError}
           isCancelling={isCancelling}
           isRefreshing={isRefreshing}
+          isRestoringTrackedJob={isRestoringTrackedJob}
           isResuming={isResuming}
           isStarting={isStarting}
           jobStatus={jobStatus}

@@ -560,10 +560,11 @@ export function useTranslateDocumentJob({
       activeProjectId,
       activeDocument.id,
     );
-    persistTrackedJob(documentJobKey, null);
-    setTrackedJobId(null);
-    setJobStatus(null);
+    refreshRequestIdRef.current += 1;
+    clearTrackedJobState(documentJobKey, setTrackedJobId, setJobStatus);
     setError(null);
+    setIsRefreshing(false);
+    setIsRestoringTrackedJob(false);
   }, [activeDocument, activeProjectId]);
 
   return {
