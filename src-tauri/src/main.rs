@@ -70,7 +70,10 @@ fn main() {
             commands::translation_chunks::list_document_translation_chunks,
             commands::context_builder::build_translation_context,
             commands::translate_chunk::translate_chunk,
-            commands::translate_document::translate_document
+            commands::translate_document::translate_document,
+            commands::translate_document_jobs::get_translate_document_job_status,
+            commands::translate_document_jobs::cancel_translate_document_job,
+            commands::translate_document_jobs::resume_translate_document_job
         ])
         .run(tauri::generate_context!())
         .expect("error while running the Translat desktop shell");

@@ -522,6 +522,22 @@ impl<'connection> TaskRunRepository<'connection> {
         )
     }
 
+    pub fn mark_cancelled(
+        &mut self,
+        task_run_id: &str,
+        error_message: &str,
+        output_payload: Option<&str>,
+        completed_at: i64,
+    ) -> Result<TaskRunSummary, PersistenceError> {
+        self.update_terminal_state(
+            task_run_id,
+            crate::task_runs::TASK_RUN_STATUS_CANCELLED,
+            output_payload,
+            Some(error_message),
+            completed_at,
+        )
+    }
+
     fn validate_chunk_document(
         &self,
         document_id: &str,
