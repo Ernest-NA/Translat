@@ -396,11 +396,7 @@ export function useTranslateDocumentJob({
           silent: true,
         });
 
-        if (!refreshedStatus && command === "translate_document") {
-          persistTrackedJob(documentJobKey, null);
-          setTrackedJobId(null);
-          setJobStatus(null);
-        }
+        void refreshedStatus;
       } finally {
         if (latestDocumentKeyRef.current === documentJobKey) {
           setIsResuming(false);

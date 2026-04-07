@@ -368,11 +368,17 @@ export function ProjectWorkspace({
       jobStatus?.status === "completed_with_errors" ||
       jobStatus?.status === "failed") &&
     !isResuming;
+  const handleBuildChunks = useCallback(async () => {
+    if (canResumeTranslation) {
+      clearTrackedJob();
+    }
+
+    await onBuildChunks();
+  }, [canResumeTranslation, clearTrackedJob, onBuildChunks]);
   const disableChunkBuildActions =
     isStarting ||
     isResuming ||
     isCancelling ||
-    canResumeTranslation ||
     jobStatus?.status === "pending" ||
     jobStatus?.status === "running";
 
@@ -630,7 +636,7 @@ export function ProjectWorkspace({
                 disableChunkBuildActions ||
                 isBuildingChunks
               }
-              onClick={() => void onBuildChunks()}
+              onClick={() => void handleBuildChunks()}
               type="button"
             >
               {isBuildingChunks ? "Building..." : "Build chunks"}
@@ -730,7 +736,7 @@ export function ProjectWorkspace({
           isBuilding={isBuildingChunks}
           isLoading={isLoadingChunks}
           isLoadingContext={isLoadingContextPreview}
-          onBuildChunks={onBuildChunks}
+          onBuildChunks={handleBuildChunks}
           onSelectChunk={onSelectChunk}
           segments={segments}
           selectedChunk={selectedChunk}
