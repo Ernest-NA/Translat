@@ -390,9 +390,13 @@ export function ProjectWorkspace({
     !isResuming;
   const canResumeTranslation =
     trackedJobId !== null &&
-    (jobStatus?.status === "cancelled" ||
+    (jobStatus?.status === "pending" ||
+      jobStatus?.status === "cancelled" ||
       jobStatus?.status === "completed_with_errors" ||
       jobStatus?.status === "failed") &&
+    !isStarting &&
+    !isCancelling &&
+    !isRestoringTrackedJob &&
     !isResuming;
   const handleBuildChunks = useCallback(async () => {
     await onBuildChunks();

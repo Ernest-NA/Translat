@@ -306,6 +306,9 @@ export function useTranslateDocumentJob({
           "The desktop shell could not load translate_document job status for the active document.",
           caughtError,
         );
+        const isTransientMissingJobError =
+          isMissingTrackedJobError(normalizedError) &&
+          !options?.clearMissingJob;
 
         if (
           options?.clearMissingJob &&
@@ -317,7 +320,10 @@ export function useTranslateDocumentJob({
         }
 
         setIsRestoringTrackedJob(false);
-        setError(normalizedError);
+
+        if (!isTransientMissingJobError) {
+          setError(normalizedError);
+        }
 
         return null;
       } finally {

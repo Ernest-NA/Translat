@@ -84,6 +84,7 @@ export function TranslationJobMonitor({
   const canClearTrackedJob =
     trackedJobId !== null && !canCancel && !isRestoringTrackedJob;
   const canResume =
+    jobStatus?.status === "pending" ||
     jobStatus?.status === "cancelled" ||
     jobStatus?.status === "completed_with_errors" ||
     jobStatus?.status === "failed";
