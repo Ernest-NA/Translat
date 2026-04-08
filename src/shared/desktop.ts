@@ -381,6 +381,7 @@ export interface ReconstructedDocumentTrace {
   taskRunCount: number;
   documentTaskRunIds: string[];
   latestDocumentTaskRun: TaskRunSummary | null;
+  orphanedChunkTaskRuns: TaskRunSummary[];
   chunks: ReconstructedDocumentChunkTrace[];
 }
 

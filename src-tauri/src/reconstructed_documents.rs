@@ -107,6 +107,7 @@ pub struct ReconstructedDocumentTrace {
     pub task_run_count: i64,
     pub document_task_run_ids: Vec<String>,
     pub latest_document_task_run: Option<TaskRunSummary>,
+    pub orphaned_chunk_task_runs: Vec<TaskRunSummary>,
     pub chunks: Vec<ReconstructedDocumentChunkTrace>,
 }
 

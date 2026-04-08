@@ -20,6 +20,7 @@ use crate::reconstructed_documents::{
 use crate::sections::DocumentSectionSummary;
 use crate::segments::SegmentSummary;
 use crate::task_runs::TaskRunSummary;
+use crate::translate_chunk::TRANSLATE_CHUNK_ACTION_TYPE;
 use crate::translation_chunks::{
     TranslationChunkSegmentSummary, TranslationChunkSummary,
     TRANSLATION_CHUNK_SEGMENT_ROLE_CONTEXT_AFTER, TRANSLATION_CHUNK_SEGMENT_ROLE_CONTEXT_BEFORE,
@@ -141,6 +142,7 @@ fn build_reconstructed_document(
 
     let mut task_runs_by_chunk_id: HashMap<String, Vec<TaskRunSummary>> = HashMap::new();
     let mut document_task_runs = Vec::new();
+    let mut orphaned_chunk_task_runs = Vec::new();
 
     for task_run in task_runs {
         if let Some(chunk_id) = task_run.chunk_id.as_ref() {
@@ -148,6 +150,8 @@ fn build_reconstructed_document(
                 .entry(chunk_id.clone())
                 .or_default()
                 .push(task_run.clone());
+        } else if task_run.action_type == TRANSLATE_CHUNK_ACTION_TYPE {
+            orphaned_chunk_task_runs.push(task_run.clone());
         } else {
             document_task_runs.push(task_run.clone());
         }
@@ -333,6 +337,7 @@ fn build_reconstructed_document(
                 .map(|task_run| task_run.id.clone())
                 .collect(),
             latest_document_task_run,
+            orphaned_chunk_task_runs,
             chunks: chunk_traces,
         },
     }
@@ -908,6 +913,7 @@ mod tests {
         assert_eq!(document.trace.chunk_count, 2);
         assert_eq!(document.trace.task_run_count, 3);
         assert_eq!(document.trace.document_task_run_ids, vec!["task_doc_0001"]);
+        assert!(document.trace.orphaned_chunk_task_runs.is_empty());
         assert_eq!(
             document
                 .trace
@@ -950,6 +956,104 @@ mod tests {
                 .map(|task_run| task_run.id.as_str()),
             Some("task_chunk_0002")
         );
+    }
+
+    #[test]
+    fn reconstructed_document_keeps_orphaned_chunk_runs_out_of_document_level_history() {
+        let fixture = create_runtime_fixture();
+        seed_reconstruction_graph(&fixture.runtime);
+        let mut connection = fixture
+            .runtime
+            .open_connection()
+            .expect("database connection should open");
+
+        TranslationChunkRepository::new(&mut connection)
+            .replace_for_document(
+                DOCUMENT_ID,
+                &[NewTranslationChunk {
+                    id: "doc_reconstruct_001_chunk_0101".to_owned(),
+                    document_id: DOCUMENT_ID.to_owned(),
+                    sequence: 101,
+                    builder_version: "tr12-basic-v1".to_owned(),
+                    strategy: "section-aware-fixed-word-target-v1".to_owned(),
+                    source_text:
+                        "Chapter I\n\nThe gate remained closed.\n\nChapter II\n\nThe lantern burned all night."
+                            .to_owned(),
+                    context_before_text: None,
+                    context_after_text: None,
+                    start_segment_sequence: 1,
+                    end_segment_sequence: 4,
+                    segment_count: 4,
+                    source_word_count: 13,
+                    source_character_count: 73,
+                    created_at: NOW + 90,
+                    updated_at: NOW + 90,
+                }],
+                &[
+                    NewTranslationChunkSegment {
+                        chunk_id: "doc_reconstruct_001_chunk_0101".to_owned(),
+                        segment_id: "seg_0001".to_owned(),
+                        segment_sequence: 1,
+                        position: 1,
+                        role: TRANSLATION_CHUNK_SEGMENT_ROLE_CORE.to_owned(),
+                    },
+                    NewTranslationChunkSegment {
+                        chunk_id: "doc_reconstruct_001_chunk_0101".to_owned(),
+                        segment_id: "seg_0002".to_owned(),
+                        segment_sequence: 2,
+                        position: 2,
+                        role: TRANSLATION_CHUNK_SEGMENT_ROLE_CORE.to_owned(),
+                    },
+                    NewTranslationChunkSegment {
+                        chunk_id: "doc_reconstruct_001_chunk_0101".to_owned(),
+                        segment_id: "seg_0003".to_owned(),
+                        segment_sequence: 3,
+                        position: 3,
+                        role: TRANSLATION_CHUNK_SEGMENT_ROLE_CORE.to_owned(),
+                    },
+                    NewTranslationChunkSegment {
+                        chunk_id: "doc_reconstruct_001_chunk_0101".to_owned(),
+                        segment_id: "seg_0004".to_owned(),
+                        segment_sequence: 4,
+                        position: 4,
+                        role: TRANSLATION_CHUNK_SEGMENT_ROLE_CORE.to_owned(),
+                    },
+                ],
+            )
+            .expect("chunk replacement should preserve a rebuilt chunk set");
+        drop(connection);
+
+        let document = get_reconstructed_document_with_runtime(
+            GetReconstructedDocumentInput {
+                project_id: PROJECT_ID.to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+            },
+            &fixture.runtime,
+        )
+        .expect("reconstructed document should load after chunk rebuild");
+
+        assert_eq!(document.trace.task_run_count, 3);
+        assert_eq!(document.trace.document_task_run_ids, vec!["task_doc_0001"]);
+        assert_eq!(
+            document
+                .trace
+                .latest_document_task_run
+                .as_ref()
+                .map(|task_run| task_run.id.as_str()),
+            Some("task_doc_0001")
+        );
+        assert_eq!(
+            document
+                .trace
+                .orphaned_chunk_task_runs
+                .iter()
+                .map(|task_run| task_run.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["task_chunk_0001", "task_chunk_0002"]
+        );
+        assert_eq!(document.trace.chunk_count, 1);
+        assert_eq!(document.trace.chunks[0].chunk_id, "doc_reconstruct_001_chunk_0101");
+        assert!(document.trace.chunks[0].task_run_ids.is_empty());
     }
 
     #[test]
