@@ -19,6 +19,11 @@ export function useDocumentSegments(
   const [error, setError] = useState<DesktopCommandError | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const requestIdRef = useRef(0);
+  const activeDocumentIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    activeDocumentIdRef.current = activeDocumentId;
+  }, [activeDocumentId]);
 
   const activeDocument =
     documents.find((document) => document.id === activeDocumentId) ?? null;
@@ -78,11 +83,20 @@ export function useDocumentSegments(
       }
 
       const preserveSelection =
-        options?.preserveSelection === true && activeDocumentId === documentId;
+        options?.preserveSelection === true &&
+        activeDocumentIdRef.current === documentId;
+
+      if (options?.preserveSelection === true && !preserveSelection) {
+        return;
+      }
+
       const requestId = requestIdRef.current + 1;
       requestIdRef.current = requestId;
 
-      setActiveDocumentId(documentId);
+      if (!preserveSelection) {
+        setActiveDocumentId(documentId);
+      }
+
       if (!preserveSelection) {
         setSelectedSegmentId(null);
         setSections([]);
@@ -130,7 +144,7 @@ export function useDocumentSegments(
         }
       }
     },
-    [activeDocumentId, activeProjectId],
+    [activeProjectId],
   );
 
   const openDocument = useCallback(

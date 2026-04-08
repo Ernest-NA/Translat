@@ -25,6 +25,16 @@ interface UseTranslateDocumentJobOptions {
   onDocumentStateSync?: (documentId: string) => Promise<void> | void;
 }
 
+interface RefreshStatusOptions {
+  clearMissingJob?: boolean;
+  silent?: boolean;
+}
+
+interface RefreshStatusResult {
+  missingJobConfirmed: boolean;
+  status: TranslateDocumentJobStatus | null;
+}
+
 function normalizeUnexpectedError(
   command:
     | "cancel_translate_document_job"
@@ -252,24 +262,27 @@ export function useTranslateDocumentJob({
     [onDocumentStateSync],
   );
 
-  const refreshStatus = useCallback(
+  const refreshStatusWithOutcome = useCallback(
     async (
       nextJobId?: string | null,
-      options?: {
-        clearMissingJob?: boolean;
-        silent?: boolean;
-      },
-    ) => {
+      options?: RefreshStatusOptions,
+    ): Promise<RefreshStatusResult> => {
       if (!activeProjectId || !activeDocument) {
         setJobStatus(null);
-        return null;
+        return {
+          missingJobConfirmed: false,
+          status: null,
+        };
       }
 
       const jobId = nextJobId ?? trackedJobId;
 
       if (!jobId) {
         setJobStatus(null);
-        return null;
+        return {
+          missingJobConfirmed: false,
+          status: null,
+        };
       }
 
       const documentJobKey = buildDocumentJobKey(
@@ -294,7 +307,10 @@ export function useTranslateDocumentJob({
           refreshRequestIdRef.current !== requestId ||
           latestDocumentKeyRef.current !== documentJobKey
         ) {
-          return null;
+          return {
+            missingJobConfirmed: false,
+            status: null,
+          };
         }
 
         setError(null);
@@ -302,13 +318,19 @@ export function useTranslateDocumentJob({
         setIsRestoringTrackedJob(false);
         await syncDocumentState(nextStatus);
 
-        return nextStatus;
+        return {
+          missingJobConfirmed: false,
+          status: nextStatus,
+        };
       } catch (caughtError) {
         if (
           refreshRequestIdRef.current !== requestId ||
           latestDocumentKeyRef.current !== documentJobKey
         ) {
-          return null;
+          return {
+            missingJobConfirmed: false,
+            status: null,
+          };
         }
 
         const normalizedError = normalizeUnexpectedError(
@@ -327,6 +349,11 @@ export function useTranslateDocumentJob({
           persistTrackedJob(documentJobKey, null);
           setTrackedJobId(null);
           setJobStatus(null);
+
+          return {
+            missingJobConfirmed: true,
+            status: null,
+          };
         }
 
         setIsRestoringTrackedJob(false);
@@ -335,7 +362,10 @@ export function useTranslateDocumentJob({
           setError(normalizedError);
         }
 
-        return null;
+        return {
+          missingJobConfirmed: false,
+          status: null,
+        };
       } finally {
         if (refreshRequestIdRef.current === requestId) {
           setIsRefreshing(false);
@@ -343,6 +373,17 @@ export function useTranslateDocumentJob({
       }
     },
     [activeDocument, activeProjectId, syncDocumentState, trackedJobId],
+  );
+
+  const refreshStatus = useCallback(
+    async (
+      nextJobId?: string | null,
+      options?: RefreshStatusOptions,
+    ): Promise<TranslateDocumentJobStatus | null> => {
+      const refreshResult = await refreshStatusWithOutcome(nextJobId, options);
+      return refreshResult.status;
+    },
+    [refreshStatusWithOutcome],
   );
 
   const runDocumentCommand = useCallback(
@@ -440,13 +481,13 @@ export function useTranslateDocumentJob({
 
         if (command === "translate_document") {
           missingJobClearGraceUntilRef.current = 0;
-          const confirmedStatus = await refreshStatus(jobId, {
+          const refreshResult = await refreshStatusWithOutcome(jobId, {
             clearMissingJob: true,
             silent: true,
           });
 
           if (
-            confirmedStatus?.jobId !== jobId &&
+            refreshResult.missingJobConfirmed &&
             latestDocumentKeyRef.current === documentJobKey
           ) {
             clearTrackedJobState(documentJobKey, setTrackedJobId, setJobStatus);
@@ -465,7 +506,13 @@ export function useTranslateDocumentJob({
         }
       }
     },
-    [activeDocument, activeProjectId, chunks, refreshStatus],
+    [
+      activeDocument,
+      activeProjectId,
+      chunks,
+      refreshStatus,
+      refreshStatusWithOutcome,
+    ],
   );
 
   useEffect(() => {
