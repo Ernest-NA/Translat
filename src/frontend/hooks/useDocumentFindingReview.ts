@@ -298,15 +298,29 @@ export function useDocumentFindingReview({
     onSelectChunk(resolvedChunkId);
   }, [inspection?.anchor.chunkId, onSelectChunk]);
 
-  const selectFinding = useCallback((findingId: string) => {
-    inspectRequestIdRef.current += 1;
-    setSelectedFindingId(findingId);
-    setInspection(null);
-    setInspectionError(null);
-    setActionError(null);
-    setRefreshWarning(null);
-    setLastRetranslation(null);
-  }, []);
+  const selectFinding = useCallback(
+    (findingId: string) => {
+      inspectRequestIdRef.current += 1;
+      setSelectedFindingId((currentFindingId) => {
+        if (currentFindingId === findingId) {
+          return currentFindingId;
+        }
+
+        return findingId;
+      });
+      setInspection(null);
+      setInspectionError(null);
+      setActionError(null);
+      setRefreshWarning(null);
+      setLastRetranslation(null);
+
+      if (selectedFindingId === findingId) {
+        setIsInspectingFinding(Boolean(activeProjectId && activeDocument));
+        void loadInspection();
+      }
+    },
+    [activeDocument, activeProjectId, loadInspection, selectedFindingId],
+  );
 
   const retranslateSelectedFinding = useCallback(async () => {
     if (!(activeProjectId && activeDocument && selectedFindingId)) {

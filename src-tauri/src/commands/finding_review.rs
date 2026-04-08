@@ -1,5 +1,7 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use base64::Engine;
 use serde_json::{json, Map, Value};
 use tauri::State;
 
@@ -700,8 +702,14 @@ fn generate_review_job_id(finding_id: &str, timestamp: i64) -> String {
         .into_iter()
         .rev()
         .collect::<String>();
+    let random_part = rand::random::<u64>();
 
-    format!("review_chunk_{timestamp}_{finding_suffix}")
+    format!(
+        "review_chunk_{}_{}_{}",
+        timestamp,
+        URL_SAFE_NO_PAD.encode(random_part.to_le_bytes()),
+        finding_suffix
+    )
 }
 
 fn validate_document_scope(
@@ -764,7 +772,7 @@ mod tests {
     use tempfile::{tempdir, TempDir};
 
     use super::{
-        inspect_qa_finding_with_runtime,
+        generate_review_job_id, inspect_qa_finding_with_runtime,
         retranslate_chunk_from_qa_finding_with_runtime_and_executor,
     };
     use crate::documents::{NewDocument, DOCUMENT_SOURCE_LOCAL_FILE, DOCUMENT_STATUS_SEGMENTED};
@@ -872,6 +880,16 @@ mod tests {
                 .expect("fake response should serialize"),
             })
         }
+    }
+
+    #[test]
+    fn generate_review_job_id_is_unique_within_the_same_second() {
+        let first = generate_review_job_id(FINDING_ID, 1_900_100_123);
+        let second = generate_review_job_id(FINDING_ID, 1_900_100_123);
+
+        assert_ne!(first, second);
+        assert!(first.starts_with("review_chunk_1900100123_"));
+        assert!(second.starts_with("review_chunk_1900100123_"));
     }
 
     #[test]
