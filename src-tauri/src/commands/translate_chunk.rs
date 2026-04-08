@@ -12,6 +12,7 @@ use crate::context_builder::{
 use crate::error::DesktopCommandError;
 use crate::persistence::bootstrap::DatabaseRuntime;
 use crate::persistence::task_runs::TaskRunRepository;
+use crate::rule_sets::RULE_ACTION_SCOPE_TRANSLATION;
 use crate::task_runs::{NewTaskRun, TASK_RUN_STATUS_CANCELLED, TASK_RUN_STATUS_RUNNING};
 use crate::translate_chunk::{
     build_action_request, parse_action_response, serialize_task_run_output,
@@ -35,6 +36,22 @@ pub(crate) fn translate_chunk_with_runtime_and_executor<E: TranslateChunkExecuto
     input: TranslateChunkInput,
     database_runtime: &DatabaseRuntime,
     executor: &E,
+) -> Result<TranslateChunkResult, DesktopCommandError> {
+    translate_chunk_with_runtime_and_executor_for_scope(
+        input,
+        database_runtime,
+        executor,
+        RULE_ACTION_SCOPE_TRANSLATION,
+    )
+}
+
+pub(crate) fn translate_chunk_with_runtime_and_executor_for_scope<
+    E: TranslateChunkExecutor,
+>(
+    input: TranslateChunkInput,
+    database_runtime: &DatabaseRuntime,
+    executor: &E,
+    action_scope: &str,
 ) -> Result<TranslateChunkResult, DesktopCommandError> {
     let project_id = validate_identifier(&input.project_id, "project id")?;
     let document_id = validate_identifier(&input.document_id, "document id")?;
@@ -62,7 +79,7 @@ pub(crate) fn translate_chunk_with_runtime_and_executor<E: TranslateChunkExecuto
             project_id: project_id.clone(),
             document_id: document_id.clone(),
             chunk_id: chunk_id.clone(),
-            action_scope: "translation".to_owned(),
+            action_scope: action_scope.to_owned(),
         },
     )?;
     let action_request = build_action_request(&context);

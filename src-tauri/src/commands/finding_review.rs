@@ -23,6 +23,7 @@ use crate::reconstructed_documents::{
     ReconstructedDocument, ReconstructedDocumentBlock, ReconstructedDocumentChunkTrace,
     ReconstructedSegment,
 };
+use crate::rule_sets::RULE_ACTION_SCOPE_RETRANSLATION;
 use crate::task_runs::TaskRunSummary;
 use crate::translate_chunk::{
     OpenAiTranslateChunkExecutor, TranslateChunkExecutor, TranslateChunkInput, TranslateChunkResult,
@@ -145,7 +146,7 @@ pub(crate) fn retranslate_chunk_from_qa_finding_with_runtime_and_executor<
         correction_job_id.unwrap_or_else(|| generate_review_job_id(&finding_id, triggered_at));
 
     let translate_result =
-        crate::commands::translate_chunk::translate_chunk_with_runtime_and_executor(
+        crate::commands::translate_chunk::translate_chunk_with_runtime_and_executor_for_scope(
             TranslateChunkInput {
                 project_id: project_id.clone(),
                 document_id: document_id.clone(),
@@ -154,6 +155,7 @@ pub(crate) fn retranslate_chunk_from_qa_finding_with_runtime_and_executor<
             },
             database_runtime,
             executor,
+            RULE_ACTION_SCOPE_RETRANSLATION,
         )?;
     let (finding, review_action_persisted, review_action_warning) =
         match database_runtime.open_connection() {
@@ -521,6 +523,47 @@ fn collect_anchor_candidates(
         }
     }
 
+    for chunk_id in details_review_action_strings(parsed_details, "resolvedChunkId") {
+        candidates.push(AnchorCandidate {
+            chunk_id,
+            resolution_kind: "review_action_resolved_chunk",
+            resolution_message:
+                "The QA finding was re-anchored through the latest persisted review action chunk id."
+                    .to_owned(),
+        });
+    }
+
+    for chunk_id in details_review_action_strings(parsed_details, "chunkId") {
+        candidates.push(AnchorCandidate {
+            chunk_id,
+            resolution_kind: "review_action_chunk",
+            resolution_message:
+                "The QA finding was re-anchored through a chunk id stored in persisted review actions."
+                    .to_owned(),
+        });
+    }
+
+    for task_run_id in details_review_action_strings(parsed_details, "taskRunId") {
+        let task_run = TaskRunRepository::new(connection)
+            .load_by_id(&task_run_id)
+            .map_err(|error| {
+                DesktopCommandError::internal(
+                    "The desktop shell could not reload a review-action task run while resolving a QA finding anchor.",
+                    Some(error.to_string()),
+                )
+            })?;
+
+        if let Some(chunk_id) = task_run.and_then(|task_run| task_run.chunk_id) {
+            candidates.push(AnchorCandidate {
+                chunk_id,
+                resolution_kind: "review_action_task_run_chunk",
+                resolution_message:
+                    "The QA finding was re-anchored through the persisted task run referenced by a review action."
+                        .to_owned(),
+            });
+        }
+    }
+
     for (key, resolution_kind, resolution_message) in [
         (
             "primaryChunkIds",
@@ -641,6 +684,11 @@ fn collect_related_segment_ids(
                 segment_ids.insert(segment_id);
             }
         }
+
+        for segment_id in details_review_action_string_arrays(parsed_details, "translatedSegmentIds")
+        {
+            segment_ids.insert(segment_id);
+        }
     }
 
     segment_ids.retain(|segment_id| segment_map.contains_key(segment_id.as_str()));
@@ -690,6 +738,29 @@ fn details_string_array(details: &Value, key: &str) -> Vec<String> {
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default()
+}
+
+fn details_review_actions(details: Option<&Value>) -> Vec<&Value> {
+    details
+        .and_then(Value::as_object)
+        .and_then(|object| object.get("reviewActions"))
+        .and_then(Value::as_array)
+        .map(|actions| actions.iter().rev().collect::<Vec<_>>())
+        .unwrap_or_default()
+}
+
+fn details_review_action_strings(details: Option<&Value>, key: &str) -> Vec<String> {
+    details_review_actions(details)
+        .into_iter()
+        .filter_map(|review_action| details_string(review_action, key))
+        .collect()
+}
+
+fn details_review_action_string_arrays(details: &Value, key: &str) -> Vec<String> {
+    details_review_actions(Some(details))
+        .into_iter()
+        .flat_map(|review_action| details_string_array(review_action, key))
+        .collect()
 }
 
 fn generate_review_job_id(finding_id: &str, timestamp: i64) -> String {
@@ -781,14 +852,19 @@ mod tests {
     use crate::persistence::documents::DocumentRepository;
     use crate::persistence::projects::ProjectRepository;
     use crate::persistence::qa_findings::QaFindingRepository;
+    use crate::persistence::rule_sets::{RuleRepository, RuleSetRepository};
     use crate::persistence::secret_store::load_or_create_encryption_key;
     use crate::persistence::segments::SegmentRepository;
     use crate::persistence::task_runs::TaskRunRepository;
     use crate::persistence::translation_chunks::TranslationChunkRepository;
-    use crate::projects::NewProject;
+    use crate::projects::{NewProject, ProjectEditorialDefaultsChanges};
     use crate::qa_findings::{
         NewQaFinding, QA_FINDING_SEVERITY_MEDIUM, QA_FINDING_STATUS_OPEN,
         QA_FINDING_STATUS_RESOLVED,
+    };
+    use crate::rule_sets::{
+        NewRule, NewRuleSet, RULE_ACTION_SCOPE_RETRANSLATION, RULE_ACTION_SCOPE_TRANSLATION,
+        RULE_SET_STATUS_ACTIVE, RULE_SEVERITY_MEDIUM, RULE_TYPE_CONSISTENCY,
     };
     use crate::segments::{
         NewSegment, SegmentTranslationWrite, SEGMENT_STATUS_PENDING_TRANSLATION,
@@ -962,6 +1038,17 @@ mod tests {
                 .len(),
             1
         );
+        let captured_requests = observed_requests.lock().expect("requests lock should open");
+        assert_eq!(captured_requests[0].rules.len(), 1);
+        assert_eq!(
+            captured_requests[0].rules[0].name,
+            "Keep ritual wording stable on correction"
+        );
+        assert_eq!(
+            captured_requests[0].rules[0].guidance,
+            "Preserve the established ritual register when correcting a chunk."
+        );
+        drop(captured_requests);
 
         let mut connection = fixture
             .runtime
@@ -1159,6 +1246,62 @@ mod tests {
         ProjectRepository::new(&mut connection)
             .open_project(PROJECT_ID, now + 1)
             .expect("project should become active");
+        RuleSetRepository::new(&mut connection)
+            .create(&NewRuleSet {
+                id: "rset_review_001".to_owned(),
+                name: "Review rules".to_owned(),
+                description: None,
+                status: RULE_SET_STATUS_ACTIVE.to_owned(),
+                created_at: now,
+                updated_at: now,
+                last_opened_at: now,
+            })
+            .expect("rule set should persist");
+        RuleRepository::new(&mut connection)
+            .create(&NewRule {
+                id: "rul_review_translation_001".to_owned(),
+                rule_set_id: "rset_review_001".to_owned(),
+                action_scope: RULE_ACTION_SCOPE_TRANSLATION.to_owned(),
+                rule_type: RULE_TYPE_CONSISTENCY.to_owned(),
+                severity: RULE_SEVERITY_MEDIUM.to_owned(),
+                name: "Keep baseline translation wording".to_owned(),
+                description: Some("Should not be used by corrective retranslation.".to_owned()),
+                guidance: "Use the default translation wording for first-pass chunk output."
+                    .to_owned(),
+                is_enabled: true,
+                created_at: now,
+                updated_at: now,
+            })
+            .expect("translation rule should persist");
+        RuleRepository::new(&mut connection)
+            .create(&NewRule {
+                id: "rul_review_retranslation_001".to_owned(),
+                rule_set_id: "rset_review_001".to_owned(),
+                action_scope: RULE_ACTION_SCOPE_RETRANSLATION.to_owned(),
+                rule_type: RULE_TYPE_CONSISTENCY.to_owned(),
+                severity: RULE_SEVERITY_MEDIUM.to_owned(),
+                name: "Keep ritual wording stable on correction".to_owned(),
+                description: Some(
+                    "This rule should be attached only to finding-driven corrective runs."
+                        .to_owned(),
+                ),
+                guidance:
+                    "Preserve the established ritual register when correcting a chunk."
+                        .to_owned(),
+                is_enabled: true,
+                created_at: now + 1,
+                updated_at: now + 1,
+            })
+            .expect("retranslation rule should persist");
+        ProjectRepository::new(&mut connection)
+            .update_editorial_defaults(&ProjectEditorialDefaultsChanges {
+                project_id: PROJECT_ID.to_owned(),
+                default_glossary_id: None,
+                default_style_profile_id: None,
+                default_rule_set_id: Some("rset_review_001".to_owned()),
+                updated_at: now + 2,
+            })
+            .expect("project editorial defaults should persist");
 
         DocumentRepository::new(&mut connection)
             .create(&NewDocument {

@@ -16,7 +16,7 @@ interface UseDocumentFindingReviewOptions {
   activeDocument: DocumentSummary | null;
   activeProjectId: string | null;
   onRefreshDocument?: (documentId: string) => Promise<void> | void;
-  onSelectChunk?: (chunkId: string) => void;
+  onSelectChunk?: (chunkId: string | null) => void;
 }
 
 function findingTargetKey(projectId: string, documentId: string) {
@@ -286,7 +286,7 @@ export function useDocumentFindingReview({
   useEffect(() => {
     const resolvedChunkId = inspection?.anchor.chunkId ?? null;
 
-    if (!(resolvedChunkId && onSelectChunk)) {
+    if (!onSelectChunk) {
       return;
     }
 

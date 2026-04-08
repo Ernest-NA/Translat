@@ -50,7 +50,7 @@ interface ProjectWorkspaceProps {
   onSyncDocumentState: (documentId: string) => Promise<void>;
   onImportDocuments: (files: FileList) => Promise<number>;
   onProcessDocument: (documentId: string) => Promise<void>;
-  onSelectChunk: (chunkId: string) => void;
+  onSelectChunk: (chunkId: string | null) => void;
   onSaveEditorialDefaults: (
     input: UpdateProjectEditorialDefaultsInput,
   ) => Promise<boolean>;

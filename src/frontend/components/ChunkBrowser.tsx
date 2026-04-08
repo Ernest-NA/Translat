@@ -21,7 +21,7 @@ interface ChunkBrowserProps {
   isLoadingContext?: boolean;
   isLoading: boolean;
   onBuildChunks: () => Promise<void>;
-  onSelectChunk: (chunkId: string) => void;
+  onSelectChunk: (chunkId: string | null) => void;
   segments: SegmentSummary[];
   selectedChunk: TranslationChunkSummary | null;
   selectedChunkId: string | null;
