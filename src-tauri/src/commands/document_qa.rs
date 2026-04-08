@@ -76,6 +76,7 @@ struct QaTraceContext {
     chunk_latest_task_runs: HashMap<String, TaskRunSummary>,
     orphaned_chunk_task_runs: Vec<TaskRunSummary>,
     fallback_job_id: Option<String>,
+    persist_job_id: bool,
     finding_scope_token: String,
 }
 
@@ -320,12 +321,13 @@ fn load_generated_document_qa_ids(
     document_id: &str,
     finding_scope_token: &str,
 ) -> Result<Vec<String>, DesktopCommandError> {
+    let id_prefix = format!("{QA_FINDING_ID_PREFIX}_{document_id}_{finding_scope_token}_");
     let mut statement = transaction
         .prepare(
             r#"
             SELECT id
             FROM qa_findings
-            WHERE document_id = ?1 AND id LIKE ?2
+            WHERE document_id = ?1 AND substr(id, 1, length(?2)) = ?2
             ORDER BY id ASC
             "#,
         )
@@ -336,13 +338,9 @@ fn load_generated_document_qa_ids(
             )
         })?;
     let rows = statement
-        .query_map(
-            params![
-                document_id,
-                format!("{QA_FINDING_ID_PREFIX}_{document_id}_{finding_scope_token}_%")
-            ],
-            |row| row.get::<_, String>(0),
-        )
+        .query_map(params![document_id, id_prefix], |row| {
+            row.get::<_, String>(0)
+        })
         .map_err(|error| {
             DesktopCommandError::internal(
                 "The desktop shell could not read existing document QA findings.",
@@ -548,18 +546,9 @@ fn build_trace_context(
                 .trace
                 .orphaned_chunk_task_runs
                 .clone(),
-            fallback_job_id: reconstructed_document
-                .trace
-                .latest_document_task_run
-                .as_ref()
-                .and_then(|task_run| task_run.job_id.clone()),
-            finding_scope_token: build_finding_scope_token(
-                reconstructed_document
-                    .trace
-                    .latest_document_task_run
-                    .as_ref()
-                    .and_then(|task_run| task_run.job_id.as_deref()),
-            ),
+            fallback_job_id: None,
+            persist_job_id: false,
+            finding_scope_token: build_finding_scope_token(None),
         };
     }
 
@@ -582,13 +571,14 @@ fn build_trace_context(
         chunk_latest_task_runs,
         orphaned_chunk_task_runs,
         fallback_job_id: requested_job_id.map(str::to_owned),
+        persist_job_id: true,
         finding_scope_token: build_finding_scope_token(requested_job_id),
     }
 }
 
 fn build_finding_scope_token(job_id: Option<&str>) -> String {
     match job_id {
-        Some(job_id) => job_id.to_owned(),
+        Some(job_id) => format!("job_{job_id}"),
         None => "document_current".to_owned(),
     }
 }
@@ -709,10 +699,14 @@ fn build_finding_drafts(
                     id: format!("{finding_id_prefix}_chunk_execution_error_{}", task_run.id,),
                     chunk_id: Some(chunk.chunk_id.clone()),
                     task_run_id: Some(task_run.id.clone()),
-                    job_id: task_run
-                        .job_id
-                        .clone()
-                        .or_else(|| trace_context.fallback_job_id.clone()),
+                    job_id: if trace_context.persist_job_id {
+                        task_run
+                            .job_id
+                            .clone()
+                            .or_else(|| trace_context.fallback_job_id.clone())
+                    } else {
+                        None
+                    },
                     finding_type: DOCUMENT_QA_FINDING_TYPE_CHUNK_EXECUTION_ERROR.to_owned(),
                     severity: if task_run.status == TASK_RUN_STATUS_FAILED {
                         QA_FINDING_SEVERITY_HIGH.to_owned()
@@ -748,10 +742,14 @@ fn build_finding_drafts(
                 ),
                 chunk_id: None,
                 task_run_id: Some(task_run.id.clone()),
-                job_id: task_run
-                    .job_id
-                    .clone()
-                    .or_else(|| trace_context.fallback_job_id.clone()),
+                job_id: if trace_context.persist_job_id {
+                    task_run
+                        .job_id
+                        .clone()
+                        .or_else(|| trace_context.fallback_job_id.clone())
+                } else {
+                    None
+                },
                 finding_type: DOCUMENT_QA_FINDING_TYPE_ORPHANED_CHUNK_TASK_RUN.to_owned(),
                 severity: QA_FINDING_SEVERITY_LOW.to_owned(),
                 message: format!(
@@ -905,13 +903,19 @@ fn anchor_for_chunk_id(chunk_id: Option<&str>, trace_context: &QaTraceContext) -
         .as_deref()
         .and_then(|chunk_id| trace_context.chunk_latest_task_runs.get(chunk_id))
         .cloned();
+    let job_id = if trace_context.persist_job_id {
+        task_run
+            .as_ref()
+            .and_then(|task_run| task_run.job_id.clone())
+            .or_else(|| trace_context.fallback_job_id.clone())
+    } else {
+        None
+    };
 
     QaAnchor {
         chunk_id,
         task_run_id: task_run.as_ref().map(|task_run| task_run.id.clone()),
-        job_id: task_run
-            .and_then(|task_run| task_run.job_id)
-            .or_else(|| trace_context.fallback_job_id.clone()),
+        job_id,
     }
 }
 
@@ -1494,6 +1498,44 @@ mod tests {
     }
 
     #[test]
+    fn run_document_consistency_qa_document_scope_keeps_job_ids_null() {
+        let fixture = create_runtime_fixture();
+        seed_document_qa_graph(&fixture.runtime);
+
+        let result = run_document_consistency_qa_with_runtime(
+            RunDocumentConsistencyQaInput {
+                project_id: PROJECT_ID.to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                job_id: None,
+            },
+            &fixture.runtime,
+        )
+        .expect("document-scoped QA should succeed");
+
+        assert_eq!(result.generated_findings.len(), 4);
+        assert!(result
+            .generated_findings
+            .iter()
+            .all(|finding| finding.job_id.is_none()));
+
+        let listed = list_document_qa_findings_with_runtime(
+            ListDocumentQaFindingsInput {
+                project_id: PROJECT_ID.to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                job_id: None,
+            },
+            &fixture.runtime,
+        )
+        .expect("document-scoped findings should be listable");
+
+        assert_eq!(listed.findings.len(), 4);
+        assert!(listed
+            .findings
+            .iter()
+            .all(|finding| finding.job_id.is_none()));
+    }
+
+    #[test]
     fn run_document_consistency_qa_avoids_duplicate_findings_on_rerun() {
         let fixture = create_runtime_fixture();
         seed_document_qa_graph(&fixture.runtime);
@@ -1543,7 +1585,7 @@ mod tests {
 
     #[test]
     fn run_document_consistency_qa_preserves_findings_across_distinct_jobs() {
-        let second_job_id = "job_translate_doc_qa_002";
+        let second_job_id = "jobAtranslateBdocCqaD001";
         let fixture = create_runtime_fixture();
         seed_document_qa_graph(&fixture.runtime);
 
@@ -1713,8 +1755,42 @@ mod tests {
         )
         .expect("second job findings should be listable");
 
+        let second_ids_before_rerun = listed_second
+            .findings
+            .iter()
+            .map(|finding| finding.id.clone())
+            .collect::<Vec<_>>();
+
+        let rerun_first = run_document_consistency_qa_with_runtime(
+            RunDocumentConsistencyQaInput {
+                project_id: PROJECT_ID.to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                job_id: Some(JOB_ID.to_owned()),
+            },
+            &fixture.runtime,
+        )
+        .expect("rerunning the first job QA should succeed");
+        let listed_second_after_rerun = list_document_qa_findings_with_runtime(
+            ListDocumentQaFindingsInput {
+                project_id: PROJECT_ID.to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                job_id: Some(second_job_id.to_owned()),
+            },
+            &fixture.runtime,
+        )
+        .expect("second job findings should remain listable after rerunning the first job");
+
         assert_eq!(listed_first.findings.len(), 4);
         assert_eq!(listed_second.findings.len(), 4);
+        assert_eq!(rerun_first.generated_findings.len(), 4);
+        assert_eq!(
+            listed_second_after_rerun
+                .findings
+                .iter()
+                .map(|finding| finding.id.clone())
+                .collect::<Vec<_>>(),
+            second_ids_before_rerun
+        );
     }
 
     #[test]
