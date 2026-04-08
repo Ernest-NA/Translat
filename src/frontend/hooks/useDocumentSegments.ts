@@ -19,6 +19,11 @@ export function useDocumentSegments(
   const [error, setError] = useState<DesktopCommandError | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const requestIdRef = useRef(0);
+  const activeDocumentIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    activeDocumentIdRef.current = activeDocumentId;
+  }, [activeDocumentId]);
 
   const activeDocument =
     documents.find((document) => document.id === activeDocumentId) ?? null;
@@ -66,19 +71,37 @@ export function useDocumentSegments(
     }
   }, [activeDocumentId, documents]);
 
-  const openDocument = useCallback(
-    async (documentId: string): Promise<void> => {
+  const loadDocument = useCallback(
+    async (
+      documentId: string,
+      options?: {
+        preserveSelection?: boolean;
+      },
+    ): Promise<void> => {
       if (!activeProjectId) {
+        return;
+      }
+
+      const preserveSelection =
+        options?.preserveSelection === true &&
+        activeDocumentIdRef.current === documentId;
+
+      if (options?.preserveSelection === true && !preserveSelection) {
         return;
       }
 
       const requestId = requestIdRef.current + 1;
       requestIdRef.current = requestId;
 
-      setActiveDocumentId(documentId);
-      setSelectedSegmentId(null);
-      setSections([]);
-      setSegments([]);
+      if (!preserveSelection) {
+        setActiveDocumentId(documentId);
+      }
+
+      if (!preserveSelection) {
+        setSelectedSegmentId(null);
+        setSections([]);
+        setSegments([]);
+      }
       setError(null);
       setIsLoading(true);
 
@@ -94,7 +117,13 @@ export function useDocumentSegments(
 
         setSections(overview.sections);
         setSegments(overview.segments);
-        setSelectedSegmentId(overview.segments[0]?.id ?? null);
+        setSelectedSegmentId((currentSelectedSegmentId) =>
+          overview.segments.some(
+            (segment) => segment.id === currentSelectedSegmentId,
+          )
+            ? currentSelectedSegmentId
+            : (overview.segments[0]?.id ?? null),
+        );
       } catch (caughtError) {
         if (requestIdRef.current !== requestId) {
           return;
@@ -116,6 +145,20 @@ export function useDocumentSegments(
       }
     },
     [activeProjectId],
+  );
+
+  const openDocument = useCallback(
+    async (documentId: string): Promise<void> => {
+      await loadDocument(documentId, { preserveSelection: false });
+    },
+    [loadDocument],
+  );
+
+  const refreshDocument = useCallback(
+    async (documentId: string): Promise<void> => {
+      await loadDocument(documentId, { preserveSelection: true });
+    },
+    [loadDocument],
   );
 
   const selectSegment = useCallback((segmentId: string) => {
@@ -144,6 +187,7 @@ export function useDocumentSegments(
   return {
     activeDocument,
     error,
+    refreshDocument,
     isLoading,
     openDocument,
     sections,
