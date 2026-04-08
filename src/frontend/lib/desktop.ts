@@ -23,6 +23,7 @@ import {
   type GlossarySummary,
   type HealthcheckResponse,
   type ImportDocumentInput,
+  type InspectQaFindingInput,
   type ListDocumentQaFindingsInput,
   type ListDocumentSegmentsInput,
   type ListDocumentTranslationChunksInput,
@@ -37,7 +38,10 @@ import {
   type ProjectDocumentsOverview,
   type ProjectSummary,
   type ProjectsOverview,
+  type QaFindingRetranslationResult,
+  type QaFindingReviewContext,
   type ReconstructedDocument,
+  type RetranslateChunkFromQaFindingInput,
   type RuleSetRulesOverview,
   type RuleSetSummary,
   type RuleSetsOverview,
@@ -295,6 +299,15 @@ export function getReconstructedDocument(input: GetReconstructedDocumentInput) {
   );
 }
 
+export function inspectQaFinding(input: InspectQaFindingInput) {
+  return invokeDesktopCommand<QaFindingReviewContext>(
+    DESKTOP_COMMANDS.inspectQaFinding,
+    {
+      input,
+    },
+  );
+}
+
 export function runDocumentConsistencyQa(input: RunDocumentConsistencyQaInput) {
   return invokeDesktopCommand<DocumentConsistencyQaResult>(
     DESKTOP_COMMANDS.runDocumentConsistencyQa,
@@ -307,6 +320,17 @@ export function runDocumentConsistencyQa(input: RunDocumentConsistencyQaInput) {
 export function listDocumentQaFindings(input: ListDocumentQaFindingsInput) {
   return invokeDesktopCommand<DocumentQaFindingsOverview>(
     DESKTOP_COMMANDS.listDocumentQaFindings,
+    {
+      input,
+    },
+  );
+}
+
+export function retranslateChunkFromQaFinding(
+  input: RetranslateChunkFromQaFindingInput,
+) {
+  return invokeDesktopCommand<QaFindingRetranslationResult>(
+    DESKTOP_COMMANDS.retranslateChunkFromQaFinding,
     {
       input,
     },
