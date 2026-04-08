@@ -336,6 +336,7 @@ export function ProjectWorkspace({
     isRetranslating,
     lastRetranslation,
     loadError: findingLoadError,
+    refreshWarning,
     retranslateSelectedFinding,
     selectedFinding,
     selectedFindingId,
@@ -824,6 +825,7 @@ export function ProjectWorkspace({
             isRetranslating={isRetranslating}
             lastRetranslation={lastRetranslation}
             loadError={findingLoadError}
+            refreshWarning={refreshWarning}
             onRetranslateSelectedFinding={retranslateSelectedFinding}
             onSelectFinding={selectFinding}
             selectedFinding={selectedFinding}

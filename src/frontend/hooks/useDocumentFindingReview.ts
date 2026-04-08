@@ -81,6 +81,10 @@ export function useDocumentFindingReview({
   onRefreshDocument,
   onSelectChunk,
 }: UseDocumentFindingReviewOptions) {
+  const currentTargetKey =
+    activeProjectId && activeDocument
+      ? findingTargetKey(activeProjectId, activeDocument.id)
+      : null;
   const [findings, setFindings] = useState<QaFindingSummary[]>([]);
   const [selectedFindingId, setSelectedFindingId] = useState<string | null>(
     null,
@@ -96,11 +100,14 @@ export function useDocumentFindingReview({
   const [actionError, setActionError] = useState<DesktopCommandError | null>(
     null,
   );
+  const [refreshWarning, setRefreshWarning] =
+    useState<DesktopCommandError | null>(null);
   const [isLoadingFindings, setIsLoadingFindings] = useState(false);
   const [isInspectingFinding, setIsInspectingFinding] = useState(false);
   const [isRetranslating, setIsRetranslating] = useState(false);
   const loadRequestIdRef = useRef(0);
   const inspectRequestIdRef = useRef(0);
+  const actionRequestIdRef = useRef(0);
   const activeTargetKeyRef = useRef<string | null>(null);
   const lastSelectedChunkIdRef = useRef<string | null>(null);
 
@@ -115,31 +122,33 @@ export function useDocumentFindingReview({
     [selectedFindingId, sortedFindings],
   );
 
+  useEffect(() => {
+    loadRequestIdRef.current += 1;
+    inspectRequestIdRef.current += 1;
+    actionRequestIdRef.current += 1;
+    activeTargetKeyRef.current = currentTargetKey;
+    lastSelectedChunkIdRef.current = null;
+    setFindings([]);
+    setSelectedFindingId(null);
+    setInspection(null);
+    setLastRetranslation(null);
+    setLoadError(null);
+    setInspectionError(null);
+    setActionError(null);
+    setRefreshWarning(null);
+    setIsLoadingFindings(false);
+    setIsInspectingFinding(false);
+    setIsRetranslating(false);
+  }, [currentTargetKey]);
+
   const loadFindings = useCallback(
     async (options?: { preserveSelection?: boolean }) => {
       if (!(activeProjectId && activeDocument)) {
-        loadRequestIdRef.current += 1;
-        activeTargetKeyRef.current = null;
-        lastSelectedChunkIdRef.current = null;
-        setFindings([]);
-        setSelectedFindingId(null);
-        setInspection(null);
-        setLastRetranslation(null);
-        setLoadError(null);
-        setInspectionError(null);
-        setActionError(null);
         setIsLoadingFindings(false);
-        setIsInspectingFinding(false);
-        setIsRetranslating(false);
         return;
       }
 
       const targetKey = findingTargetKey(activeProjectId, activeDocument.id);
-
-      if (activeTargetKeyRef.current !== targetKey) {
-        lastSelectedChunkIdRef.current = null;
-      }
-
       activeTargetKeyRef.current = targetKey;
       const requestId = loadRequestIdRef.current + 1;
       loadRequestIdRef.current = requestId;
@@ -159,6 +168,9 @@ export function useDocumentFindingReview({
           return;
         }
 
+        const sortedOverviewFindings = [...overview.findings].sort(
+          compareFindingPriority,
+        );
         setFindings(overview.findings);
         setSelectedFindingId((currentFindingId) => {
           if (
@@ -169,7 +181,7 @@ export function useDocumentFindingReview({
             return currentFindingId;
           }
 
-          return overview.findings[0]?.id ?? null;
+          return sortedOverviewFindings[0]?.id ?? null;
         });
       } catch (caughtError) {
         if (
@@ -292,6 +304,7 @@ export function useDocumentFindingReview({
     setInspection(null);
     setInspectionError(null);
     setActionError(null);
+    setRefreshWarning(null);
     setLastRetranslation(null);
   }, []);
 
@@ -300,8 +313,12 @@ export function useDocumentFindingReview({
       return null;
     }
 
+    const targetKey = findingTargetKey(activeProjectId, activeDocument.id);
+    const requestId = actionRequestIdRef.current + 1;
+    actionRequestIdRef.current = requestId;
     setIsRetranslating(true);
     setActionError(null);
+    setRefreshWarning(null);
 
     try {
       const result = await retranslateChunkFromQaFinding({
@@ -310,6 +327,13 @@ export function useDocumentFindingReview({
         findingId: selectedFindingId,
       });
 
+      if (
+        actionRequestIdRef.current !== requestId ||
+        activeTargetKeyRef.current !== targetKey
+      ) {
+        return result;
+      }
+
       setLastRetranslation(result);
 
       if (result.anchor.chunkId && onSelectChunk) {
@@ -317,15 +341,40 @@ export function useDocumentFindingReview({
         onSelectChunk(result.anchor.chunkId);
       }
 
+      let nextRefreshWarning: DesktopCommandError | null = null;
+
       if (onRefreshDocument) {
-        await onRefreshDocument(activeDocument.id);
+        try {
+          await onRefreshDocument(activeDocument.id);
+        } catch (caughtError) {
+          nextRefreshWarning = normalizeError(
+            "retranslate_chunk_from_qa_finding",
+            "The chunk was retranslated, but the document view could not be refreshed afterwards.",
+            caughtError,
+          );
+        }
       }
 
       await loadFindings({ preserveSelection: true });
       await loadInspection();
 
+      if (
+        nextRefreshWarning &&
+        actionRequestIdRef.current === requestId &&
+        activeTargetKeyRef.current === targetKey
+      ) {
+        setRefreshWarning(nextRefreshWarning);
+      }
+
       return result;
     } catch (caughtError) {
+      if (
+        actionRequestIdRef.current !== requestId ||
+        activeTargetKeyRef.current !== targetKey
+      ) {
+        return null;
+      }
+
       const normalizedError = normalizeError(
         "retranslate_chunk_from_qa_finding",
         "The desktop shell could not launch a finding-driven chunk retranslation.",
@@ -334,7 +383,12 @@ export function useDocumentFindingReview({
       setActionError(normalizedError);
       return null;
     } finally {
-      setIsRetranslating(false);
+      if (
+        actionRequestIdRef.current === requestId &&
+        activeTargetKeyRef.current === targetKey
+      ) {
+        setIsRetranslating(false);
+      }
     }
   }, [
     activeDocument,
@@ -356,6 +410,7 @@ export function useDocumentFindingReview({
     isRetranslating,
     lastRetranslation,
     loadError,
+    refreshWarning,
     refreshFindings: loadFindings,
     retranslateSelectedFinding,
     selectedFinding,

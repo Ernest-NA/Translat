@@ -20,6 +20,7 @@ interface FindingReviewPanelProps {
   loadError: DesktopCommandError | null;
   onRetranslateSelectedFinding: () => Promise<unknown>;
   onSelectFinding: (findingId: string) => void;
+  refreshWarning: DesktopCommandError | null;
   selectedFinding: QaFindingSummary | null;
   selectedFindingId: string | null;
 }
@@ -79,6 +80,7 @@ export function FindingReviewPanel({
   loadError,
   onRetranslateSelectedFinding,
   onSelectFinding,
+  refreshWarning,
   selectedFinding,
   selectedFindingId,
 }: FindingReviewPanelProps) {
@@ -317,6 +319,12 @@ export function FindingReviewPanel({
                     {lastRetranslation.reviewActionWarning ? (
                       <p className="form-error" role="alert">
                         {lastRetranslation.reviewActionWarning}
+                      </p>
+                    ) : null}
+
+                    {refreshWarning ? (
+                      <p className="form-error" role="alert">
+                        {refreshWarning.message}
                       </p>
                     ) : null}
                   </>
