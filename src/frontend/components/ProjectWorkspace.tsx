@@ -263,11 +263,25 @@ export function ProjectWorkspace({
         project?.defaultGlossaryId ?? "",
         project?.defaultStyleProfileId ?? "",
         project?.defaultRuleSetId ?? "",
+        ...glossaries.map(
+          (glossary) =>
+            `${glossary.id}:${glossary.updatedAt}:${glossary.status}`,
+        ),
+        ...styleProfiles.map(
+          (styleProfile) =>
+            `${styleProfile.id}:${styleProfile.updatedAt}:${styleProfile.status}`,
+        ),
+        ...ruleSets.map(
+          (ruleSet) => `${ruleSet.id}:${ruleSet.updatedAt}:${ruleSet.status}`,
+        ),
       ].join(":"),
     [
+      glossaries,
       project?.defaultGlossaryId,
       project?.defaultRuleSetId,
       project?.defaultStyleProfileId,
+      ruleSets,
+      styleProfiles,
     ],
   );
   const syncActiveDocumentState = useCallback(
