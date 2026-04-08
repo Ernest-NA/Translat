@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use tauri::State;
@@ -102,6 +102,10 @@ fn build_reconstructed_document(
     chunk_segments: &[TranslationChunkSegmentSummary],
     task_runs: &[TaskRunSummary],
 ) -> ReconstructedDocument {
+    let current_chunk_ids = chunks
+        .iter()
+        .map(|chunk| chunk.id.as_str())
+        .collect::<HashSet<_>>();
     let mut segment_related_chunk_ids: HashMap<String, Vec<String>> = HashMap::new();
     let mut segment_primary_chunk_id: HashMap<String, String> = HashMap::new();
     let mut chunk_core_segment_ids: HashMap<String, Vec<String>> = HashMap::new();
@@ -146,6 +150,16 @@ fn build_reconstructed_document(
 
     for task_run in task_runs {
         if let Some(chunk_id) = task_run.chunk_id.as_ref() {
+            if !current_chunk_ids.contains(chunk_id.as_str()) {
+                if task_run.action_type == TRANSLATE_CHUNK_ACTION_TYPE {
+                    orphaned_chunk_task_runs.push(task_run.clone());
+                } else {
+                    document_task_runs.push(task_run.clone());
+                }
+
+                continue;
+            }
+
             task_runs_by_chunk_id
                 .entry(chunk_id.clone())
                 .or_default()
@@ -343,9 +357,9 @@ fn build_reconstructed_document(
     }
 }
 
-fn collect_block_segments<'segment>(
+fn collect_block_segments(
     section: &DocumentSectionSummary,
-    reconstructed_segments_by_sequence: &HashMap<i64, &'segment ReconstructedSegment>,
+    reconstructed_segments_by_sequence: &HashMap<i64, &ReconstructedSegment>,
 ) -> Vec<ReconstructedSegment> {
     (section.start_segment_sequence..=section.end_segment_sequence)
         .filter_map(|sequence| {
@@ -463,7 +477,7 @@ fn validate_identifier(value: &str, label: &str) -> Result<String, DesktopComman
 mod tests {
     use tempfile::{tempdir, TempDir};
 
-    use super::get_reconstructed_document_with_runtime;
+    use super::{build_reconstructed_document, get_reconstructed_document_with_runtime};
     use crate::documents::{NewDocument, DOCUMENT_SOURCE_LOCAL_FILE, DOCUMENT_STATUS_IMPORTED};
     use crate::persistence::bootstrap::{bootstrap_database, DatabaseRuntime};
     use crate::persistence::documents::DocumentRepository;
@@ -480,15 +494,19 @@ mod tests {
         RECONSTRUCTED_DOCUMENT_STATUS_COMPLETE, RECONSTRUCTED_DOCUMENT_STATUS_PARTIAL,
         RECONSTRUCTED_DOCUMENT_STATUS_UNTRANSLATED,
     };
+    use crate::sections::DocumentSectionSummary;
     use crate::sections::{NewDocumentSection, DOCUMENT_SECTION_TYPE_CHAPTER};
+    use crate::segments::SegmentSummary;
     use crate::segments::{
         NewSegment, SegmentTranslationWrite, SEGMENT_STATUS_PENDING_TRANSLATION,
     };
-    use crate::task_runs::{NewTaskRun, TASK_RUN_STATUS_COMPLETED, TASK_RUN_STATUS_RUNNING};
+    use crate::task_runs::{
+        NewTaskRun, TaskRunSummary, TASK_RUN_STATUS_COMPLETED, TASK_RUN_STATUS_RUNNING,
+    };
     use crate::translate_chunk::TRANSLATE_CHUNK_ACTION_TYPE;
     use crate::translate_document::TRANSLATE_DOCUMENT_ACTION_TYPE;
     use crate::translation_chunks::{
-        NewTranslationChunk, NewTranslationChunkSegment,
+        NewTranslationChunk, NewTranslationChunkSegment, TranslationChunkSummary,
         TRANSLATION_CHUNK_SEGMENT_ROLE_CONTEXT_AFTER, TRANSLATION_CHUNK_SEGMENT_ROLE_CORE,
     };
 
@@ -1052,8 +1070,111 @@ mod tests {
             vec!["task_chunk_0001", "task_chunk_0002"]
         );
         assert_eq!(document.trace.chunk_count, 1);
-        assert_eq!(document.trace.chunks[0].chunk_id, "doc_reconstruct_001_chunk_0101");
+        assert_eq!(
+            document.trace.chunks[0].chunk_id,
+            "doc_reconstruct_001_chunk_0101"
+        );
         assert!(document.trace.chunks[0].task_run_ids.is_empty());
+    }
+
+    #[test]
+    fn reconstructed_document_marks_stale_chunk_ids_as_orphaned_history() {
+        let sections = vec![DocumentSectionSummary {
+            id: "doc_reconstruct_001_sec_0001".to_owned(),
+            document_id: DOCUMENT_ID.to_owned(),
+            sequence: 1,
+            title: "Chapter I".to_owned(),
+            section_type: DOCUMENT_SECTION_TYPE_CHAPTER.to_owned(),
+            level: 1,
+            start_segment_sequence: 1,
+            end_segment_sequence: 1,
+            segment_count: 1,
+            created_at: NOW,
+            updated_at: NOW,
+        }];
+        let segments = vec![SegmentSummary {
+            id: "seg_0001".to_owned(),
+            document_id: DOCUMENT_ID.to_owned(),
+            sequence: 1,
+            source_text: "Chapter I".to_owned(),
+            target_text: Some("Capítulo I".to_owned()),
+            source_word_count: 2,
+            source_character_count: 9,
+            status: "translated".to_owned(),
+            created_at: NOW,
+            updated_at: NOW,
+        }];
+        let chunks = vec![TranslationChunkSummary {
+            id: "doc_reconstruct_001_chunk_0101".to_owned(),
+            document_id: DOCUMENT_ID.to_owned(),
+            sequence: 101,
+            builder_version: "tr12-basic-v1".to_owned(),
+            strategy: "section-aware-fixed-word-target-v1".to_owned(),
+            source_text: "Chapter I".to_owned(),
+            context_before_text: None,
+            context_after_text: None,
+            start_segment_sequence: 1,
+            end_segment_sequence: 1,
+            segment_count: 1,
+            source_word_count: 2,
+            source_character_count: 9,
+            created_at: NOW,
+            updated_at: NOW,
+        }];
+        let task_runs = vec![
+            TaskRunSummary {
+                id: "task_doc_0001".to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                chunk_id: None,
+                job_id: Some("job_translate_doc_001".to_owned()),
+                action_type: TRANSLATE_DOCUMENT_ACTION_TYPE.to_owned(),
+                status: TASK_RUN_STATUS_COMPLETED.to_owned(),
+                input_payload: None,
+                output_payload: None,
+                error_message: None,
+                started_at: NOW,
+                completed_at: Some(NOW + 60),
+                created_at: NOW,
+                updated_at: NOW + 60,
+            },
+            TaskRunSummary {
+                id: "task_chunk_stale_0001".to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                chunk_id: Some("doc_reconstruct_001_chunk_0001".to_owned()),
+                job_id: Some("job_translate_doc_001".to_owned()),
+                action_type: TRANSLATE_CHUNK_ACTION_TYPE.to_owned(),
+                status: TASK_RUN_STATUS_COMPLETED.to_owned(),
+                input_payload: None,
+                output_payload: None,
+                error_message: None,
+                started_at: NOW + 1,
+                completed_at: Some(NOW + 30),
+                created_at: NOW + 1,
+                updated_at: NOW + 30,
+            },
+        ];
+
+        let document = build_reconstructed_document(
+            PROJECT_ID,
+            DOCUMENT_ID,
+            &sections,
+            &segments,
+            &chunks,
+            &[],
+            &task_runs,
+        );
+
+        assert_eq!(document.trace.document_task_run_ids, vec!["task_doc_0001"]);
+        assert_eq!(document.trace.chunks[0].task_run_ids.len(), 0);
+        assert_eq!(
+            document
+                .trace
+                .orphaned_chunk_task_runs
+                .iter()
+                .map(|task_run| task_run.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["task_chunk_stale_0001"]
+        );
     }
 
     #[test]
