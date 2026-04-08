@@ -3,6 +3,7 @@
 mod chapter_contexts;
 mod commands;
 mod context_builder;
+mod document_qa;
 mod documents;
 mod error;
 mod glossaries;
@@ -66,6 +67,8 @@ fn main() {
             commands::projects::open_project,
             commands::projects::update_project_editorial_defaults,
             commands::reconstructed_documents::get_reconstructed_document,
+            commands::document_qa::run_document_consistency_qa,
+            commands::document_qa::list_document_qa_findings,
             commands::segments::list_document_segments,
             commands::segments::process_project_document,
             commands::translation_chunks::build_document_translation_chunks,

@@ -11,6 +11,8 @@ import {
   DESKTOP_COMMANDS,
   type DesktopCommandErrorPayload,
   type DesktopCommandName,
+  type DocumentConsistencyQaResult,
+  type DocumentQaFindingsOverview,
   type DocumentSegmentsOverview,
   type DocumentSummary,
   type DocumentTranslationChunksOverview,
@@ -21,6 +23,7 @@ import {
   type GlossarySummary,
   type HealthcheckResponse,
   type ImportDocumentInput,
+  type ListDocumentQaFindingsInput,
   type ListDocumentSegmentsInput,
   type ListDocumentTranslationChunksInput,
   type ListGlossaryEntriesInput,
@@ -39,6 +42,7 @@ import {
   type RuleSetSummary,
   type RuleSetsOverview,
   type RuleSummary,
+  type RunDocumentConsistencyQaInput,
   type StyleProfileSummary,
   type StyleProfilesOverview,
   type TranslateChunkInput,
@@ -285,6 +289,24 @@ export function translateDocument(input: TranslateDocumentInput) {
 export function getReconstructedDocument(input: GetReconstructedDocumentInput) {
   return invokeDesktopCommand<ReconstructedDocument>(
     DESKTOP_COMMANDS.getReconstructedDocument,
+    {
+      input,
+    },
+  );
+}
+
+export function runDocumentConsistencyQa(input: RunDocumentConsistencyQaInput) {
+  return invokeDesktopCommand<DocumentConsistencyQaResult>(
+    DESKTOP_COMMANDS.runDocumentConsistencyQa,
+    {
+      input,
+    },
+  );
+}
+
+export function listDocumentQaFindings(input: ListDocumentQaFindingsInput) {
+  return invokeDesktopCommand<DocumentQaFindingsOverview>(
+    DESKTOP_COMMANDS.listDocumentQaFindings,
     {
       input,
     },
