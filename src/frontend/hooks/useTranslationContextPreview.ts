@@ -9,12 +9,14 @@ import { buildTranslationContext, DesktopCommandError } from "../lib/desktop";
 interface UseTranslationContextPreviewOptions {
   activeDocument: DocumentSummary | null;
   activeProjectId: string | null;
+  editorialDefaultsFingerprint?: string;
   selectedChunk: TranslationChunkSummary | null;
 }
 
 export function useTranslationContextPreview({
   activeDocument,
   activeProjectId,
+  editorialDefaultsFingerprint,
   selectedChunk,
 }: UseTranslationContextPreviewOptions) {
   const [error, setError] = useState<DesktopCommandError | null>(null);
@@ -33,6 +35,9 @@ export function useTranslationContextPreview({
       return;
     }
 
+    const contextInputFingerprint =
+      editorialDefaultsFingerprint ??
+      `${activeProjectId}:${activeDocument.id}:${selectedChunk.id}`;
     const requestId = requestIdRef.current + 1;
     requestIdRef.current = requestId;
 
@@ -47,14 +52,20 @@ export function useTranslationContextPreview({
       projectId: activeProjectId,
     })
       .then((nextPreview) => {
-        if (requestIdRef.current !== requestId) {
+        if (
+          requestIdRef.current !== requestId ||
+          contextInputFingerprint.length === 0
+        ) {
           return;
         }
 
         setPreview(nextPreview);
       })
       .catch((caughtError) => {
-        if (requestIdRef.current !== requestId) {
+        if (
+          requestIdRef.current !== requestId ||
+          contextInputFingerprint.length === 0
+        ) {
           return;
         }
 
@@ -74,7 +85,12 @@ export function useTranslationContextPreview({
           setIsLoading(false);
         }
       });
-  }, [activeDocument, activeProjectId, selectedChunk]);
+  }, [
+    activeDocument,
+    activeProjectId,
+    editorialDefaultsFingerprint,
+    selectedChunk,
+  ]);
 
   return {
     error,

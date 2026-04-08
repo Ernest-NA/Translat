@@ -16,6 +16,7 @@ import {
 
 const JOB_STORAGE_KEY = "translat.translation-workspace-jobs.v1";
 const JOB_STATUS_POLL_INTERVAL_MS = 4000;
+const JOB_STATUS_MISSING_CLEAR_GRACE_MS = 15000;
 
 interface UseTranslateDocumentJobOptions {
   activeDocument: DocumentSummary | null;
@@ -213,6 +214,7 @@ export function useTranslateDocumentJob({
   const cancelRequestIdRef = useRef(0);
   const commandInFlightRef = useRef(false);
   const cancelInFlightRef = useRef(false);
+  const missingJobClearGraceUntilRef = useRef(0);
   const refreshRequestIdRef = useRef(0);
 
   const syncDocumentState = useCallback(
@@ -337,6 +339,8 @@ export function useTranslateDocumentJob({
       }
 
       commandInFlightRef.current = true;
+      missingJobClearGraceUntilRef.current =
+        Date.now() + JOB_STATUS_MISSING_CLEAR_GRACE_MS;
       const commandRequestId = commandRequestIdRef.current + 1;
       commandRequestIdRef.current = commandRequestId;
       const documentJobKey = buildDocumentJobKey(
@@ -398,7 +402,7 @@ export function useTranslateDocumentJob({
         }
 
         await refreshStatus(jobId, {
-          clearMissingJob: true,
+          clearMissingJob: false,
           silent: true,
         });
       } catch (caughtError) {
@@ -453,6 +457,7 @@ export function useTranslateDocumentJob({
     refreshRequestIdRef.current += 1;
     commandInFlightRef.current = false;
     cancelInFlightRef.current = false;
+    missingJobClearGraceUntilRef.current = 0;
     setIsCancelling(false);
     setIsRefreshing(false);
     setIsResuming(false);
@@ -490,7 +495,9 @@ export function useTranslateDocumentJob({
     }
 
     void refreshStatus(trackedJobId, {
-      clearMissingJob: true,
+      clearMissingJob:
+        Date.now() >= missingJobClearGraceUntilRef.current &&
+        !commandInFlightRef.current,
       silent: true,
     });
   }, [refreshStatus, trackedJobId]);
@@ -509,7 +516,12 @@ export function useTranslateDocumentJob({
     }
 
     const intervalId = window.setInterval(() => {
-      void refreshStatus(trackedJobId, { silent: true });
+      void refreshStatus(trackedJobId, {
+        clearMissingJob:
+          Date.now() >= missingJobClearGraceUntilRef.current &&
+          !commandInFlightRef.current,
+        silent: true,
+      });
     }, JOB_STATUS_POLL_INTERVAL_MS);
 
     return () => {
@@ -627,6 +639,7 @@ export function useTranslateDocumentJob({
     refreshRequestIdRef.current += 1;
     commandInFlightRef.current = false;
     cancelInFlightRef.current = false;
+    missingJobClearGraceUntilRef.current = 0;
     clearTrackedJobState(documentJobKey, setTrackedJobId, setJobStatus);
     setError(null);
     setIsCancelling(false);

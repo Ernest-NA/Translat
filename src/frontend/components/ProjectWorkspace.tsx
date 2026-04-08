@@ -255,6 +255,19 @@ export function ProjectWorkspace({
       null,
     [project?.defaultRuleSetId, ruleSets],
   );
+  const editorialDefaultsFingerprint = useMemo(
+    () =>
+      [
+        project?.defaultGlossaryId ?? "",
+        project?.defaultStyleProfileId ?? "",
+        project?.defaultRuleSetId ?? "",
+      ].join(":"),
+    [
+      project?.defaultGlossaryId,
+      project?.defaultRuleSetId,
+      project?.defaultStyleProfileId,
+    ],
+  );
   const syncActiveDocumentState = useCallback(
     async (documentId: string) => {
       if (currentActiveDocumentIdRef.current !== documentId) {
@@ -292,6 +305,7 @@ export function ProjectWorkspace({
   } = useTranslationContextPreview({
     activeDocument,
     activeProjectId: project?.id ?? null,
+    editorialDefaultsFingerprint,
     selectedChunk,
   });
   const workspaceState = useMemo(() => {
