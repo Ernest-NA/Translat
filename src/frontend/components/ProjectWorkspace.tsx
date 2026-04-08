@@ -337,6 +337,7 @@ export function ProjectWorkspace({
     lastRetranslation,
     loadError: findingLoadError,
     retranslateSelectedFinding,
+    selectedFinding,
     selectedFindingId,
     selectFinding,
   } = useDocumentFindingReview({
@@ -825,6 +826,7 @@ export function ProjectWorkspace({
             loadError={findingLoadError}
             onRetranslateSelectedFinding={retranslateSelectedFinding}
             onSelectFinding={selectFinding}
+            selectedFinding={selectedFinding}
             selectedFindingId={selectedFindingId}
           />
 

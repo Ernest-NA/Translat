@@ -57,5 +57,7 @@ pub struct QaFindingRetranslationResult {
     pub finding: QaFindingSummary,
     pub anchor: QaFindingChunkAnchor,
     pub correction_job_id: String,
+    pub review_action_persisted: bool,
+    pub review_action_warning: Option<String>,
     pub translate_result: TranslateChunkResult,
 }

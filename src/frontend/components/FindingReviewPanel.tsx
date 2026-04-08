@@ -20,6 +20,7 @@ interface FindingReviewPanelProps {
   loadError: DesktopCommandError | null;
   onRetranslateSelectedFinding: () => Promise<unknown>;
   onSelectFinding: (findingId: string) => void;
+  selectedFinding: QaFindingSummary | null;
   selectedFindingId: string | null;
 }
 
@@ -78,10 +79,12 @@ export function FindingReviewPanel({
   loadError,
   onRetranslateSelectedFinding,
   onSelectFinding,
+  selectedFinding,
   selectedFindingId,
 }: FindingReviewPanelProps) {
-  const selectedFinding = inspection?.finding ?? null;
-  const formattedDetails = prettyPrintDetails(selectedFinding?.details ?? null);
+  const formattedDetails = prettyPrintDetails(
+    inspection?.finding.details ?? selectedFinding?.details ?? null,
+  );
 
   return (
     <section className="workspace-panel">
@@ -302,13 +305,21 @@ export function FindingReviewPanel({
                 ) : null}
 
                 {lastRetranslation ? (
-                  <div className="segment-detail__text segment-detail__text--muted">
-                    <strong>Latest corrective run</strong>
-                    <p>
-                      Task run {lastRetranslation.translateResult.taskRun.id} |
-                      job {lastRetranslation.correctionJobId}
-                    </p>
-                  </div>
+                  <>
+                    <div className="segment-detail__text segment-detail__text--muted">
+                      <strong>Latest corrective run</strong>
+                      <p>
+                        Task run {lastRetranslation.translateResult.taskRun.id}{" "}
+                        | job {lastRetranslation.correctionJobId}
+                      </p>
+                    </div>
+
+                    {lastRetranslation.reviewActionWarning ? (
+                      <p className="form-error" role="alert">
+                        {lastRetranslation.reviewActionWarning}
+                      </p>
+                    ) : null}
+                  </>
                 ) : null}
               </>
             ) : (

@@ -202,6 +202,15 @@ export function useDocumentFindingReview({
     void loadFindings();
   }, [loadFindings]);
 
+  useEffect(() => {
+    inspectRequestIdRef.current += 1;
+    setInspection(null);
+    setInspectionError(null);
+    setIsInspectingFinding(
+      Boolean(activeProjectId && activeDocument && selectedFindingId),
+    );
+  }, [activeDocument, activeProjectId, selectedFindingId]);
+
   const loadInspection = useCallback(async () => {
     if (!(activeProjectId && activeDocument && selectedFindingId)) {
       inspectRequestIdRef.current += 1;
@@ -278,7 +287,10 @@ export function useDocumentFindingReview({
   }, [inspection?.anchor.chunkId, onSelectChunk]);
 
   const selectFinding = useCallback((findingId: string) => {
+    inspectRequestIdRef.current += 1;
     setSelectedFindingId(findingId);
+    setInspection(null);
+    setInspectionError(null);
     setActionError(null);
     setLastRetranslation(null);
   }, []);

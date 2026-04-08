@@ -836,6 +836,8 @@ export interface QaFindingRetranslationResult {
   finding: QaFindingSummary;
   anchor: QaFindingChunkAnchor;
   correctionJobId: string;
+  reviewActionPersisted: boolean;
+  reviewActionWarning: string | null;
   translateResult: TranslateChunkResult;
 }
 

@@ -16,7 +16,7 @@ use crate::persistence::documents::DocumentRepository;
 use crate::persistence::qa_findings::QaFindingRepository;
 use crate::persistence::task_runs::TaskRunRepository;
 use crate::persistence::translation_chunks::TranslationChunkRepository;
-use crate::qa_findings::{NewQaFinding, QaFindingSummary, QA_FINDING_STATUS_OPEN};
+use crate::qa_findings::QaFindingSummary;
 use crate::reconstructed_documents::{
     ReconstructedDocument, ReconstructedDocumentBlock, ReconstructedDocumentChunkTrace,
     ReconstructedSegment,
@@ -153,20 +153,33 @@ pub(crate) fn retranslate_chunk_from_qa_finding_with_runtime_and_executor<
             database_runtime,
             executor,
         )?;
-
-    let mut connection = database_runtime.open_connection().map_err(|error| {
-        DesktopCommandError::internal(
-            "The desktop shell could not reopen the encrypted database after chunk retranslation.",
-            Some(error.to_string()),
-        )
-    })?;
-    let finding = append_review_action_to_finding(
-        &mut connection,
-        &inspection.finding,
-        &inspection.anchor,
-        &translate_result,
-        triggered_at,
-    )?;
+    let (finding, review_action_persisted, review_action_warning) =
+        match database_runtime.open_connection() {
+            Ok(mut connection) => match append_review_action_to_finding(
+                &mut connection,
+                &inspection.finding.id,
+                &inspection.anchor,
+                &translate_result,
+                triggered_at,
+            ) {
+                Ok(finding) => (finding, true, None),
+                Err(error) => (
+                    inspection.finding.clone(),
+                    false,
+                    Some(format!(
+                        "The chunk was retranslated, but the review action could not be attached to the QA finding: {}",
+                        error.message
+                    )),
+                ),
+            },
+            Err(error) => (
+                inspection.finding.clone(),
+                false,
+                Some(format!(
+                    "The chunk was retranslated, but the desktop shell could not reopen the encrypted database to append review metadata: {error}"
+                )),
+            ),
+        };
 
     Ok(QaFindingRetranslationResult {
         project_id,
@@ -174,23 +187,39 @@ pub(crate) fn retranslate_chunk_from_qa_finding_with_runtime_and_executor<
         finding,
         anchor: inspection.anchor,
         correction_job_id,
+        review_action_persisted,
+        review_action_warning,
         translate_result,
     })
 }
 
 fn append_review_action_to_finding(
     connection: &mut rusqlite::Connection,
-    finding: &QaFindingSummary,
+    finding_id: &str,
     anchor: &QaFindingChunkAnchor,
     translate_result: &TranslateChunkResult,
     updated_at: i64,
 ) -> Result<QaFindingSummary, DesktopCommandError> {
+    let latest_finding = QaFindingRepository::new(connection)
+        .load_by_id(finding_id)
+        .map_err(|error| {
+            DesktopCommandError::internal(
+                "The desktop shell could not reload the latest QA finding state before appending review metadata.",
+                Some(error.to_string()),
+            )
+        })?
+        .ok_or_else(|| {
+            DesktopCommandError::validation(
+                "The selected QA finding no longer exists, so review metadata could not be appended.",
+                None,
+            )
+        })?;
     let next_details = merge_review_action_details(
-        finding.details.as_deref(),
+        latest_finding.details.as_deref(),
         json!({
             "kind": REVIEW_ACTION_KIND_RETRANSLATE_CHUNK,
             "triggeredAt": updated_at,
-            "findingId": finding.id,
+            "findingId": latest_finding.id,
             "resolvedChunkId": anchor.chunk_id,
             "resolvedChunkSequence": anchor.chunk_sequence,
             "resolutionKind": anchor.resolution_kind,
@@ -207,28 +236,17 @@ fn append_review_action_to_finding(
     )?;
 
     QaFindingRepository::new(connection)
-        .upsert(&NewQaFinding {
-            id: finding.id.clone(),
-            document_id: finding.document_id.clone(),
-            chunk_id: finding.chunk_id.clone(),
-            task_run_id: finding.task_run_id.clone(),
-            job_id: finding.job_id.clone(),
-            finding_type: finding.finding_type.clone(),
-            severity: finding.severity.clone(),
-            status: if finding.status.is_empty() {
-                QA_FINDING_STATUS_OPEN.to_owned()
-            } else {
-                finding.status.clone()
-            },
-            message: finding.message.clone(),
-            details: next_details,
-            created_at: finding.created_at,
-            updated_at,
-        })
+        .update_details(finding_id, next_details.as_deref(), updated_at)
         .map_err(|error| {
             DesktopCommandError::internal(
                 "The desktop shell could not persist review action metadata for the selected QA finding.",
                 Some(error.to_string()),
+            )
+        })?
+        .ok_or_else(|| {
+            DesktopCommandError::validation(
+                "The selected QA finding no longer exists, so review metadata could not be appended.",
+                None,
             )
         })
 }
@@ -742,6 +760,7 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use serde_json::{json, Value};
+    use rusqlite::params;
     use tempfile::{tempdir, TempDir};
 
     use super::{
@@ -759,7 +778,10 @@ mod tests {
     use crate::persistence::task_runs::TaskRunRepository;
     use crate::persistence::translation_chunks::TranslationChunkRepository;
     use crate::projects::NewProject;
-    use crate::qa_findings::{NewQaFinding, QA_FINDING_SEVERITY_MEDIUM, QA_FINDING_STATUS_OPEN};
+    use crate::qa_findings::{
+        NewQaFinding, QA_FINDING_SEVERITY_MEDIUM, QA_FINDING_STATUS_OPEN,
+        QA_FINDING_STATUS_RESOLVED,
+    };
     use crate::segments::{
         NewSegment, SegmentTranslationWrite, SEGMENT_STATUS_PENDING_TRANSLATION,
     };
@@ -784,11 +806,36 @@ mod tests {
 
     struct FakeExecutor {
         observed_requests: Arc<Mutex<Vec<TranslateChunkActionRequest>>>,
+        runtime: Option<DatabaseRuntime>,
+        mutation: ExecuteMutation,
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum ExecuteMutation {
+        None,
+        OverwriteFindingState,
+        DeleteFinding,
     }
 
     impl FakeExecutor {
         fn new(observed_requests: Arc<Mutex<Vec<TranslateChunkActionRequest>>>) -> Self {
-            Self { observed_requests }
+            Self {
+                observed_requests,
+                runtime: None,
+                mutation: ExecuteMutation::None,
+            }
+        }
+
+        fn with_mutation(
+            observed_requests: Arc<Mutex<Vec<TranslateChunkActionRequest>>>,
+            runtime: DatabaseRuntime,
+            mutation: ExecuteMutation,
+        ) -> Self {
+            Self {
+                observed_requests,
+                runtime: Some(runtime),
+                mutation,
+            }
         }
     }
 
@@ -801,6 +848,10 @@ mod tests {
                 .lock()
                 .expect("requests lock should open")
                 .push(request.clone());
+
+            if let Some(runtime) = self.runtime.as_ref() {
+                apply_executor_mutation(runtime, self.mutation);
+            }
 
             Ok(TranslateChunkModelOutput {
                 provider: "fake".to_owned(),
@@ -928,6 +979,130 @@ mod tests {
             details["reviewActions"][0]["taskRunId"].as_str(),
             Some(result.translate_result.task_run.id.as_str())
         );
+        assert!(result.review_action_persisted);
+        assert_eq!(result.review_action_warning, None);
+    }
+
+    #[test]
+    fn review_action_append_reloads_latest_finding_state_before_merging_details() {
+        let fixture = create_runtime_fixture();
+        seed_review_graph(&fixture.runtime);
+        let observed_requests = Arc::new(Mutex::new(Vec::new()));
+
+        let result = retranslate_chunk_from_qa_finding_with_runtime_and_executor(
+            RetranslateChunkFromQaFindingInput {
+                project_id: PROJECT_ID.to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                finding_id: FINDING_ID.to_owned(),
+                job_id: None,
+            },
+            &fixture.runtime,
+            &FakeExecutor::with_mutation(
+                observed_requests,
+                fixture.runtime.clone(),
+                ExecuteMutation::OverwriteFindingState,
+            ),
+        )
+        .expect("finding-driven retranslation should succeed");
+
+        let details = serde_json::from_str::<Value>(
+            result
+                .finding
+                .details
+                .as_deref()
+                .expect("updated finding details should persist"),
+        )
+        .expect("finding details should remain JSON");
+
+        assert_eq!(result.finding.status, QA_FINDING_STATUS_RESOLVED);
+        assert_eq!(result.finding.chunk_id, None);
+        assert_eq!(details["manualStatus"].as_str(), Some("reviewed"));
+        assert_eq!(
+            details["reviewActions"][0]["taskRunId"].as_str(),
+            Some(result.translate_result.task_run.id.as_str())
+        );
+        assert!(result.review_action_persisted);
+        assert_eq!(result.review_action_warning, None);
+    }
+
+    #[test]
+    fn retranslation_returns_success_when_review_action_metadata_cannot_persist() {
+        let fixture = create_runtime_fixture();
+        seed_review_graph(&fixture.runtime);
+        let observed_requests = Arc::new(Mutex::new(Vec::new()));
+
+        let result = retranslate_chunk_from_qa_finding_with_runtime_and_executor(
+            RetranslateChunkFromQaFindingInput {
+                project_id: PROJECT_ID.to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                finding_id: FINDING_ID.to_owned(),
+                job_id: None,
+            },
+            &fixture.runtime,
+            &FakeExecutor::with_mutation(
+                observed_requests,
+                fixture.runtime.clone(),
+                ExecuteMutation::DeleteFinding,
+            ),
+        )
+        .expect("chunk retranslation should still succeed");
+
+        let mut connection = fixture
+            .runtime
+            .open_connection()
+            .expect("database connection should open");
+        let task_runs = TaskRunRepository::new(&mut connection)
+            .list_by_chunk(CHUNK_ID)
+            .expect("chunk task runs should reload");
+
+        assert_eq!(result.finding.id, FINDING_ID);
+        assert!(!result.review_action_persisted);
+        assert!(result
+            .review_action_warning
+            .as_deref()
+            .is_some_and(|warning| warning.contains("no longer exists")));
+        assert_eq!(task_runs.len(), 2);
+    }
+
+    fn apply_executor_mutation(runtime: &DatabaseRuntime, mutation: ExecuteMutation) {
+        match mutation {
+            ExecuteMutation::None => {}
+            ExecuteMutation::OverwriteFindingState => {
+                let mut connection = runtime
+                    .open_connection()
+                    .expect("database connection should open");
+                let mut repository = QaFindingRepository::new(&mut connection);
+                let existing = repository
+                    .load_by_id(FINDING_ID)
+                    .expect("finding should reload")
+                    .expect("finding should exist");
+
+                repository
+                    .upsert(&NewQaFinding {
+                        id: existing.id,
+                        document_id: existing.document_id,
+                        chunk_id: None,
+                        task_run_id: existing.task_run_id,
+                        job_id: existing.job_id,
+                        finding_type: existing.finding_type,
+                        severity: existing.severity,
+                        status: QA_FINDING_STATUS_RESOLVED.to_owned(),
+                        message: existing.message,
+                        details: Some("{\"manualStatus\":\"reviewed\"}".to_owned()),
+                        created_at: existing.created_at,
+                        updated_at: existing.updated_at + 50,
+                    })
+                    .expect("manual finding update should persist");
+            }
+            ExecuteMutation::DeleteFinding => {
+                let connection = runtime
+                    .open_connection()
+                    .expect("database connection should open");
+                connection
+                    .execute("DELETE FROM qa_findings WHERE id = ?1", params![FINDING_ID])
+                    .expect("finding delete should persist");
+            }
+        }
     }
 
     fn create_runtime_fixture() -> RuntimeFixture {
