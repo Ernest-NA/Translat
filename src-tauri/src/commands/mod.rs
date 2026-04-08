@@ -1,6 +1,7 @@
 pub mod context_builder;
 pub mod document_qa;
 pub mod documents;
+pub mod finding_review;
 pub mod glossaries;
 pub mod glossary_entries;
 pub mod healthcheck;

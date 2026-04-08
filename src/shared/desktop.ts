@@ -8,9 +8,11 @@ export const DESKTOP_COMMANDS = {
   buildTranslationContext: "build_translation_context",
   buildDocumentTranslationChunks: "build_document_translation_chunks",
   getReconstructedDocument: "get_reconstructed_document",
+  inspectQaFinding: "inspect_qa_finding",
   listDocumentQaFindings: "list_document_qa_findings",
   healthcheck: "healthcheck",
   importProjectDocument: "import_project_document",
+  retranslateChunkFromQaFinding: "retranslate_chunk_from_qa_finding",
   runDocumentConsistencyQa: "run_document_consistency_qa",
   listDocumentTranslationChunks: "list_document_translation_chunks",
   translateChunk: "translate_chunk",
@@ -806,12 +808,58 @@ export interface DocumentQaFindingsOverview {
   findings: QaFindingSummary[];
 }
 
+export interface QaFindingChunkAnchor {
+  findingId: string;
+  chunkId: string | null;
+  chunkSequence: number | null;
+  resolutionKind: string;
+  resolutionMessage: string;
+  canRetranslate: boolean;
+}
+
+export interface QaFindingReviewContext {
+  projectId: string;
+  documentId: string;
+  finding: QaFindingSummary;
+  anchor: QaFindingChunkAnchor;
+  chunk: TranslationChunkSummary | null;
+  chunkSegments: TranslationChunkSegmentSummary[];
+  latestChunkTaskRun: TaskRunSummary | null;
+  latestDocumentTaskRun: TaskRunSummary | null;
+  relatedBlock: ReconstructedDocumentBlock | null;
+  relatedSegments: ReconstructedSegment[];
+}
+
+export interface QaFindingRetranslationResult {
+  projectId: string;
+  documentId: string;
+  finding: QaFindingSummary;
+  anchor: QaFindingChunkAnchor;
+  correctionJobId: string;
+  reviewActionPersisted: boolean;
+  reviewActionWarning: string | null;
+  translateResult: TranslateChunkResult;
+}
+
 export interface ListDocumentSegmentsInput {
   projectId: string;
   documentId: string;
 }
 
+export interface InspectQaFindingInput {
+  projectId: string;
+  documentId: string;
+  findingId: string;
+}
+
 export interface ListDocumentTranslationChunksInput {
   projectId: string;
   documentId: string;
+}
+
+export interface RetranslateChunkFromQaFindingInput {
+  projectId: string;
+  documentId: string;
+  findingId: string;
+  jobId?: string;
 }

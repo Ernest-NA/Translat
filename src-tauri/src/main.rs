@@ -6,6 +6,7 @@ mod context_builder;
 mod document_qa;
 mod documents;
 mod error;
+mod finding_review;
 mod glossaries;
 mod glossary_entries;
 mod persistence;
@@ -69,6 +70,8 @@ fn main() {
             commands::reconstructed_documents::get_reconstructed_document,
             commands::document_qa::run_document_consistency_qa,
             commands::document_qa::list_document_qa_findings,
+            commands::finding_review::inspect_qa_finding,
+            commands::finding_review::retranslate_chunk_from_qa_finding,
             commands::segments::list_document_segments,
             commands::segments::process_project_document,
             commands::translation_chunks::build_document_translation_chunks,

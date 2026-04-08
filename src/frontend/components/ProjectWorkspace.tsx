@@ -18,12 +18,14 @@ import type {
   TranslationChunkSummary,
   UpdateProjectEditorialDefaultsInput,
 } from "../../shared/desktop";
+import { useDocumentFindingReview } from "../hooks/useDocumentFindingReview";
 import { useTranslateDocumentJob } from "../hooks/useTranslateDocumentJob";
 import { useTranslationContextPreview } from "../hooks/useTranslationContextPreview";
 import type { DesktopCommandError } from "../lib/desktop";
 import { ChunkBrowser } from "./ChunkBrowser";
 import { DocumentImporter } from "./DocumentImporter";
 import { DocumentList } from "./DocumentList";
+import { FindingReviewPanel } from "./FindingReviewPanel";
 import { SegmentBrowser } from "./SegmentBrowser";
 import { TranslationJobMonitor } from "./TranslationJobMonitor";
 
@@ -48,7 +50,7 @@ interface ProjectWorkspaceProps {
   onSyncDocumentState: (documentId: string) => Promise<void>;
   onImportDocuments: (files: FileList) => Promise<number>;
   onProcessDocument: (documentId: string) => Promise<void>;
-  onSelectChunk: (chunkId: string) => void;
+  onSelectChunk: (chunkId: string | null) => void;
   onSaveEditorialDefaults: (
     input: UpdateProjectEditorialDefaultsInput,
   ) => Promise<boolean>;
@@ -323,6 +325,27 @@ export function ProjectWorkspace({
     activeProjectId: project?.id ?? null,
     editorialDefaultsFingerprint,
     selectedChunk,
+  });
+  const {
+    actionError: findingActionError,
+    findings,
+    inspection: findingInspection,
+    inspectionError: findingInspectionError,
+    isInspectingFinding,
+    isLoadingFindings,
+    isRetranslating,
+    lastRetranslation,
+    loadError: findingLoadError,
+    refreshWarning,
+    retranslateSelectedFinding,
+    selectedFinding,
+    selectedFindingId,
+    selectFinding,
+  } = useDocumentFindingReview({
+    activeDocument,
+    activeProjectId: project?.id ?? null,
+    onRefreshDocument: syncActiveDocumentState,
+    onSelectChunk,
   });
   const workspaceState = useMemo(() => {
     if (!activeDocument) {
@@ -718,6 +741,11 @@ export function ProjectWorkspace({
             {trackedJobId ? `Tracked job ${trackedJobId}` : "No tracked job"}
           </span>
           <span className="status-pill">
+            {activeDocument
+              ? `${findings.length} QA findings`
+              : "QA findings idle"}
+          </span>
+          <span className="status-pill">
             {isRestoringTrackedJob
               ? "Restoring tracked job"
               : "Job restore idle"}
@@ -785,20 +813,40 @@ export function ProjectWorkspace({
           selectedChunkSegments={selectedChunkSegments}
         />
 
-        <TranslationJobMonitor
-          activeDocument={activeDocument}
-          error={translateJobError}
-          isCancelling={isCancelling}
-          isRefreshing={isRefreshing}
-          isRestoringTrackedJob={isRestoringTrackedJob}
-          isResuming={isResuming}
-          jobStatus={jobStatus}
-          onCancelJob={cancelJob}
-          onClearTrackedJob={clearTrackedJob}
-          onRefreshStatus={() => refreshStatus()}
-          onResumeTranslation={resumeTranslation}
-          trackedJobId={trackedJobId}
-        />
+        <div className="translation-workspace-sidebar">
+          <FindingReviewPanel
+            actionError={findingActionError}
+            activeDocument={activeDocument}
+            findings={findings}
+            inspection={findingInspection}
+            inspectionError={findingInspectionError}
+            isInspectingFinding={isInspectingFinding}
+            isLoadingFindings={isLoadingFindings}
+            isRetranslating={isRetranslating}
+            lastRetranslation={lastRetranslation}
+            loadError={findingLoadError}
+            refreshWarning={refreshWarning}
+            onRetranslateSelectedFinding={retranslateSelectedFinding}
+            onSelectFinding={selectFinding}
+            selectedFinding={selectedFinding}
+            selectedFindingId={selectedFindingId}
+          />
+
+          <TranslationJobMonitor
+            activeDocument={activeDocument}
+            error={translateJobError}
+            isCancelling={isCancelling}
+            isRefreshing={isRefreshing}
+            isRestoringTrackedJob={isRestoringTrackedJob}
+            isResuming={isResuming}
+            jobStatus={jobStatus}
+            onCancelJob={cancelJob}
+            onClearTrackedJob={clearTrackedJob}
+            onRefreshStatus={() => refreshStatus()}
+            onResumeTranslation={resumeTranslation}
+            trackedJobId={trackedJobId}
+          />
+        </div>
       </div>
 
       <SegmentBrowser
