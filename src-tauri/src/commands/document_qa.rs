@@ -17,6 +17,7 @@ use crate::document_qa::{
 };
 use crate::error::DesktopCommandError;
 use crate::persistence::bootstrap::DatabaseRuntime;
+use crate::persistence::documents::DocumentRepository;
 use crate::persistence::qa_findings::QaFindingRepository;
 use crate::persistence::task_runs::TaskRunRepository;
 use crate::qa_findings::{
@@ -75,6 +76,7 @@ struct QaTraceContext {
     chunk_latest_task_runs: HashMap<String, TaskRunSummary>,
     orphaned_chunk_task_runs: Vec<TaskRunSummary>,
     fallback_job_id: Option<String>,
+    finding_scope_token: String,
 }
 
 #[tauri::command]
@@ -128,6 +130,7 @@ pub(crate) fn run_document_consistency_qa_with_runtime(
     let generated_findings = persist_document_consistency_findings(
         &mut connection,
         &document_id,
+        &trace_context.finding_scope_token,
         &finding_drafts,
         executed_at,
     )?;
@@ -152,21 +155,14 @@ pub(crate) fn list_document_qa_findings_with_runtime(
         .job_id
         .map(|value| validate_identifier(&value, "job id"))
         .transpose()?;
-    let listed_at = current_timestamp()?;
     let mut connection = database_runtime.open_connection().map_err(|error| {
         DesktopCommandError::internal(
             "The desktop shell could not open the encrypted database for listing QA findings.",
             Some(error.to_string()),
         )
     })?;
-    let _ = load_reconstructed_document(
-        &mut connection,
-        database_runtime,
-        &project_id,
-        &document_id,
-        listed_at,
-    )?;
-    let _ = load_requested_job_task_runs(&mut connection, &document_id, job_id.as_deref())?;
+    validate_document_scope(&mut connection, &project_id, &document_id)?;
+    validate_listing_job_scope(&mut connection, &document_id, job_id.as_deref())?;
     let findings = QaFindingRepository::new(&mut connection)
         .list_by_document(&document_id)
         .map_err(|error| {
@@ -193,6 +189,7 @@ pub(crate) fn list_document_qa_findings_with_runtime(
 fn persist_document_consistency_findings(
     connection: &mut rusqlite::Connection,
     document_id: &str,
+    finding_scope_token: &str,
     finding_drafts: &[QaFindingDraft],
     executed_at: i64,
 ) -> Result<Vec<QaFindingSummary>, DesktopCommandError> {
@@ -270,7 +267,7 @@ fn persist_document_consistency_findings(
         .iter()
         .map(|draft| draft.id.as_str())
         .collect::<HashSet<_>>();
-    let stale_ids = load_generated_document_qa_ids(&transaction, document_id)?
+    let stale_ids = load_generated_document_qa_ids(&transaction, document_id, finding_scope_token)?
         .into_iter()
         .filter(|finding_id| !retained_ids.contains(finding_id.as_str()))
         .collect::<Vec<_>>();
@@ -321,6 +318,7 @@ fn persist_document_consistency_findings(
 fn load_generated_document_qa_ids(
     transaction: &rusqlite::Transaction<'_>,
     document_id: &str,
+    finding_scope_token: &str,
 ) -> Result<Vec<String>, DesktopCommandError> {
     let mut statement = transaction
         .prepare(
@@ -339,7 +337,10 @@ fn load_generated_document_qa_ids(
         })?;
     let rows = statement
         .query_map(
-            params![document_id, format!("{QA_FINDING_ID_PREFIX}_%")],
+            params![
+                document_id,
+                format!("{QA_FINDING_ID_PREFIX}_{document_id}_{finding_scope_token}_%")
+            ],
             |row| row.get::<_, String>(0),
         )
         .map_err(|error| {
@@ -449,6 +450,75 @@ fn load_requested_job_task_runs(
     Ok(task_runs)
 }
 
+fn validate_document_scope(
+    connection: &mut rusqlite::Connection,
+    project_id: &str,
+    document_id: &str,
+) -> Result<(), DesktopCommandError> {
+    let document = DocumentRepository::new(connection)
+        .load_processing_record(project_id, document_id)
+        .map_err(|error| {
+            DesktopCommandError::internal(
+                "The desktop shell could not validate the selected document for document QA.",
+                Some(error.to_string()),
+            )
+        })?;
+
+    if document.is_none() {
+        return Err(DesktopCommandError::validation(
+            "The selected document does not exist in the active project.",
+            None,
+        ));
+    }
+
+    Ok(())
+}
+
+fn validate_listing_job_scope(
+    connection: &mut rusqlite::Connection,
+    document_id: &str,
+    job_id: Option<&str>,
+) -> Result<(), DesktopCommandError> {
+    let Some(job_id) = job_id else {
+        return Ok(());
+    };
+
+    let has_persisted_findings = QaFindingRepository::new(connection)
+        .list_by_job_id(job_id)
+        .map_err(|error| {
+            DesktopCommandError::internal(
+                "The desktop shell could not inspect persisted QA findings for the selected job.",
+                Some(error.to_string()),
+            )
+        })?
+        .into_iter()
+        .any(|finding| finding.document_id == document_id);
+
+    if has_persisted_findings {
+        return Ok(());
+    }
+
+    let has_task_runs = TaskRunRepository::new(connection)
+        .list_by_job_id(job_id)
+        .map_err(|error| {
+            DesktopCommandError::internal(
+                "The desktop shell could not inspect task runs for the selected QA job.",
+                Some(error.to_string()),
+            )
+        })?
+        .into_iter()
+        .any(|task_run| task_run.document_id == document_id);
+
+    if has_task_runs {
+        return Ok(());
+    }
+
+    Err(DesktopCommandError::validation(
+        "The selected QA job does not exist for the active document.",
+        None,
+    ))
+}
+
 fn build_trace_context(
     reconstructed_document: &ReconstructedDocument,
     requested_job_id: Option<&str>,
@@ -483,6 +553,13 @@ fn build_trace_context(
                 .latest_document_task_run
                 .as_ref()
                 .and_then(|task_run| task_run.job_id.clone()),
+            finding_scope_token: build_finding_scope_token(
+                reconstructed_document
+                    .trace
+                    .latest_document_task_run
+                    .as_ref()
+                    .and_then(|task_run| task_run.job_id.as_deref()),
+            ),
         };
     }
 
@@ -505,6 +582,14 @@ fn build_trace_context(
         chunk_latest_task_runs,
         orphaned_chunk_task_runs,
         fallback_job_id: requested_job_id.map(str::to_owned),
+        finding_scope_token: build_finding_scope_token(requested_job_id),
+    }
+}
+
+fn build_finding_scope_token(job_id: Option<&str>) -> String {
+    match job_id {
+        Some(job_id) => job_id.to_owned(),
+        None => "document_current".to_owned(),
     }
 }
 
@@ -513,6 +598,11 @@ fn build_finding_drafts(
     trace_context: &QaTraceContext,
 ) -> Vec<QaFindingDraft> {
     let mut findings = BTreeMap::new();
+    let finding_id_prefix = format!(
+        "{QA_FINDING_ID_PREFIX}_{document_id}_{scope}",
+        document_id = reconstructed_document.document_id,
+        scope = trace_context.finding_scope_token.as_str()
+    );
     let chunk_sequences = reconstructed_document
         .trace
         .chunks
@@ -536,11 +626,7 @@ fn build_finding_drafts(
                 insert_finding(
                     &mut findings,
                     QaFindingDraft {
-                        id: format!(
-                            "{QA_FINDING_ID_PREFIX}_{document_id}_partial_block_translation_{}",
-                            block.id,
-                            document_id = reconstructed_document.document_id
-                        ),
+                        id: format!("{finding_id_prefix}_partial_block_translation_{}", block.id,),
                         chunk_id: anchor.chunk_id,
                         task_run_id: anchor.task_run_id,
                         job_id: anchor.job_id,
@@ -574,9 +660,8 @@ fn build_finding_drafts(
                         &mut findings,
                         QaFindingDraft {
                             id: format!(
-                                "{QA_FINDING_ID_PREFIX}_{document_id}_source_fallback_segment_{}",
+                                "{finding_id_prefix}_source_fallback_segment_{}",
                                 segment.id,
-                                document_id = reconstructed_document.document_id
                             ),
                             chunk_id: anchor.chunk_id,
                             task_run_id: anchor.task_run_id,
@@ -621,11 +706,7 @@ fn build_finding_drafts(
             insert_finding(
                 &mut findings,
                 QaFindingDraft {
-                    id: format!(
-                        "{QA_FINDING_ID_PREFIX}_{document_id}_chunk_execution_error_{}",
-                        task_run.id,
-                        document_id = reconstructed_document.document_id
-                    ),
+                    id: format!("{finding_id_prefix}_chunk_execution_error_{}", task_run.id,),
                     chunk_id: Some(chunk.chunk_id.clone()),
                     task_run_id: Some(task_run.id.clone()),
                     job_id: task_run
@@ -662,9 +743,8 @@ fn build_finding_drafts(
             &mut findings,
             QaFindingDraft {
                 id: format!(
-                    "{QA_FINDING_ID_PREFIX}_{document_id}_orphaned_chunk_task_run_{}",
+                    "{finding_id_prefix}_orphaned_chunk_task_run_{}",
                     task_run.id,
-                    document_id = reconstructed_document.document_id
                 ),
                 chunk_id: None,
                 task_run_id: Some(task_run.id.clone()),
@@ -753,10 +833,9 @@ fn build_finding_drafts(
                 &mut findings,
                 QaFindingDraft {
                     id: format!(
-                        "{QA_FINDING_ID_PREFIX}_{document_id}_neighbor_chunk_translation_drift_{}_{}",
+                        "{finding_id_prefix}_neighbor_chunk_translation_drift_{}_{}",
                         previous_segment.id,
                         current_segment.id,
-                        document_id = reconstructed_document.document_id
                     ),
                     chunk_id: anchor.chunk_id,
                     task_run_id: anchor.task_run_id,
@@ -1463,6 +1542,182 @@ mod tests {
     }
 
     #[test]
+    fn run_document_consistency_qa_preserves_findings_across_distinct_jobs() {
+        let second_job_id = "job_translate_doc_qa_002";
+        let fixture = create_runtime_fixture();
+        seed_document_qa_graph(&fixture.runtime);
+
+        let first = run_document_consistency_qa_with_runtime(
+            RunDocumentConsistencyQaInput {
+                project_id: PROJECT_ID.to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                job_id: Some(JOB_ID.to_owned()),
+            },
+            &fixture.runtime,
+        )
+        .expect("first job QA should succeed");
+
+        let mut connection = fixture
+            .runtime
+            .open_connection()
+            .expect("database connection should open");
+        TaskRunRepository::new(&mut connection)
+            .create(&NewTaskRun {
+                id: "task_doc_0002".to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                chunk_id: None,
+                job_id: Some(second_job_id.to_owned()),
+                action_type: TRANSLATE_DOCUMENT_ACTION_TYPE.to_owned(),
+                status: "completed".to_owned(),
+                input_payload: Some("{\"job\":\"translate_document_retry\"}".to_owned()),
+                output_payload: Some("{\"status\":\"completed_with_errors\"}".to_owned()),
+                error_message: None,
+                started_at: NOW + 90,
+                completed_at: Some(NOW + 120),
+                created_at: NOW + 90,
+                updated_at: NOW + 120,
+            })
+            .expect("second document task run should persist");
+        TaskRunRepository::new(&mut connection)
+            .create(&NewTaskRun {
+                id: "task_chunk_0011".to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                chunk_id: Some("doc_qa_001_chunk_0001".to_owned()),
+                job_id: Some(second_job_id.to_owned()),
+                action_type: TRANSLATE_CHUNK_ACTION_TYPE.to_owned(),
+                status: TASK_RUN_STATUS_RUNNING.to_owned(),
+                input_payload: Some("{\"chunk\":1,\"job\":2}".to_owned()),
+                output_payload: None,
+                error_message: None,
+                started_at: NOW + 91,
+                completed_at: None,
+                created_at: NOW + 91,
+                updated_at: NOW + 91,
+            })
+            .expect("second job chunk 1 run should persist");
+        TaskRunRepository::new(&mut connection)
+            .mark_completed_with_translation_projection(
+                PROJECT_ID,
+                DOCUMENT_ID,
+                "task_chunk_0011",
+                "{\"translations\":[1,2]}",
+                &[
+                    SegmentTranslationWrite {
+                        segment_id: "seg_0001".to_owned(),
+                        target_text: "Vigilad la puerta.".to_owned(),
+                    },
+                    SegmentTranslationWrite {
+                        segment_id: "seg_0002".to_owned(),
+                        target_text: "Mantened la línea.".to_owned(),
+                    },
+                ],
+                NOW + 100,
+            )
+            .expect("second job chunk 1 projection should persist");
+        TaskRunRepository::new(&mut connection)
+            .create(&NewTaskRun {
+                id: "task_chunk_0012".to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                chunk_id: Some("doc_qa_001_chunk_0002".to_owned()),
+                job_id: Some(second_job_id.to_owned()),
+                action_type: TRANSLATE_CHUNK_ACTION_TYPE.to_owned(),
+                status: TASK_RUN_STATUS_RUNNING.to_owned(),
+                input_payload: Some("{\"chunk\":2,\"job\":2}".to_owned()),
+                output_payload: None,
+                error_message: None,
+                started_at: NOW + 101,
+                completed_at: None,
+                created_at: NOW + 101,
+                updated_at: NOW + 101,
+            })
+            .expect("second job chunk 2 run should persist");
+        TaskRunRepository::new(&mut connection)
+            .mark_completed_with_translation_projection(
+                PROJECT_ID,
+                DOCUMENT_ID,
+                "task_chunk_0012",
+                "{\"translations\":[3,4]}",
+                &[
+                    SegmentTranslationWrite {
+                        segment_id: "seg_0003".to_owned(),
+                        target_text: "Sosteneos.".to_owned(),
+                    },
+                    SegmentTranslationWrite {
+                        segment_id: "seg_0004".to_owned(),
+                        target_text: "La llama debe perdurar.".to_owned(),
+                    },
+                ],
+                NOW + 110,
+            )
+            .expect("second job chunk 2 projection should persist");
+        TaskRunRepository::new(&mut connection)
+            .create(&NewTaskRun {
+                id: "task_chunk_0013".to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                chunk_id: Some("doc_qa_001_chunk_0003".to_owned()),
+                job_id: Some(second_job_id.to_owned()),
+                action_type: TRANSLATE_CHUNK_ACTION_TYPE.to_owned(),
+                status: TASK_RUN_STATUS_RUNNING.to_owned(),
+                input_payload: Some("{\"chunk\":3,\"job\":2}".to_owned()),
+                output_payload: None,
+                error_message: None,
+                started_at: NOW + 111,
+                completed_at: None,
+                created_at: NOW + 111,
+                updated_at: NOW + 111,
+            })
+            .expect("second job chunk 3 run should persist");
+        TaskRunRepository::new(&mut connection)
+            .mark_failed(
+                "task_chunk_0013",
+                "The model request failed again.",
+                None,
+                NOW + 115,
+            )
+            .expect("second job chunk 3 failure should persist");
+        drop(connection);
+
+        let second = run_document_consistency_qa_with_runtime(
+            RunDocumentConsistencyQaInput {
+                project_id: PROJECT_ID.to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                job_id: Some(second_job_id.to_owned()),
+            },
+            &fixture.runtime,
+        )
+        .expect("second job QA should succeed");
+
+        assert_eq!(first.generated_findings.len(), 4);
+        assert_eq!(second.generated_findings.len(), 4);
+        assert!(
+            first.generated_findings[0].id != second.generated_findings[0].id,
+            "distinct jobs must keep distinct finding ids"
+        );
+
+        let listed_first = list_document_qa_findings_with_runtime(
+            ListDocumentQaFindingsInput {
+                project_id: PROJECT_ID.to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                job_id: Some(JOB_ID.to_owned()),
+            },
+            &fixture.runtime,
+        )
+        .expect("first job findings should remain listable");
+        let listed_second = list_document_qa_findings_with_runtime(
+            ListDocumentQaFindingsInput {
+                project_id: PROJECT_ID.to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                job_id: Some(second_job_id.to_owned()),
+            },
+            &fixture.runtime,
+        )
+        .expect("second job findings should be listable");
+
+        assert_eq!(listed_first.findings.len(), 4);
+        assert_eq!(listed_second.findings.len(), 4);
+    }
+
+    #[test]
     fn list_document_qa_findings_filters_by_job_id() {
         let fixture = create_runtime_fixture();
         seed_document_qa_graph(&fixture.runtime);
@@ -1511,6 +1766,56 @@ mod tests {
 
         assert_eq!(error.code, "INVALID_INPUT");
         assert!(error.message.contains("does not exist"));
+    }
+
+    #[test]
+    fn list_document_qa_findings_uses_persisted_history_when_trace_rows_are_gone() {
+        let fixture = create_runtime_fixture();
+        seed_document_qa_graph(&fixture.runtime);
+
+        let _ = run_document_consistency_qa_with_runtime(
+            RunDocumentConsistencyQaInput {
+                project_id: PROJECT_ID.to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                job_id: Some(JOB_ID.to_owned()),
+            },
+            &fixture.runtime,
+        )
+        .expect("document QA should succeed");
+
+        let connection = fixture
+            .runtime
+            .open_connection()
+            .expect("database connection should open");
+        connection
+            .execute(
+                "DELETE FROM task_runs WHERE document_id = ?1",
+                [DOCUMENT_ID],
+            )
+            .expect("task runs should be compacted for listing regression");
+        connection
+            .execute(
+                "DELETE FROM translation_chunks WHERE document_id = ?1",
+                [DOCUMENT_ID],
+            )
+            .expect("chunks should be compacted for listing regression");
+        drop(connection);
+
+        let listed = list_document_qa_findings_with_runtime(
+            ListDocumentQaFindingsInput {
+                project_id: PROJECT_ID.to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                job_id: Some(JOB_ID.to_owned()),
+            },
+            &fixture.runtime,
+        )
+        .expect("persisted QA findings should still be listable");
+
+        assert_eq!(listed.findings.len(), 4);
+        assert!(listed
+            .findings
+            .iter()
+            .all(|finding| finding.job_id.as_deref() == Some(JOB_ID)));
     }
 
     #[test]
@@ -1627,9 +1932,14 @@ mod tests {
             },
         ];
 
-        let error =
-            persist_document_consistency_findings(&mut connection, DOCUMENT_ID, &drafts, NOW)
-                .expect_err("an invalid linked chunk should abort the QA persistence transaction");
+        let error = persist_document_consistency_findings(
+            &mut connection,
+            DOCUMENT_ID,
+            JOB_ID,
+            &drafts,
+            NOW,
+        )
+        .expect_err("an invalid linked chunk should abort the QA persistence transaction");
 
         assert_eq!(error.code, "DESKTOP_COMMAND_FAILED");
         assert!(error.message.contains("could not validate"));
