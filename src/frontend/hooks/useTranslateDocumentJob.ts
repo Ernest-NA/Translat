@@ -189,7 +189,24 @@ function buildOptimisticJobStatus(
 }
 
 function shouldSyncDocumentState(status: TranslateDocumentJobStatus) {
-  return isTerminalStatus(status.status);
+  return (
+    isTerminalStatus(status.status) ||
+    status.completedChunks > 0 ||
+    status.failedChunks > 0 ||
+    status.cancelledChunks > 0
+  );
+}
+
+function buildDocumentSyncFingerprint(status: TranslateDocumentJobStatus) {
+  return [
+    status.jobId,
+    status.status,
+    status.completedChunks,
+    status.failedChunks,
+    status.cancelledChunks,
+    status.lastCompletedChunkId ?? "",
+    status.lastCompletedChunkSequence ?? "",
+  ].join(":");
 }
 
 export function useTranslateDocumentJob({
@@ -223,14 +240,7 @@ export function useTranslateDocumentJob({
         return;
       }
 
-      const nextFingerprint = [
-        status.jobId,
-        status.status,
-        status.completedChunks,
-        status.failedChunks,
-        status.cancelledChunks,
-        status.lastUpdatedAt ?? 0,
-      ].join(":");
+      const nextFingerprint = buildDocumentSyncFingerprint(status);
 
       if (latestSyncFingerprintRef.current === nextFingerprint) {
         return;
@@ -430,14 +440,13 @@ export function useTranslateDocumentJob({
 
         if (command === "translate_document") {
           missingJobClearGraceUntilRef.current = 0;
-          const refreshedStatus = await refreshStatus(jobId, {
+          const confirmedStatus = await refreshStatus(jobId, {
             clearMissingJob: true,
             silent: true,
           });
-          const hasConfirmedTrackedJob = refreshedStatus?.jobId === jobId;
 
           if (
-            !hasConfirmedTrackedJob &&
+            confirmedStatus?.jobId !== jobId &&
             latestDocumentKeyRef.current === documentJobKey
           ) {
             clearTrackedJobState(documentJobKey, setTrackedJobId, setJobStatus);
