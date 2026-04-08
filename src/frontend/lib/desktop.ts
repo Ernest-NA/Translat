@@ -41,6 +41,10 @@ import {
   type StyleProfilesOverview,
   type TranslateChunkInput,
   type TranslateChunkResult,
+  type TranslateDocumentInput,
+  type TranslateDocumentJobInput,
+  type TranslateDocumentJobStatus,
+  type TranslateDocumentResult,
   type TranslationContextPreview,
   type UpdateGlossaryEntryInput,
   type UpdateGlossaryInput,
@@ -261,6 +265,44 @@ export function listDocumentTranslationChunks(
 export function translateChunk(input: TranslateChunkInput) {
   return invokeDesktopCommand<TranslateChunkResult>(
     DESKTOP_COMMANDS.translateChunk,
+    {
+      input,
+    },
+  );
+}
+
+export function translateDocument(input: TranslateDocumentInput) {
+  return invokeDesktopCommand<TranslateDocumentResult>(
+    DESKTOP_COMMANDS.translateDocument,
+    {
+      input,
+    },
+  );
+}
+
+export function getTranslateDocumentJobStatus(
+  input: TranslateDocumentJobInput,
+) {
+  return invokeDesktopCommand<TranslateDocumentJobStatus>(
+    DESKTOP_COMMANDS.getTranslateDocumentJobStatus,
+    {
+      input,
+    },
+  );
+}
+
+export function cancelTranslateDocumentJob(input: TranslateDocumentJobInput) {
+  return invokeDesktopCommand<TranslateDocumentJobStatus>(
+    DESKTOP_COMMANDS.cancelTranslateDocumentJob,
+    {
+      input,
+    },
+  );
+}
+
+export function resumeTranslateDocumentJob(input: TranslateDocumentJobInput) {
+  return invokeDesktopCommand<TranslateDocumentResult>(
+    DESKTOP_COMMANDS.resumeTranslateDocumentJob,
     {
       input,
     },

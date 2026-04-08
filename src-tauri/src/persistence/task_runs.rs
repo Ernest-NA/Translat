@@ -149,7 +149,7 @@ impl<'connection> TaskRunRepository<'connection> {
                   updated_at
                 FROM task_runs
                 WHERE document_id = ?1
-                ORDER BY created_at ASC, id ASC
+                ORDER BY created_at ASC, updated_at ASC, rowid ASC
                 "#,
             )
             .map_err(|error| {
@@ -226,7 +226,7 @@ impl<'connection> TaskRunRepository<'connection> {
                   updated_at
                 FROM task_runs
                 WHERE chunk_id = ?1
-                ORDER BY created_at ASC, id ASC
+                ORDER BY created_at ASC, updated_at ASC, rowid ASC
                 "#,
             )
             .map_err(|error| {
@@ -305,7 +305,7 @@ impl<'connection> TaskRunRepository<'connection> {
                   updated_at
                 FROM task_runs
                 WHERE job_id = ?1
-                ORDER BY created_at ASC, id ASC
+                ORDER BY created_at ASC, updated_at ASC, rowid ASC
                 "#,
             )
             .map_err(|error| {
@@ -453,20 +453,20 @@ impl<'connection> TaskRunRepository<'connection> {
                   error_message = NULL,
                   completed_at = ?4,
                   updated_at = ?4
-                WHERE id = ?1
+                WHERE id = ?1 AND status IN (?5, ?6)
                 "#,
                 params![
                     task_run_id,
                     crate::task_runs::TASK_RUN_STATUS_COMPLETED,
                     output_payload,
-                    completed_at
+                    completed_at,
+                    crate::task_runs::TASK_RUN_STATUS_PENDING,
+                    crate::task_runs::TASK_RUN_STATUS_RUNNING
                 ],
             )
             .map_err(|error| {
                 PersistenceError::with_details(
-                    format!(
-                        "The task-run repository could not finalize task run {task_run_id}."
-                    ),
+                    format!("The task-run repository could not finalize task run {task_run_id}."),
                     error,
                 )
             })?;
@@ -503,6 +503,43 @@ impl<'connection> TaskRunRepository<'connection> {
         self.update_terminal_state(
             task_run_id,
             crate::task_runs::TASK_RUN_STATUS_FAILED,
+            output_payload,
+            Some(error_message),
+            completed_at,
+        )
+    }
+
+    pub fn mark_completed(
+        &mut self,
+        task_run_id: &str,
+        output_payload: &str,
+        completed_at: i64,
+    ) -> Result<TaskRunSummary, PersistenceError> {
+        self.update_terminal_state(
+            task_run_id,
+            crate::task_runs::TASK_RUN_STATUS_COMPLETED,
+            Some(output_payload),
+            None,
+            completed_at,
+        )
+    }
+
+    pub fn mark_cancelled(
+        &mut self,
+        task_run_id: &str,
+        error_message: &str,
+        output_payload: Option<&str>,
+        completed_at: i64,
+    ) -> Result<TaskRunSummary, PersistenceError> {
+        if let Some(task_run) = self.load_by_id(task_run_id)? {
+            if task_run.status == crate::task_runs::TASK_RUN_STATUS_CANCELLED {
+                return Ok(task_run);
+            }
+        }
+
+        self.update_terminal_state(
+            task_run_id,
+            crate::task_runs::TASK_RUN_STATUS_CANCELLED,
             output_payload,
             Some(error_message),
             completed_at,
@@ -565,21 +602,21 @@ impl<'connection> TaskRunRepository<'connection> {
                   error_message = ?4,
                   completed_at = ?5,
                   updated_at = ?5
-                WHERE id = ?1
+                WHERE id = ?1 AND status IN (?6, ?7)
                 "#,
                 params![
                     task_run_id,
                     status,
                     output_payload,
                     error_message,
-                    completed_at
+                    completed_at,
+                    crate::task_runs::TASK_RUN_STATUS_PENDING,
+                    crate::task_runs::TASK_RUN_STATUS_RUNNING
                 ],
             )
             .map_err(|error| {
                 PersistenceError::with_details(
-                    format!(
-                        "The task-run repository could not update task run {task_run_id}."
-                    ),
+                    format!("The task-run repository could not update task run {task_run_id}."),
                     error,
                 )
             })?;

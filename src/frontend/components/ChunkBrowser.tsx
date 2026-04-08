@@ -1,17 +1,24 @@
 import type {
   DocumentSummary,
   SegmentSummary,
+  TranslateDocumentChunkResult,
   TranslationChunkSegmentSummary,
   TranslationChunkSummary,
+  TranslationContextPreview,
 } from "../../shared/desktop";
 import type { DesktopCommandError } from "../lib/desktop";
 
 interface ChunkBrowserProps {
   activeDocument: DocumentSummary | null;
   chunkSegments: TranslationChunkSegmentSummary[];
+  chunkStatuses?: TranslateDocumentChunkResult[];
+  contextError?: DesktopCommandError | null;
+  contextPreview?: TranslationContextPreview | null;
+  disableBuild?: boolean;
   chunks: TranslationChunkSummary[];
   error: DesktopCommandError | null;
   isBuilding: boolean;
+  isLoadingContext?: boolean;
   isLoading: boolean;
   onBuildChunks: () => Promise<void>;
   onSelectChunk: (chunkId: string) => void;
@@ -37,12 +44,34 @@ function truncateText(value: string) {
   return value.length > 112 ? `${value.slice(0, 109)}...` : value;
 }
 
+function formatChunkExecutionStatus(
+  status: TranslateDocumentChunkResult["status"],
+) {
+  switch (status) {
+    case "cancelled":
+      return "Cancelled";
+    case "completed":
+      return "Completed";
+    case "failed":
+      return "Error";
+    case "running":
+      return "In progress";
+    default:
+      return "Pending";
+  }
+}
+
 export function ChunkBrowser({
   activeDocument,
   chunkSegments,
+  chunkStatuses = [],
+  contextError = null,
+  contextPreview = null,
+  disableBuild = false,
   chunks,
   error,
   isBuilding,
+  isLoadingContext = false,
   isLoading,
   onBuildChunks,
   onSelectChunk,
@@ -54,6 +83,16 @@ export function ChunkBrowser({
   const segmentLookup = new Map(
     segments.map((segment) => [segment.id, segment]),
   );
+  const chunkStatusLookup = new Map(
+    chunkStatuses.map((chunkStatus) => [chunkStatus.chunkId, chunkStatus]),
+  );
+  const selectedCoreSegments = selectedChunkSegments
+    .filter((chunkSegment) => chunkSegment.role === "core")
+    .map((chunkSegment) => segmentLookup.get(chunkSegment.segmentId) ?? null)
+    .filter((segment): segment is SegmentSummary => segment !== null);
+  const selectedChunkStatus = selectedChunk
+    ? (chunkStatusLookup.get(selectedChunk.id) ?? null)
+    : null;
 
   return (
     <section className="workspace-panel">
@@ -75,7 +114,9 @@ export function ChunkBrowser({
           </strong>
           <button
             className="document-action-button"
-            disabled={!activeDocument || isBuilding || isLoading}
+            disabled={
+              !activeDocument || disableBuild || isBuilding || isLoading
+            }
             onClick={() => void onBuildChunks()}
             type="button"
           >
@@ -134,11 +175,28 @@ export function ChunkBrowser({
                         {chunk.endSegmentSequence}
                       </span>
                     </div>
+                    <div className="chunk-list__badges">
+                      <span className="document-status-pill">
+                        {formatChunkExecutionStatus(
+                          chunkStatusLookup.get(chunk.id)?.status ?? "pending",
+                        )}
+                      </span>
+                      <span className="chunk-role-pill">
+                        {chunkStatusLookup.get(chunk.id)
+                          ?.translatedSegmentCount ?? 0}
+                        /{chunk.segmentCount} translated
+                      </span>
+                    </div>
                     <p>{truncateText(chunk.sourceText)}</p>
                     <span className="chunk-list__meta">
                       {chunk.segmentCount} core segments |{" "}
                       {chunk.sourceWordCount} words
                     </span>
+                    {chunkStatusLookup.get(chunk.id)?.errorMessage ? (
+                      <span className="chunk-list__incident">
+                        {chunkStatusLookup.get(chunk.id)?.errorMessage}
+                      </span>
+                    ) : null}
                   </button>
                 </li>
               ))}
@@ -159,10 +217,17 @@ export function ChunkBrowser({
                     <h3>Chunk #{selectedChunk.sequence}</h3>
                   </div>
 
-                  <span className="document-status-pill">
-                    #{selectedChunk.startSegmentSequence}-#
-                    {selectedChunk.endSegmentSequence}
-                  </span>
+                  <div className="chunk-detail__heading-badges">
+                    <span className="document-status-pill">
+                      {formatChunkExecutionStatus(
+                        selectedChunkStatus?.status ?? "pending",
+                      )}
+                    </span>
+                    <span className="document-status-pill">
+                      #{selectedChunk.startSegmentSequence}-#
+                      {selectedChunk.endSegmentSequence}
+                    </span>
+                  </div>
                 </div>
 
                 <dl className="detail-list detail-list--single">
@@ -190,6 +255,21 @@ export function ChunkBrowser({
                     <dt>Characters</dt>
                     <dd>{selectedChunk.sourceCharacterCount}</dd>
                   </div>
+                  <div>
+                    <dt>Translated</dt>
+                    <dd>
+                      {selectedChunkStatus?.translatedSegmentCount ?? 0}/
+                      {selectedChunk.segmentCount}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Task status</dt>
+                    <dd>
+                      {formatChunkExecutionStatus(
+                        selectedChunkStatus?.status ?? "pending",
+                      )}
+                    </dd>
+                  </div>
                 </dl>
 
                 <div className="chunk-detail__body">
@@ -216,6 +296,147 @@ export function ChunkBrowser({
                     </div>
                   </div>
                 </div>
+
+                <div className="chunk-context-preview">
+                  <p className="surface-card__eyebrow">
+                    Context builder preview
+                  </p>
+
+                  {isLoadingContext ? (
+                    <p className="surface-card__copy">
+                      Loading the persisted translation context for this
+                      chunk...
+                    </p>
+                  ) : null}
+
+                  {contextError ? (
+                    <p className="form-error" role="alert">
+                      {contextError.message}
+                    </p>
+                  ) : null}
+
+                  {contextPreview ? (
+                    <>
+                      <dl className="detail-list detail-list--single">
+                        <div>
+                          <dt>Section</dt>
+                          <dd>
+                            {contextPreview.chunkContext.section?.title ??
+                              "No matched section"}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>Glossary layers</dt>
+                          <dd>{contextPreview.glossaryLayers.length}</dd>
+                        </div>
+                        <div>
+                          <dt>Resolved rules</dt>
+                          <dd>{contextPreview.rules.length}</dd>
+                        </div>
+                        <div>
+                          <dt>Style profile</dt>
+                          <dd>
+                            {contextPreview.styleProfile?.styleProfile.name ??
+                              "No resolved style profile"}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>Rule set</dt>
+                          <dd>
+                            {contextPreview.ruleSet?.ruleSet.name ??
+                              "No resolved rule set"}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>Chapter contexts</dt>
+                          <dd>{contextPreview.accumulatedContexts.length}</dd>
+                        </div>
+                      </dl>
+
+                      <div className="chunk-context-preview__grid">
+                        <div className="segment-detail__text segment-detail__text--muted">
+                          <strong>Glossaries</strong>
+                          <p>
+                            {contextPreview.glossaryLayers.length > 0
+                              ? contextPreview.glossaryLayers
+                                  .map(
+                                    (glossaryLayer) =>
+                                      `${glossaryLayer.glossary.name} (${glossaryLayer.layer})`,
+                                  )
+                                  .join(", ")
+                              : "No glossary layers are resolved for this chunk."}
+                          </p>
+                        </div>
+                        <div className="segment-detail__text segment-detail__text--muted">
+                          <strong>Accumulated context</strong>
+                          <p>
+                            {contextPreview.accumulatedContexts.length > 0
+                              ? contextPreview.accumulatedContexts
+                                  .map(
+                                    (accumulatedContext) =>
+                                      accumulatedContext.chapterContext
+                                        .scopeType,
+                                  )
+                                  .join(", ")
+                              : "No accumulated chapter context is attached to this chunk."}
+                          </p>
+                        </div>
+                      </div>
+                    </>
+                  ) : null}
+                </div>
+
+                <div className="chunk-result-workspace">
+                  <p className="surface-card__eyebrow">
+                    Latest translation result
+                  </p>
+
+                  {selectedCoreSegments.length > 0 ? (
+                    <ol className="chunk-result-list">
+                      {selectedCoreSegments.map((segment) => (
+                        <li
+                          className="chunk-result-list__item"
+                          key={segment.id}
+                        >
+                          <div className="chunk-link-list__heading">
+                            <strong>Segment #{segment.sequence}</strong>
+                            <span className="document-status-pill">
+                              {segment.status}
+                            </span>
+                          </div>
+                          <div className="chunk-result-list__texts">
+                            <div>
+                              <p className="surface-card__eyebrow">Source</p>
+                              <div className="segment-detail__text">
+                                {segment.sourceText}
+                              </div>
+                            </div>
+                            <div>
+                              <p className="surface-card__eyebrow">Result</p>
+                              <div className="segment-detail__text segment-detail__text--muted">
+                                {segment.targetText ??
+                                  "No translated target text is persisted for this segment yet."}
+                              </div>
+                            </div>
+                          </div>
+                        </li>
+                      ))}
+                    </ol>
+                  ) : (
+                    <p className="surface-card__copy">
+                      This chunk does not expose persisted core segments yet.
+                    </p>
+                  )}
+                </div>
+
+                {selectedChunkStatus?.errorMessage ? (
+                  <div className="chunk-incident-panel">
+                    <p className="surface-card__eyebrow">Incident</p>
+                    <p className="form-error" role="alert">
+                      {selectedChunkStatus.errorMessage}
+                    </p>
+                  </div>
+                ) : null}
 
                 <div className="chunk-link-workspace">
                   <p className="surface-card__eyebrow">Linked segments</p>

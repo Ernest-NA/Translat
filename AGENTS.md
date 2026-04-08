@@ -316,6 +316,31 @@ Agents should update documents consistently across:
 
 Do not update just one document if the concept spans the system.
 
+### UI / UX workflow policy
+Use Figma or Figma MCP as a required design step for **structural UI work**, including:
+
+- new product workflows
+- new primary screens or workspaces
+- multi-panel layout changes
+- operational state design
+- reusable component families
+- UI decisions that directly shape upcoming implementation tasks
+
+Figma is **not required** for minor UI work, such as:
+
+- small bug fixes
+- copy-only changes
+- spacing/alignment tweaks
+- minor responsive adjustments
+- technical refactors without meaningful UX impact
+
+Every UI-related task should explicitly state one of:
+
+- `Figma required`
+- `Figma not required`
+
+When Figma is not required, include a short justification.
+
 ---
 
 ## 11. Current priority

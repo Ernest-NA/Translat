@@ -11,6 +11,10 @@ export const DESKTOP_COMMANDS = {
   importProjectDocument: "import_project_document",
   listDocumentTranslationChunks: "list_document_translation_chunks",
   translateChunk: "translate_chunk",
+  translateDocument: "translate_document",
+  getTranslateDocumentJobStatus: "get_translate_document_job_status",
+  cancelTranslateDocumentJob: "cancel_translate_document_job",
+  resumeTranslateDocumentJob: "resume_translate_document_job",
   listGlossaryEntries: "list_glossary_entries",
   listGlossaries: "list_glossaries",
   listProjects: "list_projects",
@@ -315,6 +319,72 @@ export interface TranslateChunkResult {
   translatedSegments: TranslatedChunkSegmentSummary[];
 }
 
+export type TranslateDocumentStatus =
+  | "pending"
+  | "running"
+  | "completed"
+  | "completed_with_errors"
+  | "failed"
+  | "cancelled";
+
+export type TranslateDocumentChunkStatus =
+  | "pending"
+  | "running"
+  | "completed"
+  | "failed"
+  | "cancelled";
+
+export interface TranslateDocumentChunkResult {
+  chunkId: string;
+  chunkSequence: number;
+  status: TranslateDocumentChunkStatus;
+  taskRun: TaskRunSummary | null;
+  translatedSegmentCount: number;
+  errorMessage: string | null;
+}
+
+export interface TranslateDocumentJobInput {
+  projectId: string;
+  documentId: string;
+  jobId: string;
+}
+
+export interface TranslateDocumentJobStatus {
+  projectId: string;
+  documentId: string;
+  jobId: string;
+  status: TranslateDocumentStatus;
+  totalChunks: number;
+  pendingChunks: number;
+  runningChunks: number;
+  completedChunks: number;
+  failedChunks: number;
+  cancelledChunks: number;
+  currentChunkId: string | null;
+  currentChunkSequence: number | null;
+  lastCompletedChunkId: string | null;
+  lastCompletedChunkSequence: number | null;
+  lastUpdatedAt: number | null;
+  latestDocumentTaskRun: TaskRunSummary | null;
+  chunkStatuses: TranslateDocumentChunkResult[];
+  taskRuns: TaskRunSummary[];
+  errorMessages: string[];
+}
+
+export interface TranslateDocumentResult {
+  projectId: string;
+  documentId: string;
+  jobId: string;
+  status: TranslateDocumentStatus;
+  actionVersion: string;
+  taskRun: TaskRunSummary;
+  totalChunks: number;
+  completedChunks: number;
+  failedChunks: number;
+  chunkResults: TranslateDocumentChunkResult[];
+  errorMessages: string[];
+}
+
 export interface ResolvedGlossaryLayer {
   glossary: GlossarySummary;
   layer: string;
@@ -561,6 +631,12 @@ export interface TranslateChunkInput {
   projectId: string;
   documentId: string;
   chunkId: string;
+  jobId?: string;
+}
+
+export interface TranslateDocumentInput {
+  projectId: string;
+  documentId: string;
   jobId?: string;
 }
 

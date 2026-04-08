@@ -385,6 +385,50 @@ select {
   background: rgba(255, 255, 255, 0.03);
 }
 
+.translation-workspace-layout {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1.5fr) minmax(300px, 0.85fr);
+  margin-top: 24px;
+}
+
+.translation-workspace-header {
+  margin-top: 24px;
+}
+
+.translation-workspace-header[data-state="blocked"] {
+  border-color: rgba(255, 196, 107, 0.34);
+}
+
+.translation-workspace-header[data-state="incidents"] {
+  border-color: rgba(255, 130, 130, 0.34);
+}
+
+.translation-workspace-header[data-state="ready"],
+.translation-workspace-header[data-state="review"] {
+  border-color: rgba(102, 212, 160, 0.34);
+}
+
+.translation-workspace-header[data-state="running"] {
+  border-color: rgba(143, 216, 255, 0.34);
+}
+
+.translation-workspace-header__actions,
+.translation-workspace-header__badges,
+.translation-job-monitor__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.translation-workspace-header__actions {
+  justify-content: flex-end;
+}
+
+.translation-workspace-header__badges {
+  margin-top: 18px;
+}
+
 .document-importer__actions {
   display: grid;
   gap: 14px;
@@ -613,6 +657,13 @@ select {
   align-items: center;
 }
 
+.chunk-list__badges,
+.chunk-detail__heading-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .segment-outline__list {
   display: grid;
   gap: 10px;
@@ -763,6 +814,13 @@ select {
   font-size: 0.82rem;
 }
 
+.chunk-list__incident {
+  display: block;
+  margin-top: 12px;
+  color: #ffb1a0;
+  font-size: 0.82rem;
+}
+
 .detail-list--single {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
@@ -794,6 +852,56 @@ select {
 }
 
 .chunk-link-workspace {
+  margin-top: 20px;
+}
+
+.chunk-context-preview,
+.chunk-result-workspace,
+.chunk-incident-panel {
+  margin-top: 20px;
+}
+
+.chunk-context-preview__grid,
+.chunk-result-list__texts {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 16px;
+}
+
+.chunk-result-list,
+.job-incident-list,
+.job-run-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chunk-result-list__item,
+.job-incident-list__item,
+.job-run-list__item {
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.translation-job-monitor {
+  align-self: start;
+}
+
+.translation-job-monitor__section {
+  margin-top: 24px;
+}
+
+.job-monitor__meta {
+  margin-top: 18px;
+}
+
+.glossary-metrics--job {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   margin-top: 20px;
 }
 
@@ -858,6 +966,10 @@ select {
     grid-template-columns: 1fr;
   }
 
+  .translation-workspace-layout {
+    grid-template-columns: 1fr;
+  }
+
   .glossary-grid {
     grid-template-columns: 1fr;
   }
@@ -918,12 +1030,19 @@ select {
     align-items: flex-start;
   }
 
+  .translation-workspace-header__actions,
+  .translation-job-monitor__actions {
+    justify-content: flex-start;
+  }
+
   .document-list__meta {
     grid-template-columns: 1fr;
   }
 
   .segment-browser,
   .chunk-browser,
+  .chunk-context-preview__grid,
+  .chunk-result-list__texts,
   .detail-list--single {
     grid-template-columns: 1fr;
   }
