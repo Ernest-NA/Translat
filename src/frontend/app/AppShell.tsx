@@ -101,6 +101,7 @@ export function AppShell() {
     error: segmentError,
     isLoading: isLoadingSegments,
     openDocument,
+    refreshDocument,
     sections,
     segments,
     selectedSection,
@@ -366,6 +367,7 @@ export function AppShell() {
             onBuildChunks={buildChunks}
             onDirtyChange={setHasUnsavedProjectDefaults}
             onOpenDocument={openDocument}
+            onSyncDocumentState={refreshDocument}
             onImportDocuments={handleImportDocuments}
             onProcessDocument={handleProcessDocument}
             onSelectChunk={selectChunk}

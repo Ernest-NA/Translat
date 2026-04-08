@@ -45,6 +45,7 @@ interface ProjectWorkspaceProps {
   onBuildChunks: () => Promise<void>;
   onDirtyChange: (isDirty: boolean) => void;
   onOpenDocument: (documentId: string) => Promise<void>;
+  onSyncDocumentState: (documentId: string) => Promise<void>;
   onImportDocuments: (files: FileList) => Promise<number>;
   onProcessDocument: (documentId: string) => Promise<void>;
   onSelectChunk: (chunkId: string) => void;
@@ -133,6 +134,7 @@ export function ProjectWorkspace({
   onBuildChunks,
   onDirtyChange,
   onOpenDocument,
+  onSyncDocumentState,
   onImportDocuments,
   onProcessDocument,
   onSelectChunk,
@@ -274,9 +276,9 @@ export function ProjectWorkspace({
         return;
       }
 
-      await onOpenDocument(documentId);
+      await onSyncDocumentState(documentId);
     },
-    [onOpenDocument],
+    [onSyncDocumentState],
   );
   const {
     cancelJob,
