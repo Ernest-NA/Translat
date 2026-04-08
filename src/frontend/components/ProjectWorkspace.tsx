@@ -404,8 +404,7 @@ export function ProjectWorkspace({
     !isResuming;
   const canResumeTranslation =
     trackedJobId !== null &&
-    (jobStatus?.status === "pending" ||
-      jobStatus?.status === "cancelled" ||
+    (jobStatus?.status === "cancelled" ||
       jobStatus?.status === "completed_with_errors" ||
       jobStatus?.status === "failed") &&
     !isStarting &&
@@ -793,7 +792,6 @@ export function ProjectWorkspace({
           isRefreshing={isRefreshing}
           isRestoringTrackedJob={isRestoringTrackedJob}
           isResuming={isResuming}
-          isStarting={isStarting}
           jobStatus={jobStatus}
           onCancelJob={cancelJob}
           onClearTrackedJob={clearTrackedJob}

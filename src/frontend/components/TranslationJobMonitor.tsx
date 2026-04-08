@@ -13,7 +13,6 @@ interface TranslationJobMonitorProps {
   isRefreshing: boolean;
   isRestoringTrackedJob: boolean;
   isResuming: boolean;
-  isStarting: boolean;
   jobStatus: TranslateDocumentJobStatus | null;
   onCancelJob: () => Promise<TranslateDocumentJobStatus | null>;
   onClearTrackedJob: () => void;
@@ -68,7 +67,6 @@ export function TranslationJobMonitor({
   isRefreshing,
   isRestoringTrackedJob,
   isResuming,
-  isStarting,
   jobStatus,
   onCancelJob,
   onClearTrackedJob,
@@ -77,14 +75,10 @@ export function TranslationJobMonitor({
   trackedJobId,
 }: TranslationJobMonitorProps) {
   const canCancel =
-    jobStatus?.status === "pending" ||
-    jobStatus?.status === "running" ||
-    isStarting ||
-    isResuming;
+    jobStatus?.status === "pending" || jobStatus?.status === "running";
   const canClearTrackedJob =
     trackedJobId !== null && !canCancel && !isRestoringTrackedJob;
   const canResume =
-    jobStatus?.status === "pending" ||
     jobStatus?.status === "cancelled" ||
     jobStatus?.status === "completed_with_errors" ||
     jobStatus?.status === "failed";

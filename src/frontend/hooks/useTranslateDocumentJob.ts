@@ -575,7 +575,8 @@ export function useTranslateDocumentJob({
       !activeProjectId ||
       !activeDocument ||
       !trackedJobId ||
-      cancelInFlightRef.current
+      cancelInFlightRef.current ||
+      commandInFlightRef.current
     ) {
       return null;
     }
