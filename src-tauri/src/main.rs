@@ -10,6 +10,7 @@ mod glossary_entries;
 mod persistence;
 mod projects;
 mod qa_findings;
+mod reconstructed_documents;
 mod rule_sets;
 mod sections;
 mod segments;
@@ -64,6 +65,7 @@ fn main() {
             commands::projects::list_projects,
             commands::projects::open_project,
             commands::projects::update_project_editorial_defaults,
+            commands::reconstructed_documents::get_reconstructed_document,
             commands::segments::list_document_segments,
             commands::segments::process_project_document,
             commands::translation_chunks::build_document_translation_chunks,

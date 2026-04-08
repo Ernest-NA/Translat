@@ -7,6 +7,7 @@ export const DESKTOP_COMMANDS = {
   createStyleProfile: "create_style_profile",
   buildTranslationContext: "build_translation_context",
   buildDocumentTranslationChunks: "build_document_translation_chunks",
+  getReconstructedDocument: "get_reconstructed_document",
   healthcheck: "healthcheck",
   importProjectDocument: "import_project_document",
   listDocumentTranslationChunks: "list_document_translation_chunks",
@@ -283,6 +284,118 @@ export interface DocumentTranslationChunksOverview {
   documentId: string;
   chunks: TranslationChunkSummary[];
   chunkSegments: TranslationChunkSegmentSummary[];
+}
+
+export type ReconstructedDocumentStatus =
+  | "empty"
+  | "untranslated"
+  | "partial"
+  | "complete";
+
+export type ReconstructedContentSource =
+  | "none"
+  | "target"
+  | "source_fallback"
+  | "mixed";
+
+export interface ReconstructedSegment {
+  id: string;
+  sequence: number;
+  sourceText: string;
+  finalText: string | null;
+  resolvedText: string;
+  resolvedFrom: "target" | "source_fallback";
+  status: string;
+  primaryChunkId: string | null;
+  relatedChunkIds: string[];
+}
+
+export interface ReconstructedDocumentBlock {
+  id: string;
+  sectionId: string | null;
+  title: string | null;
+  sequence: number;
+  kind: string;
+  level: number | null;
+  startSegmentSequence: number;
+  endSegmentSequence: number;
+  segmentCount: number;
+  translatedSegmentCount: number;
+  untranslatedSegmentCount: number;
+  fallbackSegmentCount: number;
+  status: ReconstructedDocumentStatus;
+  contentSource: ReconstructedContentSource;
+  finalText: string | null;
+  resolvedText: string;
+  segmentIds: string[];
+  primaryChunkIds: string[];
+  segments: ReconstructedSegment[];
+}
+
+export interface ReconstructedDocumentSection {
+  id: string;
+  documentId: string;
+  sequence: number;
+  title: string;
+  sectionType: string;
+  level: number;
+  startSegmentSequence: number;
+  endSegmentSequence: number;
+  segmentCount: number;
+  createdAt: number;
+  updatedAt: number;
+  status: ReconstructedDocumentStatus;
+  contentSource: ReconstructedContentSource;
+  translatedSegmentCount: number;
+  untranslatedSegmentCount: number;
+  fallbackSegmentCount: number;
+  blockId: string;
+}
+
+export interface ReconstructedDocumentCompleteness {
+  totalSegments: number;
+  translatedSegments: number;
+  untranslatedSegments: number;
+  fallbackSegments: number;
+  totalSections: number;
+  totalBlocks: number;
+  isComplete: boolean;
+  hasTranslatedContent: boolean;
+  hasReconstructibleContent: boolean;
+}
+
+export interface ReconstructedDocumentChunkTrace {
+  chunkId: string;
+  chunkSequence: number;
+  startSegmentSequence: number;
+  endSegmentSequence: number;
+  coreSegmentIds: string[];
+  contextBeforeSegmentIds: string[];
+  contextAfterSegmentIds: string[];
+  taskRunIds: string[];
+  latestTaskRun: TaskRunSummary | null;
+}
+
+export interface ReconstructedDocumentTrace {
+  chunkCount: number;
+  taskRunCount: number;
+  documentTaskRunIds: string[];
+  latestDocumentTaskRun: TaskRunSummary | null;
+  orphanedChunkTaskRuns: TaskRunSummary[];
+  chunks: ReconstructedDocumentChunkTrace[];
+}
+
+export interface ReconstructedDocument {
+  projectId: string;
+  documentId: string;
+  status: ReconstructedDocumentStatus;
+  contentSource: ReconstructedContentSource;
+  finalText: string | null;
+  resolvedText: string;
+  completeness: ReconstructedDocumentCompleteness;
+  sections: ReconstructedDocumentSection[];
+  blocks: ReconstructedDocumentBlock[];
+  trace: ReconstructedDocumentTrace;
 }
 
 export interface TaskRunSummary {
@@ -638,6 +751,11 @@ export interface TranslateDocumentInput {
   projectId: string;
   documentId: string;
   jobId?: string;
+}
+
+export interface GetReconstructedDocumentInput {
+  projectId: string;
+  documentId: string;
 }
 
 export interface ListDocumentSegmentsInput {
