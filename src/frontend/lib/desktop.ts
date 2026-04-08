@@ -18,6 +18,7 @@ import {
   type GlossaryEntriesOverview,
   type GlossaryEntrySummary,
   type GlossarySummary,
+  type GetReconstructedDocumentInput,
   type HealthcheckResponse,
   type ImportDocumentInput,
   type ListDocumentSegmentsInput,
@@ -33,6 +34,7 @@ import {
   type ProjectDocumentsOverview,
   type ProjectSummary,
   type ProjectsOverview,
+  type ReconstructedDocument,
   type RuleSetRulesOverview,
   type RuleSetSummary,
   type RuleSetsOverview,
@@ -274,6 +276,15 @@ export function translateChunk(input: TranslateChunkInput) {
 export function translateDocument(input: TranslateDocumentInput) {
   return invokeDesktopCommand<TranslateDocumentResult>(
     DESKTOP_COMMANDS.translateDocument,
+    {
+      input,
+    },
+  );
+}
+
+export function getReconstructedDocument(input: GetReconstructedDocumentInput) {
+  return invokeDesktopCommand<ReconstructedDocument>(
+    DESKTOP_COMMANDS.getReconstructedDocument,
     {
       input,
     },
