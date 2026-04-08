@@ -21,7 +21,7 @@ interface UseTranslateDocumentJobOptions {
   activeDocument: DocumentSummary | null;
   activeProjectId: string | null;
   chunks: TranslationChunkSummary[];
-  onDocumentStateSync?: () => Promise<void> | void;
+  onDocumentStateSync?: (documentId: string) => Promise<void> | void;
 }
 
 function normalizeUnexpectedError(
@@ -235,7 +235,7 @@ export function useTranslateDocumentJob({
       }
 
       latestSyncFingerprintRef.current = nextFingerprint;
-      await onDocumentStateSync();
+      await onDocumentStateSync(status.documentId);
     },
     [onDocumentStateSync],
   );

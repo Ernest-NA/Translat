@@ -255,18 +255,16 @@ export function ProjectWorkspace({
       null,
     [project?.defaultRuleSetId, ruleSets],
   );
-  const syncActiveDocumentState = useCallback(async () => {
-    const observedDocumentId = activeDocument?.id ?? null;
+  const syncActiveDocumentState = useCallback(
+    async (documentId: string) => {
+      if (currentActiveDocumentIdRef.current !== documentId) {
+        return;
+      }
 
-    if (
-      !observedDocumentId ||
-      currentActiveDocumentIdRef.current !== observedDocumentId
-    ) {
-      return;
-    }
-
-    await onOpenDocument(observedDocumentId);
-  }, [activeDocument, onOpenDocument]);
+      await onOpenDocument(documentId);
+    },
+    [onOpenDocument],
+  );
   const {
     cancelJob,
     clearTrackedJob,
