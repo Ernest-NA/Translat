@@ -8,8 +8,10 @@ export const DESKTOP_COMMANDS = {
   buildTranslationContext: "build_translation_context",
   buildDocumentTranslationChunks: "build_document_translation_chunks",
   getReconstructedDocument: "get_reconstructed_document",
+  listDocumentQaFindings: "list_document_qa_findings",
   healthcheck: "healthcheck",
   importProjectDocument: "import_project_document",
+  runDocumentConsistencyQa: "run_document_consistency_qa",
   listDocumentTranslationChunks: "list_document_translation_chunks",
   translateChunk: "translate_chunk",
   translateDocument: "translate_document",
@@ -398,6 +400,24 @@ export interface ReconstructedDocument {
   trace: ReconstructedDocumentTrace;
 }
 
+export type QaFindingSeverity = "low" | "medium" | "high";
+export type QaFindingStatus = "open" | "resolved" | "dismissed";
+
+export interface QaFindingSummary {
+  id: string;
+  documentId: string;
+  chunkId: string | null;
+  taskRunId: string | null;
+  jobId: string | null;
+  findingType: string;
+  severity: QaFindingSeverity;
+  status: QaFindingStatus;
+  message: string;
+  details: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface TaskRunSummary {
   id: string;
   documentId: string;
@@ -756,6 +776,34 @@ export interface TranslateDocumentInput {
 export interface GetReconstructedDocumentInput {
   projectId: string;
   documentId: string;
+}
+
+export interface RunDocumentConsistencyQaInput {
+  projectId: string;
+  documentId: string;
+  jobId?: string | null;
+}
+
+export interface ListDocumentQaFindingsInput {
+  projectId: string;
+  documentId: string;
+  jobId?: string | null;
+}
+
+export interface DocumentConsistencyQaResult {
+  projectId: string;
+  documentId: string;
+  jobId: string | null;
+  reconstructedStatus: ReconstructedDocumentStatus;
+  reconstructedContentSource: ReconstructedContentSource;
+  generatedFindings: QaFindingSummary[];
+}
+
+export interface DocumentQaFindingsOverview {
+  projectId: string;
+  documentId: string;
+  jobId: string | null;
+  findings: QaFindingSummary[];
 }
 
 export interface ListDocumentSegmentsInput {

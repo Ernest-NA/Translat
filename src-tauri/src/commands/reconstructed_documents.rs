@@ -48,17 +48,33 @@ pub(crate) fn get_reconstructed_document_with_runtime(
             Some(error.to_string()),
         )
     })?;
-    let segment_overview = load_segmented_document_overview(
+    load_reconstructed_document(
         &mut connection,
         database_runtime,
         &project_id,
         &document_id,
+        reconstructed_at,
+    )
+}
+
+pub(crate) fn load_reconstructed_document(
+    connection: &mut rusqlite::Connection,
+    database_runtime: &DatabaseRuntime,
+    project_id: &str,
+    document_id: &str,
+    reconstructed_at: i64,
+) -> Result<ReconstructedDocument, DesktopCommandError> {
+    let segment_overview = load_segmented_document_overview(
+        connection,
+        database_runtime,
+        project_id,
+        document_id,
         false,
         reconstructed_at,
     )?;
-    let mut chunk_repository = TranslationChunkRepository::new(&mut connection);
+    let mut chunk_repository = TranslationChunkRepository::new(connection);
     let chunks = chunk_repository
-        .list_chunks_by_document(&document_id)
+        .list_chunks_by_document(document_id)
         .map_err(|error| {
             DesktopCommandError::internal(
                 "The desktop shell could not load translation chunks for reconstruction.",
@@ -66,15 +82,15 @@ pub(crate) fn get_reconstructed_document_with_runtime(
             )
         })?;
     let chunk_segments = chunk_repository
-        .list_chunk_segments_by_document(&document_id)
+        .list_chunk_segments_by_document(document_id)
         .map_err(|error| {
             DesktopCommandError::internal(
                 "The desktop shell could not load translation chunk links for reconstruction.",
                 Some(error.to_string()),
             )
         })?;
-    let task_runs = TaskRunRepository::new(&mut connection)
-        .list_by_document(&document_id)
+    let task_runs = TaskRunRepository::new(connection)
+        .list_by_document(document_id)
         .map_err(|error| {
             DesktopCommandError::internal(
                 "The desktop shell could not load task runs for reconstruction.",
@@ -83,8 +99,8 @@ pub(crate) fn get_reconstructed_document_with_runtime(
         })?;
 
     Ok(build_reconstructed_document(
-        &project_id,
-        &document_id,
+        project_id,
+        document_id,
         &segment_overview.sections,
         &segment_overview.segments,
         &chunks,
@@ -432,7 +448,7 @@ fn derive_content_source(total_segments: i64, fallback_segments: i64) -> String 
     }
 }
 
-fn current_timestamp() -> Result<i64, DesktopCommandError> {
+pub(crate) fn current_timestamp() -> Result<i64, DesktopCommandError> {
     let duration = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|error| {
@@ -450,7 +466,7 @@ fn current_timestamp() -> Result<i64, DesktopCommandError> {
     })
 }
 
-fn validate_identifier(value: &str, label: &str) -> Result<String, DesktopCommandError> {
+pub(crate) fn validate_identifier(value: &str, label: &str) -> Result<String, DesktopCommandError> {
     let trimmed = value.trim();
 
     if trimmed.is_empty() {
