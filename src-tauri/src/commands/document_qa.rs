@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
+use rusqlite::params;
 use serde_json::json;
 use tauri::State;
 
@@ -19,8 +20,8 @@ use crate::persistence::bootstrap::DatabaseRuntime;
 use crate::persistence::qa_findings::QaFindingRepository;
 use crate::persistence::task_runs::TaskRunRepository;
 use crate::qa_findings::{
-    NewQaFinding, QA_FINDING_SEVERITY_HIGH, QA_FINDING_SEVERITY_LOW, QA_FINDING_SEVERITY_MEDIUM,
-    QA_FINDING_STATUS_OPEN,
+    NewQaFinding, QaFindingSummary, QA_FINDING_SEVERITY_HIGH, QA_FINDING_SEVERITY_LOW,
+    QA_FINDING_SEVERITY_MEDIUM, QA_FINDING_STATUS_OPEN,
 };
 use crate::reconstructed_documents::{
     ReconstructedDocument, ReconstructedDocumentBlock, ReconstructedSegment,
@@ -41,6 +42,25 @@ struct QaFindingDraft {
     severity: String,
     message: String,
     details: Option<String>,
+}
+
+impl QaFindingDraft {
+    fn to_new_qa_finding(&self, document_id: &str, executed_at: i64) -> NewQaFinding {
+        NewQaFinding {
+            id: self.id.clone(),
+            document_id: document_id.to_owned(),
+            chunk_id: self.chunk_id.clone(),
+            task_run_id: self.task_run_id.clone(),
+            job_id: self.job_id.clone(),
+            finding_type: self.finding_type.clone(),
+            severity: self.severity.clone(),
+            status: QA_FINDING_STATUS_OPEN.to_owned(),
+            message: self.message.clone(),
+            details: self.details.clone(),
+            created_at: executed_at,
+            updated_at: executed_at,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -105,34 +125,12 @@ pub(crate) fn run_document_consistency_qa_with_runtime(
         &requested_job_task_runs,
     );
     let finding_drafts = build_finding_drafts(&reconstructed_document, &trace_context);
-    let mut repository = QaFindingRepository::new(&mut connection);
-    let mut generated_findings = Vec::new();
-
-    for draft in finding_drafts {
-        generated_findings.push(
-            repository
-                .upsert(&NewQaFinding {
-                    id: draft.id,
-                    document_id: document_id.clone(),
-                    chunk_id: draft.chunk_id,
-                    task_run_id: draft.task_run_id,
-                    job_id: draft.job_id,
-                    finding_type: draft.finding_type,
-                    severity: draft.severity,
-                    status: QA_FINDING_STATUS_OPEN.to_owned(),
-                    message: draft.message,
-                    details: draft.details,
-                    created_at: executed_at,
-                    updated_at: executed_at,
-                })
-                .map_err(|error| {
-                    DesktopCommandError::internal(
-                        "The desktop shell could not persist document QA findings.",
-                        Some(error.to_string()),
-                    )
-                })?,
-        );
-    }
+    let generated_findings = persist_document_consistency_findings(
+        &mut connection,
+        &document_id,
+        &finding_drafts,
+        executed_at,
+    )?;
 
     Ok(DocumentConsistencyQaResult {
         project_id,
@@ -168,6 +166,7 @@ pub(crate) fn list_document_qa_findings_with_runtime(
         &document_id,
         listed_at,
     )?;
+    let _ = load_requested_job_task_runs(&mut connection, &document_id, job_id.as_deref())?;
     let findings = QaFindingRepository::new(&mut connection)
         .list_by_document(&document_id)
         .map_err(|error| {
@@ -189,6 +188,234 @@ pub(crate) fn list_document_qa_findings_with_runtime(
         job_id,
         findings,
     })
+}
+
+fn persist_document_consistency_findings(
+    connection: &mut rusqlite::Connection,
+    document_id: &str,
+    finding_drafts: &[QaFindingDraft],
+    executed_at: i64,
+) -> Result<Vec<QaFindingSummary>, DesktopCommandError> {
+    let transaction = connection.transaction().map_err(|error| {
+        DesktopCommandError::internal(
+            "The desktop shell could not start the document QA persistence transaction.",
+            Some(error.to_string()),
+        )
+    })?;
+
+    for draft in finding_drafts {
+        let finding = draft.to_new_qa_finding(document_id, executed_at);
+
+        validate_document_links_in_transaction(&transaction, &finding).map_err(|error| {
+            DesktopCommandError::internal(
+                "The desktop shell could not validate document QA finding links.",
+                Some(error.to_string()),
+            )
+        })?;
+
+        transaction
+            .execute(
+                r#"
+                INSERT INTO qa_findings (
+                  id,
+                  document_id,
+                  chunk_id,
+                  task_run_id,
+                  job_id,
+                  finding_type,
+                  severity,
+                  status,
+                  message,
+                  details,
+                  created_at,
+                  updated_at
+                )
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+                ON CONFLICT(id) DO UPDATE SET
+                  document_id = excluded.document_id,
+                  chunk_id = excluded.chunk_id,
+                  task_run_id = excluded.task_run_id,
+                  job_id = excluded.job_id,
+                  finding_type = excluded.finding_type,
+                  severity = excluded.severity,
+                  status = excluded.status,
+                  message = excluded.message,
+                  details = excluded.details,
+                  updated_at = excluded.updated_at
+                "#,
+                params![
+                    finding.id,
+                    finding.document_id,
+                    finding.chunk_id,
+                    finding.task_run_id,
+                    finding.job_id,
+                    finding.finding_type,
+                    finding.severity,
+                    finding.status,
+                    finding.message,
+                    finding.details,
+                    finding.created_at,
+                    finding.updated_at
+                ],
+            )
+            .map_err(|error| {
+                DesktopCommandError::internal(
+                    "The desktop shell could not persist document QA findings.",
+                    Some(error.to_string()),
+                )
+            })?;
+    }
+
+    let retained_ids = finding_drafts
+        .iter()
+        .map(|draft| draft.id.as_str())
+        .collect::<HashSet<_>>();
+    let stale_ids = load_generated_document_qa_ids(&transaction, document_id)?
+        .into_iter()
+        .filter(|finding_id| !retained_ids.contains(finding_id.as_str()))
+        .collect::<Vec<_>>();
+
+    for stale_id in stale_ids {
+        transaction
+            .execute("DELETE FROM qa_findings WHERE id = ?1", [stale_id.as_str()])
+            .map_err(|error| {
+                DesktopCommandError::internal(
+                    "The desktop shell could not retire stale document QA findings.",
+                    Some(error.to_string()),
+                )
+            })?;
+    }
+
+    transaction.commit().map_err(|error| {
+        DesktopCommandError::internal(
+            "The desktop shell could not commit document QA findings.",
+            Some(error.to_string()),
+        )
+    })?;
+
+    let mut repository = QaFindingRepository::new(connection);
+    let mut generated_findings = Vec::new();
+
+    for draft in finding_drafts {
+        generated_findings.push(
+            repository
+                .load_by_id(&draft.id)
+                .map_err(|error| {
+                    DesktopCommandError::internal(
+                        "The desktop shell could not reload persisted document QA findings.",
+                        Some(error.to_string()),
+                    )
+                })?
+                .ok_or_else(|| {
+                    DesktopCommandError::internal(
+                        "The desktop shell could not reload a persisted document QA finding.",
+                        Some(draft.id.clone()),
+                    )
+                })?,
+        );
+    }
+
+    Ok(generated_findings)
+}
+
+fn load_generated_document_qa_ids(
+    transaction: &rusqlite::Transaction<'_>,
+    document_id: &str,
+) -> Result<Vec<String>, DesktopCommandError> {
+    let mut statement = transaction
+        .prepare(
+            r#"
+            SELECT id
+            FROM qa_findings
+            WHERE document_id = ?1 AND id LIKE ?2
+            ORDER BY id ASC
+            "#,
+        )
+        .map_err(|error| {
+            DesktopCommandError::internal(
+                "The desktop shell could not inspect existing document QA findings.",
+                Some(error.to_string()),
+            )
+        })?;
+    let rows = statement
+        .query_map(
+            params![document_id, format!("{QA_FINDING_ID_PREFIX}_%")],
+            |row| row.get::<_, String>(0),
+        )
+        .map_err(|error| {
+            DesktopCommandError::internal(
+                "The desktop shell could not read existing document QA findings.",
+                Some(error.to_string()),
+            )
+        })?;
+    let mut ids = Vec::new();
+
+    for row in rows {
+        ids.push(row.map_err(|error| {
+            DesktopCommandError::internal(
+                "The desktop shell could not decode an existing document QA finding id.",
+                Some(error.to_string()),
+            )
+        })?);
+    }
+
+    Ok(ids)
+}
+
+fn validate_document_links_in_transaction(
+    transaction: &rusqlite::Transaction<'_>,
+    qa_finding: &NewQaFinding,
+) -> Result<(), String> {
+    validate_linked_document_in_transaction(
+        transaction,
+        "chunk",
+        qa_finding.id.as_str(),
+        qa_finding.document_id.as_str(),
+        qa_finding.chunk_id.as_deref(),
+        "SELECT document_id FROM translation_chunks WHERE id = ?1",
+    )?;
+    validate_linked_document_in_transaction(
+        transaction,
+        "task run",
+        qa_finding.id.as_str(),
+        qa_finding.document_id.as_str(),
+        qa_finding.task_run_id.as_deref(),
+        "SELECT document_id FROM task_runs WHERE id = ?1",
+    )?;
+
+    Ok(())
+}
+
+fn validate_linked_document_in_transaction(
+    transaction: &rusqlite::Transaction<'_>,
+    linked_entity: &str,
+    finding_id: &str,
+    document_id: &str,
+    linked_id: Option<&str>,
+    query: &str,
+) -> Result<(), String> {
+    let Some(linked_id) = linked_id else {
+        return Ok(());
+    };
+
+    let linked_document_id = transaction
+        .query_row(query, [linked_id], |row| row.get::<_, String>(0))
+        .map_err(|error| match error {
+            rusqlite::Error::QueryReturnedNoRows => format!(
+                "The document QA flow could not find {linked_entity} {linked_id} for finding {finding_id}."
+            ),
+            other => format!(
+                "The document QA flow could not validate {linked_entity} {linked_id} for finding {finding_id}: {other}"
+            ),
+        })?;
+
+    if linked_document_id != document_id {
+        return Err(format!(
+            "The document QA flow received {linked_entity} {linked_id} for document {linked_document_id}, but finding {finding_id} targets document {document_id}."
+        ));
+    }
+
+    Ok(())
 }
 
 fn load_requested_job_task_runs(
@@ -621,7 +848,10 @@ fn normalize_for_comparison(value: &str) -> String {
 mod tests {
     use tempfile::{tempdir, TempDir};
 
-    use super::{list_document_qa_findings_with_runtime, run_document_consistency_qa_with_runtime};
+    use super::{
+        list_document_qa_findings_with_runtime, persist_document_consistency_findings,
+        run_document_consistency_qa_with_runtime, QaFindingDraft,
+    };
     use crate::document_qa::{
         ListDocumentQaFindingsInput, RunDocumentConsistencyQaInput,
         DOCUMENT_QA_FINDING_TYPE_CHUNK_EXECUTION_ERROR,
@@ -640,7 +870,7 @@ mod tests {
     use crate::persistence::task_runs::TaskRunRepository;
     use crate::persistence::translation_chunks::TranslationChunkRepository;
     use crate::projects::NewProject;
-    use crate::qa_findings::QA_FINDING_STATUS_OPEN;
+    use crate::qa_findings::{QA_FINDING_SEVERITY_MEDIUM, QA_FINDING_STATUS_OPEN};
     use crate::reconstructed_documents::{
         RECONSTRUCTED_CONTENT_SOURCE_MIXED, RECONSTRUCTED_DOCUMENT_STATUS_PARTIAL,
     };
@@ -1262,6 +1492,153 @@ mod tests {
             .findings
             .iter()
             .all(|finding| finding.job_id.as_deref() == Some(JOB_ID)));
+    }
+
+    #[test]
+    fn list_document_qa_findings_rejects_unknown_job_ids() {
+        let fixture = create_runtime_fixture();
+        seed_document_qa_graph(&fixture.runtime);
+
+        let error = list_document_qa_findings_with_runtime(
+            ListDocumentQaFindingsInput {
+                project_id: PROJECT_ID.to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                job_id: Some("job_missing_001".to_owned()),
+            },
+            &fixture.runtime,
+        )
+        .expect_err("unknown QA job ids should be rejected");
+
+        assert_eq!(error.code, "INVALID_INPUT");
+        assert!(error.message.contains("does not exist"));
+    }
+
+    #[test]
+    fn run_document_consistency_qa_retires_stale_findings_after_document_changes() {
+        let fixture = create_runtime_fixture();
+        seed_document_qa_graph(&fixture.runtime);
+
+        let _ = run_document_consistency_qa_with_runtime(
+            RunDocumentConsistencyQaInput {
+                project_id: PROJECT_ID.to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                job_id: Some(JOB_ID.to_owned()),
+            },
+            &fixture.runtime,
+        )
+        .expect("first QA run should succeed");
+
+        let mut connection = fixture
+            .runtime
+            .open_connection()
+            .expect("database connection should open");
+        TaskRunRepository::new(&mut connection)
+            .create(&NewTaskRun {
+                id: "task_chunk_0004".to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                chunk_id: Some("doc_qa_001_chunk_0003".to_owned()),
+                job_id: Some(JOB_ID.to_owned()),
+                action_type: TRANSLATE_CHUNK_ACTION_TYPE.to_owned(),
+                status: TASK_RUN_STATUS_RUNNING.to_owned(),
+                input_payload: Some("{\"chunk\":3,\"retry\":true}".to_owned()),
+                output_payload: None,
+                error_message: None,
+                started_at: NOW + 61,
+                completed_at: None,
+                created_at: NOW + 61,
+                updated_at: NOW + 61,
+            })
+            .expect("retry chunk task run should persist");
+        TaskRunRepository::new(&mut connection)
+            .mark_completed_with_translation_projection(
+                PROJECT_ID,
+                DOCUMENT_ID,
+                "task_chunk_0004",
+                "{\"translations\":[5]}",
+                &[SegmentTranslationWrite {
+                    segment_id: "seg_0005".to_owned(),
+                    target_text: "Mantened la runa cubierta.".to_owned(),
+                }],
+                NOW + 80,
+            )
+            .expect("retry chunk translation should persist");
+        drop(connection);
+
+        let rerun = run_document_consistency_qa_with_runtime(
+            RunDocumentConsistencyQaInput {
+                project_id: PROJECT_ID.to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                job_id: Some(JOB_ID.to_owned()),
+            },
+            &fixture.runtime,
+        )
+        .expect("second QA run should succeed");
+
+        assert_eq!(rerun.generated_findings.len(), 1);
+        assert_eq!(
+            rerun.generated_findings[0].finding_type,
+            DOCUMENT_QA_FINDING_TYPE_NEIGHBOR_CHUNK_TRANSLATION_DRIFT
+        );
+
+        let mut connection = fixture
+            .runtime
+            .open_connection()
+            .expect("database connection should open");
+        let findings = QaFindingRepository::new(&mut connection)
+            .list_by_document(DOCUMENT_ID)
+            .expect("persisted findings should load");
+
+        assert_eq!(findings.len(), 1);
+        assert_eq!(
+            findings[0].finding_type,
+            DOCUMENT_QA_FINDING_TYPE_NEIGHBOR_CHUNK_TRANSLATION_DRIFT
+        );
+    }
+
+    #[test]
+    fn document_qa_persistence_rolls_back_when_a_finding_write_fails() {
+        let fixture = create_runtime_fixture();
+        seed_document_qa_graph(&fixture.runtime);
+        let mut connection = fixture
+            .runtime
+            .open_connection()
+            .expect("database connection should open");
+
+        let drafts = vec![
+            QaFindingDraft {
+                id: "qaf_tr21_doc_qa_001_valid".to_owned(),
+                chunk_id: Some("doc_qa_001_chunk_0001".to_owned()),
+                task_run_id: Some("task_chunk_0001".to_owned()),
+                job_id: Some(JOB_ID.to_owned()),
+                finding_type: DOCUMENT_QA_FINDING_TYPE_NEIGHBOR_CHUNK_TRANSLATION_DRIFT.to_owned(),
+                severity: QA_FINDING_SEVERITY_MEDIUM.to_owned(),
+                message: "valid".to_owned(),
+                details: None,
+            },
+            QaFindingDraft {
+                id: "qaf_tr21_doc_qa_001_invalid".to_owned(),
+                chunk_id: Some("chunk_missing_001".to_owned()),
+                task_run_id: None,
+                job_id: Some(JOB_ID.to_owned()),
+                finding_type: DOCUMENT_QA_FINDING_TYPE_PARTIAL_BLOCK_TRANSLATION.to_owned(),
+                severity: QA_FINDING_SEVERITY_MEDIUM.to_owned(),
+                message: "invalid".to_owned(),
+                details: None,
+            },
+        ];
+
+        let error =
+            persist_document_consistency_findings(&mut connection, DOCUMENT_ID, &drafts, NOW)
+                .expect_err("an invalid linked chunk should abort the QA persistence transaction");
+
+        assert_eq!(error.code, "DESKTOP_COMMAND_FAILED");
+        assert!(error.message.contains("could not validate"));
+
+        let findings = QaFindingRepository::new(&mut connection)
+            .list_by_document(DOCUMENT_ID)
+            .expect("findings should reload after rollback");
+
+        assert!(findings.is_empty());
     }
 
     #[test]
