@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   DocumentOperationalState,
   DocumentSummary,
@@ -49,9 +49,14 @@ export function OperationalDebugPanel({
     null,
   );
   const [isLoading, setIsLoading] = useState(false);
+  const requestTokenRef = useRef(0);
 
   const loadInspection = useCallback(async () => {
+    const requestToken = requestTokenRef.current + 1;
+    requestTokenRef.current = requestToken;
+
     if (!activeDocument || !activeProjectId) {
+      setIsLoading(false);
       setInspection(null);
       setError(null);
       return;
@@ -66,18 +71,32 @@ export function OperationalDebugPanel({
         jobId: trackedJobId ?? undefined,
       });
 
+      if (requestTokenRef.current !== requestToken) {
+        return;
+      }
+
       setInspection(nextInspection);
       setError(null);
     } catch (caughtError) {
+      if (requestTokenRef.current !== requestToken) {
+        return;
+      }
+
       setInspection(null);
       setError(caughtError as DesktopCommandError);
     } finally {
-      setIsLoading(false);
+      if (requestTokenRef.current === requestToken) {
+        setIsLoading(false);
+      }
     }
   }, [activeDocument, activeProjectId, trackedJobId]);
 
   useEffect(() => {
     void loadInspection();
+
+    return () => {
+      requestTokenRef.current += 1;
+    };
   }, [loadInspection]);
 
   return (
