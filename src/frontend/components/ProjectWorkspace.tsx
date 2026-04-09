@@ -30,6 +30,8 @@ import { ChunkBrowser } from "./ChunkBrowser";
 import { DocumentImporter } from "./DocumentImporter";
 import { DocumentList } from "./DocumentList";
 import { FindingReviewPanel } from "./FindingReviewPanel";
+import { OperationalDebugPanel } from "./OperationalDebugPanel";
+import { FindingReviewPanel } from "./FindingReviewPanel";
 import { SegmentBrowser } from "./SegmentBrowser";
 import { TranslationJobMonitor } from "./TranslationJobMonitor";
 
@@ -959,6 +961,12 @@ export function ProjectWorkspace({
           />
         </div>
       </div>
+
+      <OperationalDebugPanel
+        activeDocument={activeDocument}
+        activeProjectId={project?.id ?? null}
+        trackedJobId={trackedJobId}
+      />
 
       <SegmentBrowser
         activeDocument={activeDocument}

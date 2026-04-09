@@ -10,6 +10,7 @@ mod error;
 mod finding_review;
 mod glossaries;
 mod glossary_entries;
+mod observability;
 mod persistence;
 mod projects;
 mod qa_findings;
@@ -68,8 +69,10 @@ fn main() {
             commands::projects::list_projects,
             commands::projects::open_project,
             commands::projects::update_project_editorial_defaults,
-            commands::reconstructed_documents::get_reconstructed_document,
             commands::document_export::export_reconstructed_document,
+            commands::observability::inspect_document_operational_state,
+            commands::observability::inspect_job_trace,
+            commands::reconstructed_documents::get_reconstructed_document,
             commands::document_qa::run_document_consistency_qa,
             commands::document_qa::list_document_qa_findings,
             commands::finding_review::inspect_qa_finding,

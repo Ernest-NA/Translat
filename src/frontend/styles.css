@@ -918,6 +918,22 @@ select {
   align-self: start;
 }
 
+.operational-debug-panel {
+  margin-top: 24px;
+}
+
+.operational-debug-panel__meta {
+  margin-top: 18px;
+}
+
+.operational-debug-panel .job-run-list__item[data-severity="warning"] {
+  border-color: rgba(255, 196, 107, 0.24);
+}
+
+.operational-debug-panel .job-run-list__item[data-severity="error"] {
+  border-color: rgba(255, 130, 130, 0.28);
+}
+
 .translation-job-monitor__section {
   margin-top: 24px;
 }

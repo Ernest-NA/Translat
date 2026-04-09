@@ -1,17 +1,24 @@
 use std::path::Path;
 
+use serde_json::json;
 use tauri::State;
 
 use crate::commands::reconstructed_documents::{
     current_timestamp, load_reconstructed_document, validate_identifier,
 };
+use crate::commands::translate_document_jobs::generate_task_run_id;
 use crate::document_export::{
     ExportReconstructedDocumentInput, ExportReconstructedDocumentResult,
+    EXPORT_RECONSTRUCTED_DOCUMENT_ACTION_TYPE, EXPORT_RECONSTRUCTED_DOCUMENT_ACTION_VERSION,
 };
 use crate::error::DesktopCommandError;
 use crate::persistence::bootstrap::DatabaseRuntime;
 use crate::persistence::documents::DocumentRepository;
+use crate::persistence::qa_findings::QaFindingRepository;
+use crate::persistence::task_runs::TaskRunRepository;
+use crate::qa_findings::QA_FINDING_STATUS_OPEN;
 use crate::reconstructed_documents::{ReconstructedDocument, ReconstructedDocumentBlock};
+use crate::task_runs::{NewTaskRun, TASK_RUN_STATUS_RUNNING};
 
 const DOCUMENT_EXPORT_FORMAT_MARKDOWN: &str = "md";
 const DOCUMENT_EXPORT_MIME_MARKDOWN: &str = "text/markdown; charset=utf-8";
@@ -67,22 +74,138 @@ fn export_reconstructed_document_with_runtime_at(
         &document_id,
         exported_at,
     )?;
+    let open_finding_count = i64::try_from(
+        QaFindingRepository::new(&mut connection)
+            .list_by_document(&document_id)
+            .map_err(|error| {
+                DesktopCommandError::internal(
+                    "The desktop shell could not load QA findings while exporting the reconstructed document.",
+                    Some(error.to_string()),
+                )
+            })?
+            .into_iter()
+            .filter(|finding| finding.status == QA_FINDING_STATUS_OPEN)
+            .count(),
+    )
+    .map_err(|error| {
+        DesktopCommandError::internal(
+            "The desktop shell produced an invalid QA finding count while exporting the reconstructed document.",
+            Some(error.to_string()),
+        )
+    })?;
+    let task_run_id = generate_task_run_id(exported_at);
+    let export_file_name = build_export_file_name(&document.name);
+    let source_job_id = reconstructed_document
+        .trace
+        .latest_document_task_run
+        .as_ref()
+        .and_then(|task_run| task_run.job_id.clone());
+    let source_task_run_id = reconstructed_document
+        .trace
+        .latest_document_task_run
+        .as_ref()
+        .map(|task_run| task_run.id.clone());
+    let input_payload = serde_json::to_string(&json!({
+        "actionVersion": EXPORT_RECONSTRUCTED_DOCUMENT_ACTION_VERSION,
+        "documentName": document.name.as_str(),
+        "format": DOCUMENT_EXPORT_FORMAT_MARKDOWN,
+        "fileName": export_file_name,
+        "exportedAt": exported_at,
+        "reconstructedStatus": reconstructed_document.status.as_str(),
+        "contentSource": reconstructed_document.content_source.as_str(),
+        "isComplete": reconstructed_document.completeness.is_complete,
+        "totalSegments": reconstructed_document.completeness.total_segments,
+        "translatedSegments": reconstructed_document.completeness.translated_segments,
+        "fallbackSegments": reconstructed_document.completeness.fallback_segments,
+        "openFindingCount": open_finding_count,
+        "sourceJobId": source_job_id,
+        "sourceTaskRunId": source_task_run_id,
+    }))
+    .map_err(|error| {
+        DesktopCommandError::internal(
+            "The desktop shell could not prepare the export trace payload.",
+            Some(error.to_string()),
+        )
+    })?;
+
+    TaskRunRepository::new(&mut connection)
+        .create(&NewTaskRun {
+            id: task_run_id.clone(),
+            document_id: document_id.clone(),
+            chunk_id: None,
+            job_id: None,
+            action_type: EXPORT_RECONSTRUCTED_DOCUMENT_ACTION_TYPE.to_owned(),
+            status: TASK_RUN_STATUS_RUNNING.to_owned(),
+            input_payload: Some(input_payload),
+            output_payload: None,
+            error_message: None,
+            started_at: exported_at,
+            completed_at: None,
+            created_at: exported_at,
+            updated_at: exported_at,
+        })
+        .map_err(|error| {
+            DesktopCommandError::internal(
+                "The desktop shell could not persist the export task run.",
+                Some(error.to_string()),
+            )
+        })?;
 
     if !reconstructed_document
         .completeness
         .has_reconstructible_content
     {
+        let validation_payload = serde_json::to_string(&json!({
+            "actionVersion": EXPORT_RECONSTRUCTED_DOCUMENT_ACTION_VERSION,
+            "outcome": "validation_error",
+        }))
+        .unwrap_or_else(|_| "{\"outcome\":\"validation_error\"}".to_owned());
+
+        let _ = TaskRunRepository::new(&mut connection).mark_failed(
+            &task_run_id,
+            "The selected document does not contain reconstructible content to export yet.",
+            Some(&validation_payload),
+            exported_at,
+        );
+
         return Err(DesktopCommandError::validation(
             "The selected document does not contain reconstructible content to export yet.",
             None,
         ));
     }
 
-    Ok(build_export_result(
+    let result = build_export_result(
         reconstructed_document,
         &document.name,
         exported_at,
-    ))
+    );
+    let output_payload = serde_json::to_string(&json!({
+        "actionVersion": EXPORT_RECONSTRUCTED_DOCUMENT_ACTION_VERSION,
+        "fileName": result.file_name.as_str(),
+        "format": result.format.as_str(),
+        "mimeType": result.mime_type.as_str(),
+        "contentBytes": result.content.len(),
+        "status": result.status.as_str(),
+        "contentSource": result.content_source.as_str(),
+        "isComplete": result.is_complete,
+    }))
+    .map_err(|error| {
+        DesktopCommandError::internal(
+            "The desktop shell could not prepare the export completion payload.",
+            Some(error.to_string()),
+        )
+    })?;
+
+    TaskRunRepository::new(&mut connection)
+        .mark_completed(&task_run_id, &output_payload, exported_at)
+        .map_err(|error| {
+            DesktopCommandError::internal(
+                "The desktop shell could not finalize the export task run.",
+                Some(error.to_string()),
+            )
+        })?;
+
+    Ok(result)
 }
 
 fn build_export_result(
