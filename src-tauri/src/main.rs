@@ -3,6 +3,7 @@
 mod chapter_contexts;
 mod commands;
 mod context_builder;
+mod document_export;
 mod document_qa;
 mod documents;
 mod error;
@@ -68,6 +69,7 @@ fn main() {
             commands::projects::open_project,
             commands::projects::update_project_editorial_defaults,
             commands::reconstructed_documents::get_reconstructed_document,
+            commands::document_export::export_reconstructed_document,
             commands::document_qa::run_document_consistency_qa,
             commands::document_qa::list_document_qa_findings,
             commands::finding_review::inspect_qa_finding,

@@ -16,6 +16,8 @@ import {
   type DocumentSegmentsOverview,
   type DocumentSummary,
   type DocumentTranslationChunksOverview,
+  type ExportReconstructedDocumentInput,
+  type ExportReconstructedDocumentResult,
   type GetReconstructedDocumentInput,
   type GlossariesOverview,
   type GlossaryEntriesOverview,
@@ -293,6 +295,17 @@ export function translateDocument(input: TranslateDocumentInput) {
 export function getReconstructedDocument(input: GetReconstructedDocumentInput) {
   return invokeDesktopCommand<ReconstructedDocument>(
     DESKTOP_COMMANDS.getReconstructedDocument,
+    {
+      input,
+    },
+  );
+}
+
+export function exportReconstructedDocument(
+  input: ExportReconstructedDocumentInput,
+) {
+  return invokeDesktopCommand<ExportReconstructedDocumentResult>(
+    DESKTOP_COMMANDS.exportReconstructedDocument,
     {
       input,
     },

@@ -7,6 +7,7 @@ export const DESKTOP_COMMANDS = {
   createStyleProfile: "create_style_profile",
   buildTranslationContext: "build_translation_context",
   buildDocumentTranslationChunks: "build_document_translation_chunks",
+  exportReconstructedDocument: "export_reconstructed_document",
   getReconstructedDocument: "get_reconstructed_document",
   inspectQaFinding: "inspect_qa_finding",
   listDocumentQaFindings: "list_document_qa_findings",
@@ -778,6 +779,28 @@ export interface TranslateDocumentInput {
 export interface GetReconstructedDocumentInput {
   projectId: string;
   documentId: string;
+}
+
+export interface ExportReconstructedDocumentInput {
+  projectId: string;
+  documentId: string;
+}
+
+export interface ExportReconstructedDocumentResult {
+  projectId: string;
+  documentId: string;
+  documentName: string;
+  format: string;
+  mimeType: string;
+  fileName: string;
+  exportedAt: number;
+  status: ReconstructedDocumentStatus;
+  contentSource: ReconstructedContentSource;
+  isComplete: boolean;
+  totalSegments: number;
+  translatedSegments: number;
+  fallbackSegments: number;
+  content: string;
 }
 
 export interface RunDocumentConsistencyQaInput {
