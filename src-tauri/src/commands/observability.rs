@@ -21,7 +21,7 @@ use crate::persistence::qa_findings::QaFindingRepository;
 use crate::persistence::task_runs::TaskRunRepository;
 use crate::qa_findings::{QaFindingSummary, QA_FINDING_STATUS_OPEN};
 use crate::reconstructed_documents::GetReconstructedDocumentInput;
-use crate::task_runs::TaskRunSummary;
+use crate::task_runs::{TaskRunSummary, TASK_RUN_STATUS_COMPLETED};
 use crate::translate_chunk::TRANSLATE_CHUNK_ACTION_TYPE;
 use crate::translate_document::TRANSLATE_DOCUMENT_ACTION_TYPE;
 
@@ -357,7 +357,10 @@ fn build_job_overview(
 fn collect_export_traces(task_runs: &[TaskRunSummary]) -> Vec<OperationalExportTrace> {
     let mut traces = task_runs
         .iter()
-        .filter(|task_run| task_run.action_type == EXPORT_RECONSTRUCTED_DOCUMENT_ACTION_TYPE)
+        .filter(|task_run| {
+            task_run.action_type == EXPORT_RECONSTRUCTED_DOCUMENT_ACTION_TYPE
+                && task_run.status == TASK_RUN_STATUS_COMPLETED
+        })
         .map(|task_run| {
             let payload = task_run
                 .input_payload
@@ -577,7 +580,9 @@ mod tests {
         inspect_document_operational_state_with_runtime, inspect_job_trace_with_runtime,
     };
     use crate::commands::document_export::export_reconstructed_document_with_runtime;
-    use crate::document_export::ExportReconstructedDocumentInput;
+    use crate::document_export::{
+        ExportReconstructedDocumentInput, EXPORT_RECONSTRUCTED_DOCUMENT_ACTION_TYPE,
+    };
     use crate::documents::{NewDocument, DOCUMENT_SOURCE_LOCAL_FILE, DOCUMENT_STATUS_SEGMENTED};
     use crate::observability::{InspectDocumentOperationalStateInput, InspectJobTraceInput};
     use crate::persistence::bootstrap::{bootstrap_database, DatabaseRuntime};
@@ -595,7 +600,9 @@ mod tests {
     };
     use crate::sections::{NewDocumentSection, DOCUMENT_SECTION_TYPE_CHAPTER};
     use crate::segments::{NewSegment, SegmentTranslationWrite, SEGMENT_STATUS_PENDING_TRANSLATION};
-    use crate::task_runs::{NewTaskRun, TASK_RUN_STATUS_COMPLETED, TASK_RUN_STATUS_RUNNING};
+    use crate::task_runs::{
+        NewTaskRun, TASK_RUN_STATUS_COMPLETED, TASK_RUN_STATUS_FAILED, TASK_RUN_STATUS_RUNNING,
+    };
     use crate::translate_chunk::TRANSLATE_CHUNK_ACTION_TYPE;
     use crate::translate_document::TRANSLATE_DOCUMENT_ACTION_TYPE;
     use crate::translation_chunks::{
@@ -677,6 +684,61 @@ mod tests {
             .warnings
             .iter()
             .any(|warning| warning.code == "selected_job_id_not_found"));
+    }
+
+    #[test]
+    fn inspect_document_operational_state_ignores_failed_export_attempts() {
+        let fixture = create_runtime_fixture();
+        seed_observability_graph(&fixture.runtime);
+        let mut connection = fixture
+            .runtime
+            .open_connection()
+            .expect("database connection should open");
+
+        TaskRunRepository::new(&mut connection)
+            .create(&NewTaskRun {
+                id: "task_export_failed_0001".to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                chunk_id: None,
+                job_id: None,
+                action_type: EXPORT_RECONSTRUCTED_DOCUMENT_ACTION_TYPE.to_owned(),
+                status: TASK_RUN_STATUS_FAILED.to_owned(),
+                input_payload: Some(
+                    "{\"fileName\":\"draft.translated.md\",\"sourceJobId\":\"job_observability_001\"}"
+                        .to_owned(),
+                ),
+                output_payload: Some("{\"outcome\":\"validation_error\"}".to_owned()),
+                error_message: Some("No reconstructible content".to_owned()),
+                started_at: NOW + 70,
+                completed_at: Some(NOW + 70),
+                created_at: NOW + 70,
+                updated_at: NOW + 70,
+            })
+            .expect("failed export attempt should persist");
+        drop(connection);
+
+        let inspection = inspect_document_operational_state_with_runtime(
+            InspectDocumentOperationalStateInput {
+                project_id: PROJECT_ID.to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                job_id: Some(JOB_ID.to_owned()),
+            },
+            &fixture.runtime,
+        )
+        .expect("document operational state should load without failed exports");
+
+        assert!(inspection.exports.is_empty());
+        assert!(inspection
+            .warnings
+            .iter()
+            .all(|warning| warning.code != "incomplete_export_snapshot"));
+        assert!(inspection
+            .selected_job
+            .as_ref()
+            .expect("selected job should resolve")
+            .warnings
+            .iter()
+            .any(|warning| warning.code == "job_without_export_snapshot"));
     }
 
     #[test]
