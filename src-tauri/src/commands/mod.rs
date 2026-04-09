@@ -1,4 +1,5 @@
 pub mod context_builder;
+pub mod document_export;
 pub mod document_qa;
 pub mod documents;
 pub mod finding_review;
