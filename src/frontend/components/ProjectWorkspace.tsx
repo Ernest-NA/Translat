@@ -31,7 +31,6 @@ import { DocumentImporter } from "./DocumentImporter";
 import { DocumentList } from "./DocumentList";
 import { FindingReviewPanel } from "./FindingReviewPanel";
 import { OperationalDebugPanel } from "./OperationalDebugPanel";
-import { FindingReviewPanel } from "./FindingReviewPanel";
 import { SegmentBrowser } from "./SegmentBrowser";
 import { TranslationJobMonitor } from "./TranslationJobMonitor";
 
