@@ -5,6 +5,7 @@ use crate::task_runs::TaskRunSummary;
 
 pub const OPERATIONAL_WARNING_SEVERITY_INFO: &str = "info";
 pub const OPERATIONAL_WARNING_SEVERITY_WARNING: &str = "warning";
+#[allow(dead_code)]
 pub const OPERATIONAL_WARNING_SEVERITY_ERROR: &str = "error";
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]

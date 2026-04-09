@@ -3,6 +3,7 @@ use std::collections::BTreeSet;
 use serde::Deserialize;
 use tauri::State;
 
+use crate::commands::document_export::select_export_source_task_run;
 use crate::commands::reconstructed_documents::get_reconstructed_document_with_runtime;
 use crate::commands::translate_document_jobs::{
     build_job_status_if_exists, current_timestamp, validate_identifier,
@@ -12,12 +13,13 @@ use crate::error::DesktopCommandError;
 use crate::observability::{
     DocumentJobOverview, DocumentOperationalState, InspectDocumentOperationalStateInput,
     InspectJobTraceInput, JobTraceInspection, OperationalExportTrace, OperationalInspectionWarning,
-    ReconstructedOperationalSnapshot, OPERATIONAL_WARNING_SEVERITY_ERROR,
-    OPERATIONAL_WARNING_SEVERITY_INFO, OPERATIONAL_WARNING_SEVERITY_WARNING,
+    ReconstructedOperationalSnapshot, OPERATIONAL_WARNING_SEVERITY_INFO,
+    OPERATIONAL_WARNING_SEVERITY_WARNING,
 };
 use crate::persistence::bootstrap::DatabaseRuntime;
 use crate::persistence::documents::DocumentRepository;
 use crate::persistence::qa_findings::QaFindingRepository;
+use crate::persistence::segments::SegmentRepository;
 use crate::persistence::task_runs::TaskRunRepository;
 use crate::qa_findings::{QaFindingSummary, QA_FINDING_STATUS_OPEN};
 use crate::reconstructed_documents::GetReconstructedDocumentInput;
@@ -108,6 +110,14 @@ pub(crate) fn inspect_document_operational_state_with_runtime(
                 )
             })?,
     );
+    let segment_translation_traces = SegmentRepository::new(&mut connection)
+        .list_translation_trace_by_document(&document_id)
+        .map_err(|error| {
+            DesktopCommandError::internal(
+                "The desktop shell could not load segment translation provenance for operational inspection.",
+                Some(error.to_string()),
+            )
+        })?;
     let reconstruction = get_reconstructed_document_with_runtime(
         GetReconstructedDocumentInput {
             project_id: project_id.clone(),
@@ -116,6 +126,9 @@ pub(crate) fn inspect_document_operational_state_with_runtime(
         database_runtime,
     )?;
     let exports = collect_export_traces(&task_runs);
+    let latest_reconstructed_source_task_run_id =
+        select_export_source_task_run(&segment_translation_traces, &task_runs)
+            .map(|task_run| task_run.id);
     let jobs = collect_job_overviews(
         &mut connection,
         database_runtime,
@@ -154,6 +167,7 @@ pub(crate) fn inspect_document_operational_state_with_runtime(
         &findings,
         &reconstruction,
         &exports,
+        latest_reconstructed_source_task_run_id.as_deref(),
         requested_selected_job_id.as_deref(),
         selected_job_id.as_deref(),
     );
@@ -403,16 +417,12 @@ fn derive_document_warnings(
     findings: &[QaFindingSummary],
     reconstruction: &crate::reconstructed_documents::ReconstructedDocument,
     exports: &[OperationalExportTrace],
+    latest_reconstructed_source_task_run_id: Option<&str>,
     requested_selected_job_id: Option<&str>,
     resolved_selected_job_id: Option<&str>,
 ) -> Vec<OperationalInspectionWarning> {
     let mut warnings = Vec::new();
     let open_finding_count = open_finding_count(findings);
-    let latest_document_task_run_id = reconstruction
-        .trace
-        .latest_document_task_run
-        .as_ref()
-        .map(|task_run| task_run.id.as_str());
 
     if requested_selected_job_id.is_some() && resolved_selected_job_id.is_none() {
         warnings.push(OperationalInspectionWarning {
@@ -468,13 +478,14 @@ fn derive_document_warnings(
             });
         }
 
-        if latest_document_task_run_id.is_some()
-            && latest_export.source_task_run_id.as_deref() != latest_document_task_run_id
+        if latest_reconstructed_source_task_run_id.is_some()
+            && latest_export.source_task_run_id.as_deref()
+                != latest_reconstructed_source_task_run_id
         {
             warnings.push(OperationalInspectionWarning {
                 code: "export_behind_latest_document_run".to_owned(),
                 severity: OPERATIONAL_WARNING_SEVERITY_WARNING.to_owned(),
-                message: "The latest export snapshot is not linked to the latest document-level run, so exported output may lag behind the current reconstructed state.".to_owned(),
+                message: "The latest export snapshot is not linked to the latest run that contributed to the current reconstructed state, so exported output may lag behind recent chunk-level corrections.".to_owned(),
             });
         }
     }
@@ -499,15 +510,18 @@ fn derive_job_warnings(
     job_status: &str,
 ) -> Vec<OperationalInspectionWarning> {
     let mut warnings = Vec::new();
-
-    if !task_runs
+    let has_document_run = task_runs
         .iter()
-        .any(|task_run| task_run.action_type == TRANSLATE_DOCUMENT_ACTION_TYPE)
-    {
+        .any(|task_run| task_run.action_type == TRANSLATE_DOCUMENT_ACTION_TYPE);
+    let has_chunk_run = task_runs
+        .iter()
+        .any(|task_run| task_run.action_type == TRANSLATE_CHUNK_ACTION_TYPE);
+
+    if !has_document_run && has_chunk_run {
         warnings.push(OperationalInspectionWarning {
-            code: "missing_document_orchestration_run".to_owned(),
-            severity: OPERATIONAL_WARNING_SEVERITY_ERROR.to_owned(),
-            message: "This job keeps chunk-level task runs but no document-level orchestration run.".to_owned(),
+            code: "chunk_only_job_trace".to_owned(),
+            severity: OPERATIONAL_WARNING_SEVERITY_INFO.to_owned(),
+            message: "This job only keeps chunk-level task runs, which is valid for focused correction flows without a document-level orchestration run.".to_owned(),
         });
     }
 
@@ -763,6 +777,151 @@ mod tests {
             .warnings
             .iter()
             .any(|warning| warning.code == "job_without_export_snapshot"));
+    }
+
+    #[test]
+    fn inspect_job_trace_treats_chunk_only_correction_jobs_as_valid() {
+        let fixture = create_runtime_fixture();
+        seed_observability_graph(&fixture.runtime);
+        let correction_job_id = "job_observability_review_001";
+        let mut connection = fixture
+            .runtime
+            .open_connection()
+            .expect("database connection should open");
+
+        TaskRunRepository::new(&mut connection)
+            .create(&NewTaskRun {
+                id: "task_observability_chunk_review_0001".to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                chunk_id: Some("doc_observability_001_chunk_0002".to_owned()),
+                job_id: Some(correction_job_id.to_owned()),
+                action_type: TRANSLATE_CHUNK_ACTION_TYPE.to_owned(),
+                status: TASK_RUN_STATUS_RUNNING.to_owned(),
+                input_payload: Some("{\"chunk\":2,\"mode\":\"finding_review\"}".to_owned()),
+                output_payload: None,
+                error_message: None,
+                started_at: NOW + 80,
+                completed_at: None,
+                created_at: NOW + 80,
+                updated_at: NOW + 80,
+            })
+            .expect("chunk-only correction run should persist");
+        TaskRunRepository::new(&mut connection)
+            .mark_completed_with_translation_projection(
+                PROJECT_ID,
+                DOCUMENT_ID,
+                "task_observability_chunk_review_0001",
+                "{\"translations\":[3,4],\"review\":\"applied\"}",
+                &[
+                    SegmentTranslationWrite {
+                        segment_id: "seg_observability_0003".to_owned(),
+                        target_text: "Capítulo II".to_owned(),
+                    },
+                    SegmentTranslationWrite {
+                        segment_id: "seg_observability_0004".to_owned(),
+                        target_text: "La linterna siguió ardiendo toda la noche.".to_owned(),
+                    },
+                ],
+                NOW + 90,
+            )
+            .expect("chunk-only correction projection should persist");
+        drop(connection);
+
+        let inspection = inspect_job_trace_with_runtime(
+            InspectJobTraceInput {
+                project_id: PROJECT_ID.to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                job_id: correction_job_id.to_owned(),
+            },
+            &fixture.runtime,
+        )
+        .expect("chunk-only correction job trace should load");
+
+        assert_eq!(inspection.overview.job_id, correction_job_id);
+        assert!(inspection
+            .warnings
+            .iter()
+            .any(|warning| warning.code == "chunk_only_job_trace"));
+        assert!(inspection
+            .warnings
+            .iter()
+            .all(|warning| warning.code != "missing_document_orchestration_run"));
+    }
+
+    #[test]
+    fn inspect_document_operational_state_does_not_flag_export_after_chunk_only_correction() {
+        let fixture = create_runtime_fixture();
+        seed_observability_graph(&fixture.runtime);
+        let mut connection = fixture
+            .runtime
+            .open_connection()
+            .expect("database connection should open");
+
+        TaskRunRepository::new(&mut connection)
+            .create(&NewTaskRun {
+                id: "task_observability_chunk_review_0002".to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                chunk_id: Some("doc_observability_001_chunk_0002".to_owned()),
+                job_id: Some("job_observability_review_002".to_owned()),
+                action_type: TRANSLATE_CHUNK_ACTION_TYPE.to_owned(),
+                status: TASK_RUN_STATUS_RUNNING.to_owned(),
+                input_payload: Some("{\"chunk\":2,\"mode\":\"finding_review\"}".to_owned()),
+                output_payload: None,
+                error_message: None,
+                started_at: NOW + 80,
+                completed_at: None,
+                created_at: NOW + 80,
+                updated_at: NOW + 80,
+            })
+            .expect("chunk-only correction run should persist");
+        TaskRunRepository::new(&mut connection)
+            .mark_completed_with_translation_projection(
+                PROJECT_ID,
+                DOCUMENT_ID,
+                "task_observability_chunk_review_0002",
+                "{\"translations\":[3,4],\"review\":\"applied\"}",
+                &[
+                    SegmentTranslationWrite {
+                        segment_id: "seg_observability_0003".to_owned(),
+                        target_text: "Capítulo II".to_owned(),
+                    },
+                    SegmentTranslationWrite {
+                        segment_id: "seg_observability_0004".to_owned(),
+                        target_text: "La linterna siguió ardiendo toda la noche.".to_owned(),
+                    },
+                ],
+                NOW + 90,
+            )
+            .expect("chunk-only correction projection should persist");
+        drop(connection);
+
+        let _ = export_reconstructed_document_with_runtime(
+            ExportReconstructedDocumentInput {
+                project_id: PROJECT_ID.to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+            },
+            &fixture.runtime,
+        )
+        .expect("export should succeed after chunk-only correction");
+
+        let inspection = inspect_document_operational_state_with_runtime(
+            InspectDocumentOperationalStateInput {
+                project_id: PROJECT_ID.to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                job_id: Some("job_observability_review_002".to_owned()),
+            },
+            &fixture.runtime,
+        )
+        .expect("document operational state should load after chunk-only correction");
+
+        assert!(inspection
+            .warnings
+            .iter()
+            .all(|warning| warning.code != "export_behind_latest_document_run"));
+        assert_eq!(
+            inspection.exports.first().and_then(|export| export.source_task_run_id.as_deref()),
+            Some("task_observability_chunk_review_0002")
+        );
     }
 
     fn create_runtime_fixture() -> RuntimeFixture {

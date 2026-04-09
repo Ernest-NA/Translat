@@ -225,7 +225,7 @@ fn export_reconstructed_document_with_runtime_at(
     Ok(result)
 }
 
-fn select_export_source_task_run(
+pub(crate) fn select_export_source_task_run(
     segment_translation_traces: &[SegmentTranslationTraceSummary],
     document_task_runs: &[TaskRunSummary],
 ) -> Option<TaskRunSummary> {
@@ -239,36 +239,22 @@ fn select_export_source_task_run(
         return None;
     }
 
-    let mut selected_task_run: Option<&TaskRunSummary> = None;
-    let mut selected_sort_key = i64::MIN;
-    let mut selected_is_ambiguous = false;
-
-    for task_run_id in contributing_task_run_ids {
-        let Some(task_run) = document_task_runs.iter().find(|task_run| {
-            task_run.id == task_run_id && task_run.status == TASK_RUN_STATUS_COMPLETED
-        }) else {
-            continue;
-        };
-        let sort_key = task_run.completed_at.unwrap_or(task_run.updated_at);
-
-        if sort_key > selected_sort_key {
-            selected_task_run = Some(task_run);
-            selected_sort_key = sort_key;
-            selected_is_ambiguous = false;
-        } else if sort_key == selected_sort_key
-            && selected_task_run
-                .as_ref()
-                .is_some_and(|selected| selected.id != task_run.id)
-        {
-            selected_is_ambiguous = true;
-        }
-    }
-
-    if selected_is_ambiguous {
-        None
-    } else {
-        selected_task_run.cloned()
-    }
+    document_task_runs
+        .iter()
+        .enumerate()
+        .filter(|(_, task_run)| {
+            task_run.status == TASK_RUN_STATUS_COMPLETED
+                && contributing_task_run_ids.contains(task_run.id.as_str())
+        })
+        .max_by_key(|(index, task_run)| {
+            (
+                task_run.completed_at.unwrap_or(task_run.updated_at),
+                task_run.updated_at,
+                task_run.created_at,
+                *index,
+            )
+        })
+        .map(|(_, task_run)| task_run.clone())
 }
 
 fn build_export_result(
@@ -1148,7 +1134,7 @@ mod tests {
     }
 
     #[test]
-    fn export_source_task_run_is_unset_when_latest_segment_contributors_tie() {
+    fn export_source_task_run_uses_stable_order_when_latest_segment_contributors_tie() {
         let segment_translation_traces = vec![
             SegmentTranslationTraceSummary {
                 id: "seg_001".to_owned(),
@@ -1198,9 +1184,11 @@ mod tests {
             },
         ];
 
-        assert!(
+        assert_eq!(
             select_export_source_task_run(&segment_translation_traces, &document_task_runs)
-                .is_none()
+                .as_ref()
+                .map(|task_run| task_run.id.as_str()),
+            Some("task_chunk_b")
         );
     }
 
