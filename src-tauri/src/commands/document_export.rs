@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::path::Path;
 
 use serde_json::json;
@@ -15,10 +16,14 @@ use crate::error::DesktopCommandError;
 use crate::persistence::bootstrap::DatabaseRuntime;
 use crate::persistence::documents::DocumentRepository;
 use crate::persistence::qa_findings::QaFindingRepository;
+use crate::persistence::segments::SegmentRepository;
 use crate::persistence::task_runs::TaskRunRepository;
 use crate::qa_findings::QA_FINDING_STATUS_OPEN;
 use crate::reconstructed_documents::{ReconstructedDocument, ReconstructedDocumentBlock};
-use crate::task_runs::{NewTaskRun, TASK_RUN_STATUS_RUNNING};
+use crate::segments::SegmentTranslationTraceSummary;
+use crate::task_runs::{
+    NewTaskRun, TaskRunSummary, TASK_RUN_STATUS_COMPLETED, TASK_RUN_STATUS_RUNNING,
+};
 
 const DOCUMENT_EXPORT_FORMAT_MARKDOWN: &str = "md";
 const DOCUMENT_EXPORT_MIME_MARKDOWN: &str = "text/markdown; charset=utf-8";
@@ -93,18 +98,30 @@ fn export_reconstructed_document_with_runtime_at(
             Some(error.to_string()),
         )
     })?;
+    let segment_translation_traces = SegmentRepository::new(&mut connection)
+        .list_translation_trace_by_document(&document_id)
+        .map_err(|error| {
+            DesktopCommandError::internal(
+                "The desktop shell could not load segment translation provenance for document export.",
+                Some(error.to_string()),
+            )
+        })?;
+    let document_task_runs = TaskRunRepository::new(&mut connection)
+        .list_by_document(&document_id)
+        .map_err(|error| {
+            DesktopCommandError::internal(
+                "The desktop shell could not load task runs for export provenance.",
+                Some(error.to_string()),
+            )
+        })?;
+    let export_source_task_run =
+        select_export_source_task_run(&segment_translation_traces, &document_task_runs);
     let task_run_id = generate_task_run_id(exported_at);
     let export_file_name = build_export_file_name(&document.name);
-    let source_job_id = reconstructed_document
-        .trace
-        .latest_document_task_run
+    let source_job_id = export_source_task_run
         .as_ref()
         .and_then(|task_run| task_run.job_id.clone());
-    let source_task_run_id = reconstructed_document
-        .trace
-        .latest_document_task_run
-        .as_ref()
-        .map(|task_run| task_run.id.clone());
+    let source_task_run_id = export_source_task_run.map(|task_run| task_run.id);
     let input_payload = serde_json::to_string(&json!({
         "actionVersion": EXPORT_RECONSTRUCTED_DOCUMENT_ACTION_VERSION,
         "documentName": document.name.as_str(),
@@ -206,6 +223,52 @@ fn export_reconstructed_document_with_runtime_at(
         })?;
 
     Ok(result)
+}
+
+fn select_export_source_task_run(
+    segment_translation_traces: &[SegmentTranslationTraceSummary],
+    document_task_runs: &[TaskRunSummary],
+) -> Option<TaskRunSummary> {
+    let contributing_task_run_ids = segment_translation_traces
+        .iter()
+        .filter(|segment_trace| segment_trace.target_text.is_some())
+        .filter_map(|segment_trace| segment_trace.last_task_run_id.as_deref())
+        .collect::<BTreeSet<_>>();
+
+    if contributing_task_run_ids.is_empty() {
+        return None;
+    }
+
+    let mut selected_task_run: Option<&TaskRunSummary> = None;
+    let mut selected_sort_key = i64::MIN;
+    let mut selected_is_ambiguous = false;
+
+    for task_run_id in contributing_task_run_ids {
+        let Some(task_run) = document_task_runs.iter().find(|task_run| {
+            task_run.id == task_run_id && task_run.status == TASK_RUN_STATUS_COMPLETED
+        }) else {
+            continue;
+        };
+        let sort_key = task_run.completed_at.unwrap_or(task_run.updated_at);
+
+        if sort_key > selected_sort_key {
+            selected_task_run = Some(task_run);
+            selected_sort_key = sort_key;
+            selected_is_ambiguous = false;
+        } else if sort_key == selected_sort_key
+            && selected_task_run
+                .as_ref()
+                .is_some_and(|selected| selected.id != task_run.id)
+        {
+            selected_is_ambiguous = true;
+        }
+    }
+
+    if selected_is_ambiguous {
+        None
+    } else {
+        selected_task_run.cloned()
+    }
 }
 
 fn build_export_result(
@@ -513,14 +576,17 @@ fn is_windows_reserved_file_name(file_name: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use serde_json::Value;
     use tempfile::{tempdir, TempDir};
 
     use super::{
         build_export_file_name, escape_markdown_heading_text,
         escape_markdown_paragraph_text, export_reconstructed_document_with_runtime_at,
-        title_matches_segment_title,
+        select_export_source_task_run, title_matches_segment_title,
     };
-    use crate::document_export::ExportReconstructedDocumentInput;
+    use crate::document_export::{
+        ExportReconstructedDocumentInput, EXPORT_RECONSTRUCTED_DOCUMENT_ACTION_TYPE,
+    };
     use crate::documents::{NewDocument, DOCUMENT_SOURCE_LOCAL_FILE, DOCUMENT_STATUS_IMPORTED};
     use crate::persistence::bootstrap::{bootstrap_database, DatabaseRuntime};
     use crate::persistence::documents::DocumentRepository;
@@ -532,8 +598,13 @@ mod tests {
     use crate::persistence::translation_chunks::TranslationChunkRepository;
     use crate::projects::NewProject;
     use crate::sections::{NewDocumentSection, DOCUMENT_SECTION_TYPE_CHAPTER};
-    use crate::segments::{NewSegment, SegmentTranslationWrite, SEGMENT_STATUS_PENDING_TRANSLATION};
-    use crate::task_runs::{NewTaskRun, TASK_RUN_STATUS_COMPLETED, TASK_RUN_STATUS_RUNNING};
+    use crate::segments::{
+        NewSegment, SegmentTranslationTraceSummary, SegmentTranslationWrite,
+        SEGMENT_STATUS_PENDING_TRANSLATION,
+    };
+    use crate::task_runs::{
+        NewTaskRun, TaskRunSummary, TASK_RUN_STATUS_COMPLETED, TASK_RUN_STATUS_RUNNING,
+    };
     use crate::translate_chunk::TRANSLATE_CHUNK_ACTION_TYPE;
     use crate::translate_document::TRANSLATE_DOCUMENT_ACTION_TYPE;
     use crate::translation_chunks::{
@@ -965,6 +1036,172 @@ mod tests {
         assert!(first.content.contains("## Capítulo II"));
         assert!(first.content.contains("La linterna ardió toda la noche."));
         assert!(!first.content.contains("[Source fallback]"));
+    }
+
+    #[test]
+    fn export_reconstructed_document_attributes_trace_to_latest_contributing_chunk_run() {
+        let fixture = create_runtime_fixture();
+        seed_export_graph(&fixture.runtime);
+        let mut connection = fixture
+            .runtime
+            .open_connection()
+            .expect("database connection should open");
+
+        TaskRunRepository::new(&mut connection)
+            .mark_completed_with_translation_projection(
+                PROJECT_ID,
+                DOCUMENT_ID,
+                "task_export_chunk_0002",
+                "{\"translations\":[3,4]}",
+                &[
+                    SegmentTranslationWrite {
+                        segment_id: "seg_export_0003".to_owned(),
+                        target_text: "Capítulo II".to_owned(),
+                    },
+                    SegmentTranslationWrite {
+                        segment_id: "seg_export_0004".to_owned(),
+                        target_text: "La linterna ardió toda la noche.".to_owned(),
+                    },
+                ],
+                NOW + 61,
+            )
+            .expect("second chunk translation projection should persist");
+
+        TaskRunRepository::new(&mut connection)
+            .create(&NewTaskRun {
+                id: "task_export_chunk_0003".to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                chunk_id: Some("doc_export_001_chunk_0002".to_owned()),
+                job_id: Some("job_export_retranslate_001".to_owned()),
+                action_type: TRANSLATE_CHUNK_ACTION_TYPE.to_owned(),
+                status: TASK_RUN_STATUS_RUNNING.to_owned(),
+                input_payload: Some("{\"chunk\":2,\"mode\":\"review_retranslation\"}".to_owned()),
+                output_payload: None,
+                error_message: None,
+                started_at: NOW + 91,
+                completed_at: None,
+                created_at: NOW + 91,
+                updated_at: NOW + 91,
+            })
+            .expect("retranslation task run should persist");
+        TaskRunRepository::new(&mut connection)
+            .mark_completed_with_translation_projection(
+                PROJECT_ID,
+                DOCUMENT_ID,
+                "task_export_chunk_0003",
+                "{\"translations\":[3,4],\"review\":\"applied\"}",
+                &[
+                    SegmentTranslationWrite {
+                        segment_id: "seg_export_0003".to_owned(),
+                        target_text: "Capítulo II".to_owned(),
+                    },
+                    SegmentTranslationWrite {
+                        segment_id: "seg_export_0004".to_owned(),
+                        target_text: "La linterna siguió ardiendo toda la noche.".to_owned(),
+                    },
+                ],
+                NOW + 101,
+            )
+            .expect("chunk-only retranslation should persist");
+        drop(connection);
+
+        let result = export_reconstructed_document_with_runtime_at(
+            ExportReconstructedDocumentInput {
+                project_id: PROJECT_ID.to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+            },
+            &fixture.runtime,
+            NOW + 120,
+        )
+        .expect("export should succeed after chunk-only retranslation");
+
+        assert!(result
+            .content
+            .contains("La linterna siguió ardiendo toda la noche."));
+
+        let mut connection = fixture
+            .runtime
+            .open_connection()
+            .expect("database connection should open");
+        let export_task_run = TaskRunRepository::new(&mut connection)
+            .list_by_document(DOCUMENT_ID)
+            .expect("task runs should load")
+            .into_iter()
+            .find(|task_run| task_run.action_type == EXPORT_RECONSTRUCTED_DOCUMENT_ACTION_TYPE)
+            .expect("export task run should persist");
+        let export_input_payload: Value = serde_json::from_str(
+            export_task_run
+                .input_payload
+                .as_deref()
+                .expect("export task run should persist an input payload"),
+        )
+        .expect("export payload should decode");
+
+        assert_eq!(
+            export_input_payload["sourceJobId"].as_str(),
+            Some("job_export_retranslate_001")
+        );
+        assert_eq!(
+            export_input_payload["sourceTaskRunId"].as_str(),
+            Some("task_export_chunk_0003")
+        );
+    }
+
+    #[test]
+    fn export_source_task_run_is_unset_when_latest_segment_contributors_tie() {
+        let segment_translation_traces = vec![
+            SegmentTranslationTraceSummary {
+                id: "seg_001".to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                sequence: 1,
+                target_text: Some("Uno".to_owned()),
+                last_task_run_id: Some("task_chunk_a".to_owned()),
+            },
+            SegmentTranslationTraceSummary {
+                id: "seg_002".to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                sequence: 2,
+                target_text: Some("Dos".to_owned()),
+                last_task_run_id: Some("task_chunk_b".to_owned()),
+            },
+        ];
+        let document_task_runs = vec![
+            TaskRunSummary {
+                id: "task_chunk_a".to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                chunk_id: Some("chunk_a".to_owned()),
+                job_id: Some("job_a".to_owned()),
+                action_type: TRANSLATE_CHUNK_ACTION_TYPE.to_owned(),
+                status: TASK_RUN_STATUS_COMPLETED.to_owned(),
+                input_payload: None,
+                output_payload: None,
+                error_message: None,
+                started_at: NOW,
+                completed_at: Some(NOW + 10),
+                created_at: NOW,
+                updated_at: NOW + 10,
+            },
+            TaskRunSummary {
+                id: "task_chunk_b".to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                chunk_id: Some("chunk_b".to_owned()),
+                job_id: Some("job_b".to_owned()),
+                action_type: TRANSLATE_CHUNK_ACTION_TYPE.to_owned(),
+                status: TASK_RUN_STATUS_COMPLETED.to_owned(),
+                input_payload: None,
+                output_payload: None,
+                error_message: None,
+                started_at: NOW + 1,
+                completed_at: Some(NOW + 10),
+                created_at: NOW + 1,
+                updated_at: NOW + 10,
+            },
+        ];
+
+        assert!(
+            select_export_source_task_run(&segment_translation_traces, &document_task_runs)
+                .is_none()
+        );
     }
 
     #[test]
