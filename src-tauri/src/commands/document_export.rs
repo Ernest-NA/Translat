@@ -231,10 +231,20 @@ fn title_matches_segment_title(section_title: &str, source_text: &str) -> bool {
 
 fn normalize_for_heading_match(value: &str) -> String {
     value
+        .chars()
+        .filter_map(|character| {
+            if character.is_alphanumeric() {
+                Some(character.to_ascii_lowercase())
+            } else if character.is_whitespace() {
+                Some(' ')
+            } else {
+                None
+            }
+        })
+        .collect::<String>()
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
-        .to_ascii_lowercase()
 }
 
 fn build_export_file_name(document_name: &str) -> String {
@@ -254,15 +264,58 @@ fn build_export_file_name(document_name: &str) -> String {
     let trimmed = sanitized.trim_matches('_');
     let base_name = if trimmed.is_empty() { "document" } else { trimmed };
     let shortened: String = base_name.chars().take(120).collect();
+    let safe_base_name = if is_windows_reserved_file_name(&shortened) {
+        format!("document_{shortened}")
+    } else {
+        shortened
+    };
 
-    format!("{shortened}.translated.{DOCUMENT_EXPORT_FORMAT_MARKDOWN}")
+    format!("{safe_base_name}.translated.{DOCUMENT_EXPORT_FORMAT_MARKDOWN}")
+}
+
+fn is_windows_reserved_file_name(file_name: &str) -> bool {
+    let stem = file_name
+        .split('.')
+        .next()
+        .unwrap_or(file_name)
+        .trim_end_matches([' ', '.'])
+        .to_ascii_uppercase();
+
+    matches!(
+        stem.as_str(),
+        "CON"
+            | "PRN"
+            | "AUX"
+            | "NUL"
+            | "COM1"
+            | "COM2"
+            | "COM3"
+            | "COM4"
+            | "COM5"
+            | "COM6"
+            | "COM7"
+            | "COM8"
+            | "COM9"
+            | "LPT1"
+            | "LPT2"
+            | "LPT3"
+            | "LPT4"
+            | "LPT5"
+            | "LPT6"
+            | "LPT7"
+            | "LPT8"
+            | "LPT9"
+    )
 }
 
 #[cfg(test)]
 mod tests {
     use tempfile::{tempdir, TempDir};
 
-    use super::export_reconstructed_document_with_runtime_at;
+    use super::{
+        build_export_file_name, export_reconstructed_document_with_runtime_at,
+        title_matches_segment_title,
+    };
     use crate::document_export::ExportReconstructedDocumentInput;
     use crate::documents::{NewDocument, DOCUMENT_SOURCE_LOCAL_FILE, DOCUMENT_STATUS_IMPORTED};
     use crate::persistence::bootstrap::{bootstrap_database, DatabaseRuntime};
@@ -708,5 +761,29 @@ mod tests {
         assert!(first.content.contains("## Capítulo II"));
         assert!(first.content.contains("La linterna ardió toda la noche."));
         assert!(!first.content.contains("[Source fallback]"));
+    }
+
+    #[test]
+    fn build_export_file_name_avoids_windows_reserved_names() {
+        assert_eq!(
+            build_export_file_name("CON.txt"),
+            "document_CON.translated.md"
+        );
+        assert_eq!(
+            build_export_file_name("AUX"),
+            "document_AUX.translated.md"
+        );
+        assert_eq!(
+            build_export_file_name("nul"),
+            "document_nul.translated.md"
+        );
+    }
+
+    #[test]
+    fn title_matching_ignores_common_punctuation_and_spacing_variations() {
+        assert!(title_matches_segment_title("Chapter I:", "Chapter I"));
+        assert!(title_matches_segment_title("Capítulo II", "Capítulo II."));
+        assert!(title_matches_segment_title("Parte 3 - Final", "Parte 3 Final"));
+        assert!(!title_matches_segment_title("Chapter I", "Chapter II"));
     }
 }
