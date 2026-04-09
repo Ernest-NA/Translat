@@ -21,6 +21,7 @@ use crate::sections::DocumentSectionSummary;
 use crate::segments::SegmentSummary;
 use crate::task_runs::TaskRunSummary;
 use crate::translate_chunk::TRANSLATE_CHUNK_ACTION_TYPE;
+use crate::translate_document::TRANSLATE_DOCUMENT_ACTION_TYPE;
 use crate::translation_chunks::{
     TranslationChunkSegmentSummary, TranslationChunkSummary,
     TRANSLATION_CHUNK_SEGMENT_ROLE_CONTEXT_AFTER, TRANSLATION_CHUNK_SEGMENT_ROLE_CONTEXT_BEFORE,
@@ -182,7 +183,7 @@ fn build_reconstructed_document(
                 .push(task_run.clone());
         } else if task_run.action_type == TRANSLATE_CHUNK_ACTION_TYPE {
             orphaned_chunk_task_runs.push(task_run.clone());
-        } else {
+        } else if task_run.action_type == TRANSLATE_DOCUMENT_ACTION_TYPE {
             document_task_runs.push(task_run.clone());
         }
     }
@@ -494,6 +495,7 @@ mod tests {
     use tempfile::{tempdir, TempDir};
 
     use super::{build_reconstructed_document, get_reconstructed_document_with_runtime};
+    use crate::document_export::EXPORT_RECONSTRUCTED_DOCUMENT_ACTION_TYPE;
     use crate::documents::{NewDocument, DOCUMENT_SOURCE_LOCAL_FILE, DOCUMENT_STATUS_IMPORTED};
     use crate::persistence::bootstrap::{bootstrap_database, DatabaseRuntime};
     use crate::persistence::documents::DocumentRepository;
@@ -989,6 +991,55 @@ mod tests {
                 .as_ref()
                 .map(|task_run| task_run.id.as_str()),
             Some("task_chunk_0002")
+        );
+    }
+
+    #[test]
+    fn reconstructed_document_ignores_export_runs_in_document_level_trace() {
+        let fixture = create_runtime_fixture();
+        seed_reconstruction_graph(&fixture.runtime);
+        let mut connection = fixture
+            .runtime
+            .open_connection()
+            .expect("database connection should open");
+
+        TaskRunRepository::new(&mut connection)
+            .create(&NewTaskRun {
+                id: "task_export_snapshot_0001".to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                chunk_id: None,
+                job_id: None,
+                action_type: EXPORT_RECONSTRUCTED_DOCUMENT_ACTION_TYPE.to_owned(),
+                status: TASK_RUN_STATUS_COMPLETED.to_owned(),
+                input_payload: Some("{\"fileName\":\"draft.translated.md\"}".to_owned()),
+                output_payload: Some("{\"status\":\"complete\"}".to_owned()),
+                error_message: None,
+                started_at: NOW + 65,
+                completed_at: Some(NOW + 65),
+                created_at: NOW + 65,
+                updated_at: NOW + 65,
+            })
+            .expect("export snapshot should persist");
+        drop(connection);
+
+        let document = get_reconstructed_document_with_runtime(
+            GetReconstructedDocumentInput {
+                project_id: PROJECT_ID.to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+            },
+            &fixture.runtime,
+        )
+        .expect("reconstructed document should load after export snapshot");
+
+        assert_eq!(document.trace.task_run_count, 4);
+        assert_eq!(document.trace.document_task_run_ids, vec!["task_doc_0001"]);
+        assert_eq!(
+            document
+                .trace
+                .latest_document_task_run
+                .as_ref()
+                .map(|task_run| task_run.id.as_str()),
+            Some("task_doc_0001")
         );
     }
 

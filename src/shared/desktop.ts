@@ -9,6 +9,8 @@ export const DESKTOP_COMMANDS = {
   buildDocumentTranslationChunks: "build_document_translation_chunks",
   exportReconstructedDocument: "export_reconstructed_document",
   getReconstructedDocument: "get_reconstructed_document",
+  inspectDocumentOperationalState: "inspect_document_operational_state",
+  inspectJobTrace: "inspect_job_trace",
   inspectQaFinding: "inspect_qa_finding",
   listDocumentQaFindings: "list_document_qa_findings",
   healthcheck: "healthcheck",
@@ -801,6 +803,91 @@ export interface ExportReconstructedDocumentResult {
   translatedSegments: number;
   fallbackSegments: number;
   content: string;
+}
+
+export type OperationalWarningSeverity = "info" | "warning" | "error";
+
+export interface OperationalInspectionWarning {
+  code: string;
+  severity: OperationalWarningSeverity;
+  message: string;
+}
+
+export interface ReconstructedOperationalSnapshot {
+  status: ReconstructedDocumentStatus | string;
+  contentSource: ReconstructedContentSource | string;
+  totalSegments: number;
+  translatedSegments: number;
+  fallbackSegments: number;
+  isComplete: boolean;
+  latestDocumentTaskRunId: string | null;
+  orphanedChunkTaskRunIds: string[];
+}
+
+export interface OperationalExportTrace {
+  taskRun: TaskRunSummary;
+  fileName: string;
+  format: string;
+  exportedAt: number;
+  reconstructedStatus: ReconstructedDocumentStatus | string;
+  contentSource: ReconstructedContentSource | string;
+  isComplete: boolean;
+  totalSegments: number;
+  translatedSegments: number;
+  fallbackSegments: number;
+  sourceJobId: string | null;
+  sourceTaskRunId: string | null;
+  openFindingCount: number;
+}
+
+export interface DocumentJobOverview {
+  jobId: string;
+  status: TranslateDocumentStatus | string;
+  lastUpdatedAt: number | null;
+  totalChunks: number;
+  completedChunks: number;
+  failedChunks: number;
+  cancelledChunks: number;
+  findingCount: number;
+  openFindingCount: number;
+  latestErrorMessage: string | null;
+}
+
+export interface JobTraceInspection {
+  overview: DocumentJobOverview;
+  taskRuns: TaskRunSummary[];
+  findings: QaFindingSummary[];
+  relatedExports: OperationalExportTrace[];
+  warnings: OperationalInspectionWarning[];
+}
+
+export interface DocumentOperationalState {
+  projectId: string;
+  documentId: string;
+  documentName: string;
+  documentStatus: string;
+  observedAt: number;
+  selectedJobId: string | null;
+  recentRuns: TaskRunSummary[];
+  jobs: DocumentJobOverview[];
+  selectedJob: JobTraceInspection | null;
+  findings: QaFindingSummary[];
+  openFindingCount: number;
+  reconstruction: ReconstructedOperationalSnapshot;
+  exports: OperationalExportTrace[];
+  warnings: OperationalInspectionWarning[];
+}
+
+export interface InspectDocumentOperationalStateInput {
+  projectId: string;
+  documentId: string;
+  jobId?: string;
+}
+
+export interface InspectJobTraceInput {
+  projectId: string;
+  documentId: string;
+  jobId: string;
 }
 
 export interface RunDocumentConsistencyQaInput {

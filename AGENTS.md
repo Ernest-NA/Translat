@@ -62,7 +62,26 @@ Do not destroy historical traceability.
 
 ---
 
-## 4. Product model to assume
+## 4. Release naming convention
+
+For release planning and repository-facing agent work, use this canonical release naming:
+
+- short canonical identifier: `Release NN`
+- canonical visible heading: `Release NN — <resultado del bloque>`
+- backlog short value: `Release NN`
+
+Do not use ambiguous variants such as:
+
+- `R6`
+- `release 6`
+- `Release6`
+- `Rel 06`
+
+When legacy repository branch names or older notes use other formats, preserve them only as historical traceability, not as the canonical naming to generate next artifacts.
+
+---
+
+## 5. Product model to assume
 
 Agents must reason with the following product model:
 
@@ -109,7 +128,7 @@ Use:
 
 ---
 
-## 5. Editorial model to assume
+## 6. Editorial model to assume
 
 ### 5.1 Glossary layers
 The system supports layered terminology.
@@ -150,7 +169,7 @@ Do not model rules as passive notes only.
 
 ---
 
-## 6. AI action model to assume
+## 7. AI action model to assume
 
 The current product direction assumes these action patterns:
 
@@ -174,7 +193,7 @@ Agents must not keep treating `translate_segment` as the only or main translatio
 
 ---
 
-## 7. Architecture assumptions
+## 8. Architecture assumptions
 
 When working on code, agents should preserve the following architectural direction:
 
@@ -216,7 +235,7 @@ The architecture now expects explicit support for:
 
 ---
 
-## 8. Data model assumptions
+## 9. Data model assumptions
 
 Agents must align code with the updated data model direction.
 
@@ -248,7 +267,7 @@ Important entities include:
 
 ---
 
-## 9. Agent behaviour expectations
+## 10. Agent behaviour expectations
 
 ### 9.1 Prefer documentation-first changes
 At the current phase of Translat, prefer:
@@ -293,7 +312,7 @@ Design decisions must preserve:
 
 ---
 
-## 10. Implementation guidance
+## 11. Implementation guidance
 
 ### When editing code
 Agents should ask:
@@ -343,7 +362,7 @@ When Figma is not required, include a short justification.
 
 ---
 
-## 11. Current priority
+## 12. Current priority
 
 At the current stage, Translat priority is:
 
@@ -355,7 +374,7 @@ This means agents should currently prefer **structural alignment and coherence**
 
 ---
 
-## 12. Practical instruction for coding agents
+## 13. Practical instruction for coding agents
 
 When working on Translat, assume:
 

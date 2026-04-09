@@ -12,6 +12,7 @@ import {
   type DesktopCommandErrorPayload,
   type DesktopCommandName,
   type DocumentConsistencyQaResult,
+  type DocumentOperationalState,
   type DocumentQaFindingsOverview,
   type DocumentSegmentsOverview,
   type DocumentSummary,
@@ -25,7 +26,10 @@ import {
   type GlossarySummary,
   type HealthcheckResponse,
   type ImportDocumentInput,
+  type InspectDocumentOperationalStateInput,
+  type InspectJobTraceInput,
   type InspectQaFindingInput,
+  type JobTraceInspection,
   type ListDocumentQaFindingsInput,
   type ListDocumentSegmentsInput,
   type ListDocumentTranslationChunksInput,
@@ -306,6 +310,26 @@ export function exportReconstructedDocument(
 ) {
   return invokeDesktopCommand<ExportReconstructedDocumentResult>(
     DESKTOP_COMMANDS.exportReconstructedDocument,
+    {
+      input,
+    },
+  );
+}
+
+export function inspectDocumentOperationalState(
+  input: InspectDocumentOperationalStateInput,
+) {
+  return invokeDesktopCommand<DocumentOperationalState>(
+    DESKTOP_COMMANDS.inspectDocumentOperationalState,
+    {
+      input,
+    },
+  );
+}
+
+export function inspectJobTrace(input: InspectJobTraceInput) {
+  return invokeDesktopCommand<JobTraceInspection>(
+    DESKTOP_COMMANDS.inspectJobTrace,
     {
       input,
     },

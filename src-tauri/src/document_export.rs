@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+pub const EXPORT_RECONSTRUCTED_DOCUMENT_ACTION_TYPE: &str = "export_reconstructed_document";
+pub const EXPORT_RECONSTRUCTED_DOCUMENT_ACTION_VERSION: &str = "tr25-export-v1";
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ExportReconstructedDocumentInput {
