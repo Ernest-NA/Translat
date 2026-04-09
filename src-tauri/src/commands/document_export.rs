@@ -116,7 +116,7 @@ fn build_markdown_export(
     exported_at: i64,
 ) -> String {
     let mut sections = vec![
-        format!("# {document_name}"),
+        format!("# {}", escape_markdown_heading_text(document_name)),
         String::new(),
         "Exported from the current reconstructed document snapshot in Translat.".to_owned(),
         String::new(),
@@ -163,7 +163,9 @@ fn build_markdown_export(
         sections.push(rendered_blocks.join("\n\n"));
     } else if !reconstructed_document.resolved_text.trim().is_empty() {
         sections.push(String::new());
-        sections.push(reconstructed_document.resolved_text.clone());
+        sections.push(escape_markdown_paragraph_text(
+            reconstructed_document.resolved_text.as_str(),
+        ));
     }
 
     sections.join("\n")
@@ -187,7 +189,11 @@ fn render_markdown_block(block: &ReconstructedDocumentBlock) -> String {
     let mut parts = Vec::new();
 
     if let Some(heading) = heading {
-        parts.push(format!("{} {}", markdown_heading_prefix(block.level), heading));
+        parts.push(format!(
+            "{} {}",
+            markdown_heading_prefix(block.level),
+            escape_markdown_heading_text(heading.as_str())
+        ));
     }
 
     let body = body_segments
@@ -199,7 +205,7 @@ fn render_markdown_block(block: &ReconstructedDocumentBlock) -> String {
     if !body.is_empty() {
         parts.push(body.join("\n\n"));
     } else if parts.is_empty() && !block.resolved_text.trim().is_empty() {
-        parts.push(block.resolved_text.clone());
+        parts.push(escape_markdown_paragraph_text(block.resolved_text.as_str()));
     }
 
     parts.join("\n\n")
@@ -209,9 +215,12 @@ fn render_markdown_segment(
     segment: &crate::reconstructed_documents::ReconstructedSegment,
 ) -> String {
     if segment.final_text.is_some() {
-        segment.resolved_text.clone()
+        escape_markdown_paragraph_text(segment.resolved_text.as_str())
     } else {
-        format!("[Source fallback] {}", segment.resolved_text)
+        format!(
+            "[Source fallback] {}",
+            escape_markdown_paragraph_text(segment.resolved_text.as_str())
+        )
     }
 }
 
@@ -245,6 +254,77 @@ fn normalize_for_heading_match(value: &str) -> String {
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+fn escape_markdown_heading_text(value: &str) -> String {
+    escape_markdown_text(value, true)
+}
+
+fn escape_markdown_paragraph_text(value: &str) -> String {
+    escape_markdown_text(value, false)
+}
+
+fn escape_markdown_text(value: &str, collapse_newlines: bool) -> String {
+    let normalized = if collapse_newlines {
+        value.split_whitespace().collect::<Vec<_>>().join(" ")
+    } else {
+        value.replace("\r\n", "\n")
+    };
+
+    normalized
+        .lines()
+        .map(escape_markdown_line)
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn escape_markdown_line(line: &str) -> String {
+    let mut escaped = String::new();
+    let trimmed = line.trim_start();
+    let leading_whitespace_len = line.len().saturating_sub(trimmed.len());
+    let leading_whitespace = &line[..leading_whitespace_len];
+
+    escaped.push_str(leading_whitespace);
+
+    if should_escape_markdown_line_prefix(trimmed) {
+        escaped.push('\\');
+    }
+
+    for character in trimmed.chars() {
+        if matches!(
+            character,
+            '\\' | '`' | '*' | '_' | '{' | '}' | '[' | ']' | '(' | ')' | '#' | '+' | '-' | '!' | '>' | '|'
+        ) {
+            escaped.push('\\');
+        }
+
+        escaped.push(character);
+    }
+
+    escaped
+}
+
+fn should_escape_markdown_line_prefix(line: &str) -> bool {
+    let Some(first_character) = line.chars().next() else {
+        return false;
+    };
+
+    if matches!(first_character, '#' | '>' | '-' | '+' | '*') {
+        return true;
+    }
+
+    let mut digit_count = 0_usize;
+
+    for character in line.chars() {
+        if character.is_ascii_digit() {
+            digit_count += 1;
+            continue;
+        }
+
+        return digit_count > 0 && matches!(character, '.' | ')');
+    }
+
+    false
 }
 
 fn build_export_file_name(document_name: &str) -> String {
@@ -313,7 +393,8 @@ mod tests {
     use tempfile::{tempdir, TempDir};
 
     use super::{
-        build_export_file_name, export_reconstructed_document_with_runtime_at,
+        build_export_file_name, escape_markdown_heading_text,
+        escape_markdown_paragraph_text, export_reconstructed_document_with_runtime_at,
         title_matches_segment_title,
     };
     use crate::document_export::ExportReconstructedDocumentInput;
@@ -785,5 +866,17 @@ mod tests {
         assert!(title_matches_segment_title("Capítulo II", "Capítulo II."));
         assert!(title_matches_segment_title("Parte 3 - Final", "Parte 3 Final"));
         assert!(!title_matches_segment_title("Chapter I", "Chapter II"));
+    }
+
+    #[test]
+    fn markdown_export_escapes_heading_and_paragraph_control_syntax() {
+        assert_eq!(
+            escape_markdown_heading_text("# Chapter [I]"),
+            "\\\\# Chapter \\[I\\]"
+        );
+        assert_eq!(
+            escape_markdown_paragraph_text("> quoted\n1. item\n_regular_ [link](url)"),
+            "\\\\> quoted\n\\1. item\n\\_regular\\_ \\[link\\]\\(url\\)"
+        );
     }
 }
