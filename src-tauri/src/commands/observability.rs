@@ -124,11 +124,20 @@ pub(crate) fn inspect_document_operational_state_with_runtime(
         &findings,
         &task_runs,
     )?;
+    let requested_selected_job_id = selected_job_id.clone();
     let fallback_selected_job_id = jobs.first().map(|job| job.job_id.clone());
-    let selected_job = match selected_job_id
-        .clone()
-        .or(fallback_selected_job_id.clone())
-    {
+    let selected_job_id = match requested_selected_job_id.as_deref() {
+        Some(job_id)
+            if jobs
+                .iter()
+                .any(|job| job.job_id.as_str() == job_id) =>
+        {
+            Some(job_id.to_owned())
+        }
+        Some(_) => None,
+        None => fallback_selected_job_id.clone(),
+    };
+    let selected_job = match selected_job_id.clone() {
         Some(job_id) => Some(inspect_job_trace_internal(
             &mut connection,
             database_runtime,
@@ -140,7 +149,14 @@ pub(crate) fn inspect_document_operational_state_with_runtime(
         )?),
         None => None,
     };
-    let warnings = derive_document_warnings(&task_runs, &findings, &reconstruction, &exports);
+    let warnings = derive_document_warnings(
+        &task_runs,
+        &findings,
+        &reconstruction,
+        &exports,
+        requested_selected_job_id.as_deref(),
+        selected_job_id.as_deref(),
+    );
 
     Ok(DocumentOperationalState {
         project_id,
@@ -148,7 +164,7 @@ pub(crate) fn inspect_document_operational_state_with_runtime(
         document_name: document.name,
         document_status: document.status,
         observed_at,
-        selected_job_id: selected_job_id.or(fallback_selected_job_id),
+        selected_job_id,
         recent_runs: sort_task_runs_desc(task_runs).into_iter().take(12).collect(),
         jobs,
         selected_job,
@@ -384,6 +400,8 @@ fn derive_document_warnings(
     findings: &[QaFindingSummary],
     reconstruction: &crate::reconstructed_documents::ReconstructedDocument,
     exports: &[OperationalExportTrace],
+    requested_selected_job_id: Option<&str>,
+    resolved_selected_job_id: Option<&str>,
 ) -> Vec<OperationalInspectionWarning> {
     let mut warnings = Vec::new();
     let open_finding_count = open_finding_count(findings);
@@ -392,6 +410,14 @@ fn derive_document_warnings(
         .latest_document_task_run
         .as_ref()
         .map(|task_run| task_run.id.as_str());
+
+    if requested_selected_job_id.is_some() && resolved_selected_job_id.is_none() {
+        warnings.push(OperationalInspectionWarning {
+            code: "selected_job_id_not_found".to_owned(),
+            severity: OPERATIONAL_WARNING_SEVERITY_INFO.to_owned(),
+            message: "The requested job_id is no longer available for this document, so the document inspection was returned without a selected job trace.".to_owned(),
+        });
+    }
 
     if !reconstruction.trace.orphaned_chunk_task_runs.is_empty() {
         warnings.push(OperationalInspectionWarning {
@@ -626,6 +652,31 @@ mod tests {
             .warnings
             .iter()
             .any(|warning| warning.code == "incomplete_export_snapshot"));
+    }
+
+    #[test]
+    fn inspect_document_operational_state_ignores_stale_selected_job_id() {
+        let fixture = create_runtime_fixture();
+        seed_observability_graph(&fixture.runtime);
+
+        let inspection = inspect_document_operational_state_with_runtime(
+            InspectDocumentOperationalStateInput {
+                project_id: PROJECT_ID.to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                job_id: Some("job_missing_001".to_owned()),
+            },
+            &fixture.runtime,
+        )
+        .expect("document operational state should still load when the selected job is stale");
+
+        assert_eq!(inspection.document_id, DOCUMENT_ID);
+        assert_eq!(inspection.jobs.len(), 1);
+        assert!(inspection.selected_job.is_none());
+        assert!(inspection.selected_job_id.is_none());
+        assert!(inspection
+            .warnings
+            .iter()
+            .any(|warning| warning.code == "selected_job_id_not_found"));
     }
 
     #[test]
