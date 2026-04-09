@@ -7,8 +7,14 @@ export const DESKTOP_COMMANDS = {
   createStyleProfile: "create_style_profile",
   buildTranslationContext: "build_translation_context",
   buildDocumentTranslationChunks: "build_document_translation_chunks",
+  exportReconstructedDocument: "export_reconstructed_document",
+  getReconstructedDocument: "get_reconstructed_document",
+  inspectQaFinding: "inspect_qa_finding",
+  listDocumentQaFindings: "list_document_qa_findings",
   healthcheck: "healthcheck",
   importProjectDocument: "import_project_document",
+  retranslateChunkFromQaFinding: "retranslate_chunk_from_qa_finding",
+  runDocumentConsistencyQa: "run_document_consistency_qa",
   listDocumentTranslationChunks: "list_document_translation_chunks",
   translateChunk: "translate_chunk",
   translateDocument: "translate_document",
@@ -283,6 +289,136 @@ export interface DocumentTranslationChunksOverview {
   documentId: string;
   chunks: TranslationChunkSummary[];
   chunkSegments: TranslationChunkSegmentSummary[];
+}
+
+export type ReconstructedDocumentStatus =
+  | "empty"
+  | "untranslated"
+  | "partial"
+  | "complete";
+
+export type ReconstructedContentSource =
+  | "none"
+  | "target"
+  | "source_fallback"
+  | "mixed";
+
+export interface ReconstructedSegment {
+  id: string;
+  sequence: number;
+  sourceText: string;
+  finalText: string | null;
+  resolvedText: string;
+  resolvedFrom: "target" | "source_fallback";
+  status: string;
+  primaryChunkId: string | null;
+  relatedChunkIds: string[];
+}
+
+export interface ReconstructedDocumentBlock {
+  id: string;
+  sectionId: string | null;
+  title: string | null;
+  sequence: number;
+  kind: string;
+  level: number | null;
+  startSegmentSequence: number;
+  endSegmentSequence: number;
+  segmentCount: number;
+  translatedSegmentCount: number;
+  untranslatedSegmentCount: number;
+  fallbackSegmentCount: number;
+  status: ReconstructedDocumentStatus;
+  contentSource: ReconstructedContentSource;
+  finalText: string | null;
+  resolvedText: string;
+  segmentIds: string[];
+  primaryChunkIds: string[];
+  segments: ReconstructedSegment[];
+}
+
+export interface ReconstructedDocumentSection {
+  id: string;
+  documentId: string;
+  sequence: number;
+  title: string;
+  sectionType: string;
+  level: number;
+  startSegmentSequence: number;
+  endSegmentSequence: number;
+  segmentCount: number;
+  createdAt: number;
+  updatedAt: number;
+  status: ReconstructedDocumentStatus;
+  contentSource: ReconstructedContentSource;
+  translatedSegmentCount: number;
+  untranslatedSegmentCount: number;
+  fallbackSegmentCount: number;
+  blockId: string;
+}
+
+export interface ReconstructedDocumentCompleteness {
+  totalSegments: number;
+  translatedSegments: number;
+  untranslatedSegments: number;
+  fallbackSegments: number;
+  totalSections: number;
+  totalBlocks: number;
+  isComplete: boolean;
+  hasTranslatedContent: boolean;
+  hasReconstructibleContent: boolean;
+}
+
+export interface ReconstructedDocumentChunkTrace {
+  chunkId: string;
+  chunkSequence: number;
+  startSegmentSequence: number;
+  endSegmentSequence: number;
+  coreSegmentIds: string[];
+  contextBeforeSegmentIds: string[];
+  contextAfterSegmentIds: string[];
+  taskRunIds: string[];
+  latestTaskRun: TaskRunSummary | null;
+}
+
+export interface ReconstructedDocumentTrace {
+  chunkCount: number;
+  taskRunCount: number;
+  documentTaskRunIds: string[];
+  latestDocumentTaskRun: TaskRunSummary | null;
+  orphanedChunkTaskRuns: TaskRunSummary[];
+  chunks: ReconstructedDocumentChunkTrace[];
+}
+
+export interface ReconstructedDocument {
+  projectId: string;
+  documentId: string;
+  status: ReconstructedDocumentStatus;
+  contentSource: ReconstructedContentSource;
+  finalText: string | null;
+  resolvedText: string;
+  completeness: ReconstructedDocumentCompleteness;
+  sections: ReconstructedDocumentSection[];
+  blocks: ReconstructedDocumentBlock[];
+  trace: ReconstructedDocumentTrace;
+}
+
+export type QaFindingSeverity = "low" | "medium" | "high";
+export type QaFindingStatus = "open" | "resolved" | "dismissed";
+
+export interface QaFindingSummary {
+  id: string;
+  documentId: string;
+  chunkId: string | null;
+  taskRunId: string | null;
+  jobId: string | null;
+  findingType: string;
+  severity: QaFindingSeverity;
+  status: QaFindingStatus;
+  message: string;
+  details: string | null;
+  createdAt: number;
+  updatedAt: number;
 }
 
 export interface TaskRunSummary {
@@ -640,12 +776,113 @@ export interface TranslateDocumentInput {
   jobId?: string;
 }
 
+export interface GetReconstructedDocumentInput {
+  projectId: string;
+  documentId: string;
+}
+
+export interface ExportReconstructedDocumentInput {
+  projectId: string;
+  documentId: string;
+}
+
+export interface ExportReconstructedDocumentResult {
+  projectId: string;
+  documentId: string;
+  documentName: string;
+  format: string;
+  mimeType: string;
+  fileName: string;
+  exportedAt: number;
+  status: ReconstructedDocumentStatus;
+  contentSource: ReconstructedContentSource;
+  isComplete: boolean;
+  totalSegments: number;
+  translatedSegments: number;
+  fallbackSegments: number;
+  content: string;
+}
+
+export interface RunDocumentConsistencyQaInput {
+  projectId: string;
+  documentId: string;
+  jobId?: string | null;
+}
+
+export interface ListDocumentQaFindingsInput {
+  projectId: string;
+  documentId: string;
+  jobId?: string | null;
+}
+
+export interface DocumentConsistencyQaResult {
+  projectId: string;
+  documentId: string;
+  jobId: string | null;
+  reconstructedStatus: ReconstructedDocumentStatus;
+  reconstructedContentSource: ReconstructedContentSource;
+  generatedFindings: QaFindingSummary[];
+}
+
+export interface DocumentQaFindingsOverview {
+  projectId: string;
+  documentId: string;
+  jobId: string | null;
+  findings: QaFindingSummary[];
+}
+
+export interface QaFindingChunkAnchor {
+  findingId: string;
+  chunkId: string | null;
+  chunkSequence: number | null;
+  resolutionKind: string;
+  resolutionMessage: string;
+  canRetranslate: boolean;
+}
+
+export interface QaFindingReviewContext {
+  projectId: string;
+  documentId: string;
+  finding: QaFindingSummary;
+  anchor: QaFindingChunkAnchor;
+  chunk: TranslationChunkSummary | null;
+  chunkSegments: TranslationChunkSegmentSummary[];
+  latestChunkTaskRun: TaskRunSummary | null;
+  latestDocumentTaskRun: TaskRunSummary | null;
+  relatedBlock: ReconstructedDocumentBlock | null;
+  relatedSegments: ReconstructedSegment[];
+}
+
+export interface QaFindingRetranslationResult {
+  projectId: string;
+  documentId: string;
+  finding: QaFindingSummary;
+  anchor: QaFindingChunkAnchor;
+  correctionJobId: string;
+  reviewActionPersisted: boolean;
+  reviewActionWarning: string | null;
+  translateResult: TranslateChunkResult;
+}
+
 export interface ListDocumentSegmentsInput {
   projectId: string;
   documentId: string;
 }
 
+export interface InspectQaFindingInput {
+  projectId: string;
+  documentId: string;
+  findingId: string;
+}
+
 export interface ListDocumentTranslationChunksInput {
   projectId: string;
   documentId: string;
+}
+
+export interface RetranslateChunkFromQaFindingInput {
+  projectId: string;
+  documentId: string;
+  findingId: string;
+  jobId?: string;
 }

@@ -1,9 +1,13 @@
 pub mod context_builder;
+pub mod document_export;
+pub mod document_qa;
 pub mod documents;
+pub mod finding_review;
 pub mod glossaries;
 pub mod glossary_entries;
 pub mod healthcheck;
 pub mod projects;
+pub mod reconstructed_documents;
 pub mod rule_sets;
 pub mod segments;
 pub mod style_profiles;

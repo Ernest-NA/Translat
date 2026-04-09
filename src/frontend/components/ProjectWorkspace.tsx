@@ -9,6 +9,7 @@ import {
 import type {
   DocumentSectionSummary,
   DocumentSummary,
+  ExportReconstructedDocumentResult,
   GlossarySummary,
   ProjectSummary,
   RuleSetSummary,
@@ -18,12 +19,17 @@ import type {
   TranslationChunkSummary,
   UpdateProjectEditorialDefaultsInput,
 } from "../../shared/desktop";
+import { useDocumentFindingReview } from "../hooks/useDocumentFindingReview";
 import { useTranslateDocumentJob } from "../hooks/useTranslateDocumentJob";
 import { useTranslationContextPreview } from "../hooks/useTranslationContextPreview";
-import type { DesktopCommandError } from "../lib/desktop";
+import {
+  DesktopCommandError,
+  exportReconstructedDocument,
+} from "../lib/desktop";
 import { ChunkBrowser } from "./ChunkBrowser";
 import { DocumentImporter } from "./DocumentImporter";
 import { DocumentList } from "./DocumentList";
+import { FindingReviewPanel } from "./FindingReviewPanel";
 import { SegmentBrowser } from "./SegmentBrowser";
 import { TranslationJobMonitor } from "./TranslationJobMonitor";
 
@@ -48,7 +54,7 @@ interface ProjectWorkspaceProps {
   onSyncDocumentState: (documentId: string) => Promise<void>;
   onImportDocuments: (files: FileList) => Promise<number>;
   onProcessDocument: (documentId: string) => Promise<void>;
-  onSelectChunk: (chunkId: string) => void;
+  onSelectChunk: (chunkId: string | null) => void;
   onSaveEditorialDefaults: (
     input: UpdateProjectEditorialDefaultsInput,
   ) => Promise<boolean>;
@@ -86,6 +92,23 @@ function toOptionalSelection(value: string) {
 
 function formatStatusSuffix(status: "active" | "archived") {
   return status === "archived" ? " (archived)" : "";
+}
+
+function downloadExportedDocument(result: ExportReconstructedDocumentResult) {
+  const blob = new Blob([result.content], { type: result.mimeType });
+  const objectUrl = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+
+  anchor.href = objectUrl;
+  anchor.download = result.fileName;
+  anchor.rel = "noopener";
+  anchor.style.display = "none";
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => {
+    URL.revokeObjectURL(objectUrl);
+  }, 1_000);
 }
 
 function formatWorkspaceStatusLabel(
@@ -173,10 +196,27 @@ export function ProjectWorkspace({
   const currentActiveDocumentIdRef = useRef<string | null>(
     activeDocument?.id ?? null,
   );
+  const [exportError, setExportError] = useState<DesktopCommandError | null>(
+    null,
+  );
+  const [isExportingDocument, setIsExportingDocument] = useState(false);
+  const [lastExport, setLastExport] =
+    useState<ExportReconstructedDocumentResult | null>(null);
 
   useEffect(() => {
     currentActiveDocumentIdRef.current = activeDocument?.id ?? null;
   }, [activeDocument?.id]);
+
+  useEffect(() => {
+    const activeDocumentId = activeDocument?.id ?? null;
+    const projectId = project?.id ?? null;
+
+    void activeDocumentId;
+    void projectId;
+    setExportError(null);
+    setIsExportingDocument(false);
+    setLastExport(null);
+  }, [activeDocument?.id, project?.id]);
 
   useEffect(() => {
     const nextProjectId = project?.id ?? null;
@@ -324,6 +364,27 @@ export function ProjectWorkspace({
     editorialDefaultsFingerprint,
     selectedChunk,
   });
+  const {
+    actionError: findingActionError,
+    findings,
+    inspection: findingInspection,
+    inspectionError: findingInspectionError,
+    isInspectingFinding,
+    isLoadingFindings,
+    isRetranslating,
+    lastRetranslation,
+    loadError: findingLoadError,
+    refreshWarning,
+    retranslateSelectedFinding,
+    selectedFinding,
+    selectedFindingId,
+    selectFinding,
+  } = useDocumentFindingReview({
+    activeDocument,
+    activeProjectId: project?.id ?? null,
+    onRefreshDocument: syncActiveDocumentState,
+    onSelectChunk,
+  });
   const workspaceState = useMemo(() => {
     if (!activeDocument) {
       return {
@@ -411,9 +472,56 @@ export function ProjectWorkspace({
     !isCancelling &&
     !isRestoringTrackedJob &&
     !isResuming;
+  const canExportDocument =
+    Boolean(project) &&
+    Boolean(activeDocument) &&
+    activeDocument?.status === "segmented" &&
+    !isExportingDocument;
   const handleBuildChunks = useCallback(async () => {
     await onBuildChunks();
   }, [onBuildChunks]);
+  const handleExportDocument = useCallback(async () => {
+    if (!project || !activeDocument) {
+      return;
+    }
+
+    const requestedDocumentId = activeDocument.id;
+
+    setIsExportingDocument(true);
+    setExportError(null);
+
+    try {
+      const exportedDocument = await exportReconstructedDocument({
+        projectId: project.id,
+        documentId: activeDocument.id,
+      });
+
+      downloadExportedDocument(exportedDocument);
+
+      if (currentActiveDocumentIdRef.current === requestedDocumentId) {
+        setLastExport(exportedDocument);
+      }
+    } catch (caughtError) {
+      if (currentActiveDocumentIdRef.current === requestedDocumentId) {
+        setExportError(
+          caughtError instanceof DesktopCommandError
+            ? caughtError
+            : new DesktopCommandError(
+                "export_reconstructed_document" as never,
+                {
+                  code: "UNEXPECTED_DESKTOP_ERROR",
+                  message:
+                    "The desktop shell could not export the reconstructed document.",
+                },
+              ),
+        );
+      }
+    } finally {
+      if (currentActiveDocumentIdRef.current === requestedDocumentId) {
+        setIsExportingDocument(false);
+      }
+    }
+  }, [activeDocument, project]);
   const disableChunkBuildActions =
     isLoadingChunks ||
     isRestoringTrackedJob ||
@@ -690,10 +798,31 @@ export function ProjectWorkspace({
             >
               {isResuming ? "Resuming..." : "Resume translation"}
             </button>
+            <button
+              className="document-action-button"
+              disabled={!canExportDocument}
+              onClick={() => void handleExportDocument()}
+              type="button"
+            >
+              {isExportingDocument ? "Exporting..." : "Export markdown"}
+            </button>
           </div>
         </div>
 
         <p className="surface-card__copy">{workspaceState.detail}</p>
+
+        {exportError ? (
+          <p className="form-error" role="alert">
+            {exportError.message}
+          </p>
+        ) : null}
+
+        {lastExport ? (
+          <p className="surface-card__copy">
+            Exported <strong>{lastExport.fileName}</strong> from the current{" "}
+            {lastExport.status} reconstructed document snapshot.
+          </p>
+        ) : null}
 
         <div className="translation-workspace-header__badges">
           <span className="status-pill">
@@ -716,6 +845,16 @@ export function ProjectWorkspace({
           </span>
           <span className="status-pill">
             {trackedJobId ? `Tracked job ${trackedJobId}` : "No tracked job"}
+          </span>
+          <span className="status-pill">
+            {activeDocument
+              ? `${findings.length} QA findings`
+              : "QA findings idle"}
+          </span>
+          <span className="status-pill">
+            {lastExport
+              ? `Last export ${lastExport.fileName}`
+              : "No export yet"}
           </span>
           <span className="status-pill">
             {isRestoringTrackedJob
@@ -785,20 +924,40 @@ export function ProjectWorkspace({
           selectedChunkSegments={selectedChunkSegments}
         />
 
-        <TranslationJobMonitor
-          activeDocument={activeDocument}
-          error={translateJobError}
-          isCancelling={isCancelling}
-          isRefreshing={isRefreshing}
-          isRestoringTrackedJob={isRestoringTrackedJob}
-          isResuming={isResuming}
-          jobStatus={jobStatus}
-          onCancelJob={cancelJob}
-          onClearTrackedJob={clearTrackedJob}
-          onRefreshStatus={() => refreshStatus()}
-          onResumeTranslation={resumeTranslation}
-          trackedJobId={trackedJobId}
-        />
+        <div className="translation-workspace-sidebar">
+          <FindingReviewPanel
+            actionError={findingActionError}
+            activeDocument={activeDocument}
+            findings={findings}
+            inspection={findingInspection}
+            inspectionError={findingInspectionError}
+            isInspectingFinding={isInspectingFinding}
+            isLoadingFindings={isLoadingFindings}
+            isRetranslating={isRetranslating}
+            lastRetranslation={lastRetranslation}
+            loadError={findingLoadError}
+            refreshWarning={refreshWarning}
+            onRetranslateSelectedFinding={retranslateSelectedFinding}
+            onSelectFinding={selectFinding}
+            selectedFinding={selectedFinding}
+            selectedFindingId={selectedFindingId}
+          />
+
+          <TranslationJobMonitor
+            activeDocument={activeDocument}
+            error={translateJobError}
+            isCancelling={isCancelling}
+            isRefreshing={isRefreshing}
+            isRestoringTrackedJob={isRestoringTrackedJob}
+            isResuming={isResuming}
+            jobStatus={jobStatus}
+            onCancelJob={cancelJob}
+            onClearTrackedJob={clearTrackedJob}
+            onRefreshStatus={() => refreshStatus()}
+            onResumeTranslation={resumeTranslation}
+            trackedJobId={trackedJobId}
+          />
+        </div>
       </div>
 
       <SegmentBrowser

@@ -3,13 +3,17 @@
 mod chapter_contexts;
 mod commands;
 mod context_builder;
+mod document_export;
+mod document_qa;
 mod documents;
 mod error;
+mod finding_review;
 mod glossaries;
 mod glossary_entries;
 mod persistence;
 mod projects;
 mod qa_findings;
+mod reconstructed_documents;
 mod rule_sets;
 mod sections;
 mod segments;
@@ -64,6 +68,12 @@ fn main() {
             commands::projects::list_projects,
             commands::projects::open_project,
             commands::projects::update_project_editorial_defaults,
+            commands::reconstructed_documents::get_reconstructed_document,
+            commands::document_export::export_reconstructed_document,
+            commands::document_qa::run_document_consistency_qa,
+            commands::document_qa::list_document_qa_findings,
+            commands::finding_review::inspect_qa_finding,
+            commands::finding_review::retranslate_chunk_from_qa_finding,
             commands::segments::list_document_segments,
             commands::segments::process_project_document,
             commands::translation_chunks::build_document_translation_chunks,

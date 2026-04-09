@@ -134,6 +134,40 @@ impl<'connection> QaFindingRepository<'connection> {
             })
     }
 
+    pub fn update_details(
+        &mut self,
+        qa_finding_id: &str,
+        details: Option<&str>,
+        updated_at: i64,
+    ) -> Result<Option<QaFindingSummary>, PersistenceError> {
+        let rows_changed = self
+            .connection
+            .execute(
+                r#"
+                UPDATE qa_findings
+                SET
+                  details = ?2,
+                  updated_at = ?3
+                WHERE id = ?1
+                "#,
+                params![qa_finding_id, details, updated_at],
+            )
+            .map_err(|error| {
+                PersistenceError::with_details(
+                    format!(
+                        "The QA-finding repository could not update details for finding {qa_finding_id}."
+                    ),
+                    error,
+                )
+            })?;
+
+        if rows_changed == 0 {
+            return Ok(None);
+        }
+
+        self.load_by_id(qa_finding_id)
+    }
+
     pub fn list_by_document(
         &mut self,
         document_id: &str,

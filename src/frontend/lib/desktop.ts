@@ -11,15 +11,22 @@ import {
   DESKTOP_COMMANDS,
   type DesktopCommandErrorPayload,
   type DesktopCommandName,
+  type DocumentConsistencyQaResult,
+  type DocumentQaFindingsOverview,
   type DocumentSegmentsOverview,
   type DocumentSummary,
   type DocumentTranslationChunksOverview,
+  type ExportReconstructedDocumentInput,
+  type ExportReconstructedDocumentResult,
+  type GetReconstructedDocumentInput,
   type GlossariesOverview,
   type GlossaryEntriesOverview,
   type GlossaryEntrySummary,
   type GlossarySummary,
   type HealthcheckResponse,
   type ImportDocumentInput,
+  type InspectQaFindingInput,
+  type ListDocumentQaFindingsInput,
   type ListDocumentSegmentsInput,
   type ListDocumentTranslationChunksInput,
   type ListGlossaryEntriesInput,
@@ -33,10 +40,15 @@ import {
   type ProjectDocumentsOverview,
   type ProjectSummary,
   type ProjectsOverview,
+  type QaFindingRetranslationResult,
+  type QaFindingReviewContext,
+  type ReconstructedDocument,
+  type RetranslateChunkFromQaFindingInput,
   type RuleSetRulesOverview,
   type RuleSetSummary,
   type RuleSetsOverview,
   type RuleSummary,
+  type RunDocumentConsistencyQaInput,
   type StyleProfileSummary,
   type StyleProfilesOverview,
   type TranslateChunkInput,
@@ -274,6 +286,64 @@ export function translateChunk(input: TranslateChunkInput) {
 export function translateDocument(input: TranslateDocumentInput) {
   return invokeDesktopCommand<TranslateDocumentResult>(
     DESKTOP_COMMANDS.translateDocument,
+    {
+      input,
+    },
+  );
+}
+
+export function getReconstructedDocument(input: GetReconstructedDocumentInput) {
+  return invokeDesktopCommand<ReconstructedDocument>(
+    DESKTOP_COMMANDS.getReconstructedDocument,
+    {
+      input,
+    },
+  );
+}
+
+export function exportReconstructedDocument(
+  input: ExportReconstructedDocumentInput,
+) {
+  return invokeDesktopCommand<ExportReconstructedDocumentResult>(
+    DESKTOP_COMMANDS.exportReconstructedDocument,
+    {
+      input,
+    },
+  );
+}
+
+export function inspectQaFinding(input: InspectQaFindingInput) {
+  return invokeDesktopCommand<QaFindingReviewContext>(
+    DESKTOP_COMMANDS.inspectQaFinding,
+    {
+      input,
+    },
+  );
+}
+
+export function runDocumentConsistencyQa(input: RunDocumentConsistencyQaInput) {
+  return invokeDesktopCommand<DocumentConsistencyQaResult>(
+    DESKTOP_COMMANDS.runDocumentConsistencyQa,
+    {
+      input,
+    },
+  );
+}
+
+export function listDocumentQaFindings(input: ListDocumentQaFindingsInput) {
+  return invokeDesktopCommand<DocumentQaFindingsOverview>(
+    DESKTOP_COMMANDS.listDocumentQaFindings,
+    {
+      input,
+    },
+  );
+}
+
+export function retranslateChunkFromQaFinding(
+  input: RetranslateChunkFromQaFindingInput,
+) {
+  return invokeDesktopCommand<QaFindingRetranslationResult>(
+    DESKTOP_COMMANDS.retranslateChunkFromQaFinding,
     {
       input,
     },

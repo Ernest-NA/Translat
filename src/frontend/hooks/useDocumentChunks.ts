@@ -198,7 +198,7 @@ export function useDocumentChunks(
       ),
     [chunkSegments, selectedChunkId],
   );
-  const selectChunk = useCallback((chunkId: string) => {
+  const selectChunk = useCallback((chunkId: string | null) => {
     setSelectedChunkId(chunkId);
   }, []);
 
