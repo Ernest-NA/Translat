@@ -80,7 +80,7 @@ pub fn import_project_document(
     import_project_document_with_runtime(input, database_runtime.inner())
 }
 
-fn import_project_document_with_runtime(
+pub(crate) fn import_project_document_with_runtime(
     input: ImportDocumentInput,
     database_runtime: &DatabaseRuntime,
 ) -> Result<DocumentSummary, DesktopCommandError> {

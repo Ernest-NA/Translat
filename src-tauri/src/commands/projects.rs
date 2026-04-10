@@ -56,7 +56,7 @@ pub fn create_project(
     create_project_with_runtime(input, database_runtime.inner())
 }
 
-fn create_project_with_runtime(
+pub(crate) fn create_project_with_runtime(
     input: CreateProjectInput,
     database_runtime: &DatabaseRuntime,
 ) -> Result<ProjectSummary, DesktopCommandError> {
@@ -85,7 +85,7 @@ pub fn open_project(
     open_project_with_runtime(input, database_runtime.inner())
 }
 
-fn open_project_with_runtime(
+pub(crate) fn open_project_with_runtime(
     input: OpenProjectInput,
     database_runtime: &DatabaseRuntime,
 ) -> Result<ProjectSummary, DesktopCommandError> {

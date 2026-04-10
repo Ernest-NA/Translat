@@ -37,7 +37,7 @@ pub fn process_project_document(
     process_project_document_with_runtime(input, database_runtime.inner())
 }
 
-fn process_project_document_with_runtime(
+pub(crate) fn process_project_document_with_runtime(
     input: ProcessDocumentInput,
     database_runtime: &DatabaseRuntime,
 ) -> Result<DocumentSummary, DesktopCommandError> {
