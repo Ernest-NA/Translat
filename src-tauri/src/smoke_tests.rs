@@ -114,17 +114,22 @@ mod tests {
             finding.finding_type == DOCUMENT_QA_FINDING_TYPE_SOURCE_FALLBACK_SEGMENT
         }));
 
-        let review_context = initial_qa
+        let review_finding = initial_qa
             .generated_findings
             .iter()
-            .find_map(|finding| {
-                let context = pipeline
-                    .inspect_finding(&fixture.runtime, &finding.id)
-                    .expect("finding review context should load");
-
-                context.anchor.can_retranslate.then_some(context)
+            .find(|finding| {
+                finding.finding_type == DOCUMENT_QA_FINDING_TYPE_SOURCE_FALLBACK_SEGMENT
+                    && finding.chunk_id.as_deref() == Some(second_chunk_id.as_str())
             })
-            .expect("at least one generated finding should resolve to a retranslation target");
+            .expect("the failed second chunk should produce a fallback finding");
+        let review_context = pipeline
+            .inspect_finding(&fixture.runtime, &review_finding.id)
+            .expect("finding review context should load");
+        assert!(review_context.anchor.can_retranslate);
+        assert_eq!(
+            review_context.anchor.chunk_id.as_deref(),
+            Some(second_chunk_id.as_str())
+        );
         let review_job_id = "job_smoke_review_001".to_owned();
         let review_executor = ScriptedTranslateChunkExecutor::new(HashMap::from([(
             review_context
