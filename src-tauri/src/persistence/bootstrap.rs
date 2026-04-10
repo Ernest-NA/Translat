@@ -224,21 +224,261 @@ fn inspect_connection(
         })?;
 
     let schema_ready = migrations::has_table(connection, "app_metadata")?
+        && migrations::has_table_columns(
+            connection,
+            "app_metadata",
+            &["key", "value", "updated_at"],
+        )?
         && migrations::has_table(connection, "projects")?
+        && migrations::has_table_columns(
+            connection,
+            "projects",
+            &[
+                "id",
+                "name",
+                "description",
+                "default_glossary_id",
+                "default_style_profile_id",
+                "default_rule_set_id",
+                "created_at",
+                "updated_at",
+                "last_opened_at",
+            ],
+        )?
         && migrations::has_table(connection, "documents")?
+        && migrations::has_table_columns(
+            connection,
+            "documents",
+            &[
+                "id",
+                "project_id",
+                "name",
+                "source_kind",
+                "format",
+                "mime_type",
+                "stored_path",
+                "file_size_bytes",
+                "status",
+                "created_at",
+                "updated_at",
+            ],
+        )?
         && migrations::has_table(connection, "segments")?
+        && migrations::has_table_columns(
+            connection,
+            "segments",
+            &[
+                "id",
+                "document_id",
+                "sequence",
+                "source_text",
+                "target_text",
+                "source_word_count",
+                "source_character_count",
+                "status",
+                "last_task_run_id",
+                "created_at",
+                "updated_at",
+            ],
+        )?
         && migrations::has_table(connection, "document_sections")?
+        && migrations::has_table_columns(
+            connection,
+            "document_sections",
+            &[
+                "id",
+                "document_id",
+                "sequence",
+                "title",
+                "section_type",
+                "level",
+                "start_segment_sequence",
+                "end_segment_sequence",
+                "segment_count",
+                "created_at",
+                "updated_at",
+            ],
+        )?
         && migrations::has_table(connection, "translation_chunks")?
+        && migrations::has_table_columns(
+            connection,
+            "translation_chunks",
+            &[
+                "id",
+                "document_id",
+                "sequence",
+                "builder_version",
+                "strategy",
+                "source_text",
+                "context_before_text",
+                "context_after_text",
+                "start_segment_sequence",
+                "end_segment_sequence",
+                "segment_count",
+                "source_word_count",
+                "source_character_count",
+                "created_at",
+                "updated_at",
+            ],
+        )?
         && migrations::has_table(connection, "translation_chunk_segments")?
+        && migrations::has_table_columns(
+            connection,
+            "translation_chunk_segments",
+            &["chunk_id", "segment_id", "segment_sequence", "position", "role"],
+        )?
         && migrations::has_table(connection, "task_runs")?
+        && migrations::has_table_columns(
+            connection,
+            "task_runs",
+            &[
+                "id",
+                "document_id",
+                "chunk_id",
+                "job_id",
+                "action_type",
+                "status",
+                "input_payload",
+                "output_payload",
+                "error_message",
+                "started_at",
+                "completed_at",
+                "created_at",
+                "updated_at",
+            ],
+        )?
         && migrations::has_table(connection, "chapter_contexts")?
+        && migrations::has_table_columns(
+            connection,
+            "chapter_contexts",
+            &[
+                "id",
+                "document_id",
+                "section_id",
+                "task_run_id",
+                "scope_type",
+                "start_segment_sequence",
+                "end_segment_sequence",
+                "context_text",
+                "source_summary",
+                "context_word_count",
+                "context_character_count",
+                "created_at",
+                "updated_at",
+            ],
+        )?
         && migrations::has_table(connection, "qa_findings")?
+        && migrations::has_table_columns(
+            connection,
+            "qa_findings",
+            &[
+                "id",
+                "document_id",
+                "chunk_id",
+                "task_run_id",
+                "job_id",
+                "finding_type",
+                "severity",
+                "status",
+                "message",
+                "details",
+                "created_at",
+                "updated_at",
+            ],
+        )?
         && migrations::has_table(connection, "glossaries")?
+        && migrations::has_table_columns(
+            connection,
+            "glossaries",
+            &[
+                "id",
+                "name",
+                "description",
+                "project_id",
+                "status",
+                "created_at",
+                "updated_at",
+                "last_opened_at",
+            ],
+        )?
         && migrations::has_table(connection, "glossary_entries")?
+        && migrations::has_table_columns(
+            connection,
+            "glossary_entries",
+            &[
+                "id",
+                "glossary_id",
+                "source_term",
+                "target_term",
+                "context_note",
+                "status",
+                "created_at",
+                "updated_at",
+            ],
+        )?
         && migrations::has_table(connection, "glossary_entry_variants")?
+        && migrations::has_table_columns(
+            connection,
+            "glossary_entry_variants",
+            &[
+                "id",
+                "glossary_entry_id",
+                "variant_text",
+                "variant_type",
+                "created_at",
+            ],
+        )?
         && migrations::has_table(connection, "style_profiles")?
+        && migrations::has_table_columns(
+            connection,
+            "style_profiles",
+            &[
+                "id",
+                "name",
+                "description",
+                "tone",
+                "formality",
+                "treatment_preference",
+                "consistency_instructions",
+                "editorial_notes",
+                "status",
+                "created_at",
+                "updated_at",
+                "last_opened_at",
+            ],
+        )?
         && migrations::has_table(connection, "rule_sets")?
-        && migrations::has_table(connection, "rules")?;
+        && migrations::has_table_columns(
+            connection,
+            "rule_sets",
+            &[
+                "id",
+                "name",
+                "description",
+                "status",
+                "created_at",
+                "updated_at",
+                "last_opened_at",
+            ],
+        )?
+        && migrations::has_table(connection, "rules")?
+        && migrations::has_table_columns(
+            connection,
+            "rules",
+            &[
+                "id",
+                "rule_set_id",
+                "rule_type",
+                "severity",
+                "name",
+                "description",
+                "guidance",
+                "is_enabled",
+                "created_at",
+                "updated_at",
+                "action_scope",
+            ],
+        )?;
 
     Ok(DatabaseStatus {
         applied_migrations,
@@ -260,6 +500,7 @@ mod tests {
     use tempfile::tempdir;
 
     use super::{bootstrap_database, inspect_database, open_database_with_key};
+    use crate::persistence::migrations::expected_migration_labels;
 
     const TEST_DATABASE_KEY: &str = "translat-test-key-for-b4";
 
@@ -270,46 +511,11 @@ mod tests {
 
         let bootstrap_report = bootstrap_database(&database_path, TEST_DATABASE_KEY)
             .expect("database bootstrap should succeed");
+        let expected_migrations = expected_migration_labels();
 
         assert!(database_path.exists());
-        assert_eq!(
-            bootstrap_report.newly_applied_migrations,
-            vec![
-                "0001_initial_schema".to_owned(),
-                "0002_projects".to_owned(),
-                "0003_documents".to_owned(),
-                "0004_segments".to_owned(),
-                "0005_document_sections".to_owned(),
-                "0006_glossaries".to_owned(),
-                "0007_glossary_entries".to_owned(),
-                "0008_style_profiles".to_owned(),
-                "0009_rule_sets".to_owned(),
-                "0010_project_editorial_defaults".to_owned(),
-                "0011_translation_chunks".to_owned(),
-                "0012_operational_persistence".to_owned(),
-                "0013_rule_action_scopes".to_owned(),
-                "0014_segment_translation_projection".to_owned()
-            ]
-        );
-        assert_eq!(
-            bootstrap_report.applied_migrations,
-            vec![
-                "0001_initial_schema".to_owned(),
-                "0002_projects".to_owned(),
-                "0003_documents".to_owned(),
-                "0004_segments".to_owned(),
-                "0005_document_sections".to_owned(),
-                "0006_glossaries".to_owned(),
-                "0007_glossary_entries".to_owned(),
-                "0008_style_profiles".to_owned(),
-                "0009_rule_sets".to_owned(),
-                "0010_project_editorial_defaults".to_owned(),
-                "0011_translation_chunks".to_owned(),
-                "0012_operational_persistence".to_owned(),
-                "0013_rule_action_scopes".to_owned(),
-                "0014_segment_translation_projection".to_owned()
-            ]
-        );
+        assert_eq!(bootstrap_report.newly_applied_migrations, expected_migrations);
+        assert_eq!(bootstrap_report.applied_migrations, expected_migrations);
         assert!(bootstrap_report.schema_ready);
     }
 
@@ -323,27 +529,10 @@ mod tests {
 
         let second_report = bootstrap_database(&database_path, TEST_DATABASE_KEY)
             .expect("second bootstrap should succeed");
+        let expected_migrations = expected_migration_labels();
 
         assert!(second_report.newly_applied_migrations.is_empty());
-        assert_eq!(
-            second_report.applied_migrations,
-            vec![
-                "0001_initial_schema".to_owned(),
-                "0002_projects".to_owned(),
-                "0003_documents".to_owned(),
-                "0004_segments".to_owned(),
-                "0005_document_sections".to_owned(),
-                "0006_glossaries".to_owned(),
-                "0007_glossary_entries".to_owned(),
-                "0008_style_profiles".to_owned(),
-                "0009_rule_sets".to_owned(),
-                "0010_project_editorial_defaults".to_owned(),
-                "0011_translation_chunks".to_owned(),
-                "0012_operational_persistence".to_owned(),
-                "0013_rule_action_scopes".to_owned(),
-                "0014_segment_translation_projection".to_owned()
-            ]
-        );
+        assert_eq!(second_report.applied_migrations, expected_migrations);
         assert!(second_report.schema_ready);
     }
 
@@ -354,6 +543,7 @@ mod tests {
 
         bootstrap_database(&database_path, TEST_DATABASE_KEY)
             .expect("database bootstrap should succeed");
+        let expected_migrations = expected_migration_labels();
 
         let connection = open_database_with_key(&database_path, TEST_DATABASE_KEY)
             .expect("database connection should reopen");
@@ -480,7 +670,7 @@ mod tests {
             )
             .expect("rules table should be queryable");
 
-        assert_eq!(migration_count, 14);
+        assert_eq!(migration_count, i64::try_from(expected_migrations.len()).unwrap());
         assert_eq!(app_metadata_table_count, 1);
         assert_eq!(projects_table_count, 1);
         assert_eq!(documents_table_count, 1);
@@ -497,26 +687,11 @@ mod tests {
         assert_eq!(style_profiles_table_count, 1);
         assert_eq!(rule_sets_table_count, 1);
         assert_eq!(rules_table_count, 1);
-        assert_eq!(database_status.migration_count, 14);
         assert_eq!(
-            database_status.applied_migrations,
-            vec![
-                "0001_initial_schema".to_owned(),
-                "0002_projects".to_owned(),
-                "0003_documents".to_owned(),
-                "0004_segments".to_owned(),
-                "0005_document_sections".to_owned(),
-                "0006_glossaries".to_owned(),
-                "0007_glossary_entries".to_owned(),
-                "0008_style_profiles".to_owned(),
-                "0009_rule_sets".to_owned(),
-                "0010_project_editorial_defaults".to_owned(),
-                "0011_translation_chunks".to_owned(),
-                "0012_operational_persistence".to_owned(),
-                "0013_rule_action_scopes".to_owned(),
-                "0014_segment_translation_projection".to_owned()
-            ]
+            database_status.migration_count,
+            u64::try_from(expected_migrations.len()).unwrap()
         );
+        assert_eq!(database_status.applied_migrations, expected_migrations);
         assert!(database_status.schema_ready);
     }
 }

@@ -104,6 +104,14 @@ const MIGRATIONS: [Migration; 14] = [
     },
 ];
 
+#[cfg(test)]
+pub(crate) fn expected_migration_labels() -> Vec<String> {
+    MIGRATIONS
+        .iter()
+        .map(|migration| migration.label().to_owned())
+        .collect()
+}
+
 pub fn ensure_schema_migrations_table(connection: &Connection) -> Result<(), PersistenceError> {
     connection
         .execute_batch(
@@ -250,4 +258,104 @@ pub fn has_table(connection: &Connection, table_name: &str) -> Result<bool, Pers
         })?;
 
     Ok(table_count == 1)
+}
+
+pub fn has_table_columns(
+    connection: &Connection,
+    table_name: &str,
+    expected_columns: &[&str],
+) -> Result<bool, PersistenceError> {
+    let pragma_identifier = table_name.replace('\'', "''");
+    let mut statement = connection
+        .prepare(&format!("PRAGMA table_info('{pragma_identifier}')"))
+        .map_err(|error| {
+            PersistenceError::with_details(
+                format!("The database bootstrap could not inspect columns for table {table_name}."),
+                error,
+            )
+        })?;
+    let rows = statement
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(|error| {
+            PersistenceError::with_details(
+                format!("The database bootstrap could not read columns for table {table_name}."),
+                error,
+            )
+        })?;
+    let mut actual_columns = Vec::new();
+
+    for row in rows {
+        actual_columns.push(row.map_err(|error| {
+            PersistenceError::with_details(
+                format!(
+                    "The database bootstrap could not decode a column definition for table {table_name}."
+                ),
+                error,
+            )
+        })?);
+    }
+
+    Ok(expected_columns
+        .iter()
+        .all(|expected_column| actual_columns.iter().any(|actual| actual == expected_column)))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use std::path::PathBuf;
+
+    use tempfile::tempdir;
+
+    use super::{expected_migration_labels, has_table_columns};
+    use crate::persistence::bootstrap::open_database_with_key;
+
+    const TEST_DATABASE_KEY: &str = "translat-test-key-for-migrations";
+
+    #[test]
+    fn migration_manifest_matches_sql_files_on_disk() {
+        let migration_directory = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("migrations");
+        let mut file_labels = fs::read_dir(&migration_directory)
+            .expect("migration directory should be readable")
+            .filter_map(|entry| {
+                let entry = entry.expect("migration directory entry should load");
+                let path = entry.path();
+
+                (path.extension().and_then(|extension| extension.to_str()) == Some("sql")).then(|| {
+                    path.file_stem()
+                        .and_then(|stem| stem.to_str())
+                        .expect("migration file stem should be valid UTF-8")
+                        .to_owned()
+                })
+            })
+            .collect::<Vec<_>>();
+
+        file_labels.sort();
+
+        assert_eq!(file_labels, expected_migration_labels());
+    }
+
+    #[test]
+    fn has_table_columns_detects_missing_columns() {
+        let temporary_directory = tempdir().expect("temp dir should be created");
+        let database_path = temporary_directory.path().join("translat.sqlite3");
+        let connection = open_database_with_key(&database_path, TEST_DATABASE_KEY)
+            .expect("database connection should open");
+
+        connection
+            .execute_batch(
+                r#"
+                CREATE TABLE smoke_fixture (
+                  id TEXT PRIMARY KEY,
+                  status TEXT NOT NULL
+                );
+                "#,
+            )
+            .expect("fixture table should persist");
+
+        assert!(has_table_columns(&connection, "smoke_fixture", &["id", "status"])
+            .expect("column inspection should succeed"));
+        assert!(!has_table_columns(&connection, "smoke_fixture", &["id", "missing_column"])
+            .expect("column inspection should succeed"));
+    }
 }

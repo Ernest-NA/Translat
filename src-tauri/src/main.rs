@@ -20,9 +20,13 @@ mod sections;
 mod segments;
 mod style_profiles;
 mod task_runs;
+#[cfg(test)]
+mod test_support;
 mod translate_chunk;
 mod translate_document;
 mod translation_chunks;
+#[cfg(test)]
+mod smoke_tests;
 
 use tauri::Manager;
 
