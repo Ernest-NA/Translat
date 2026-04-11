@@ -6,7 +6,7 @@ interface PanelHeaderProps {
   eyebrow: string;
   meta?: ReactNode;
   title: string;
-  titleLevel?: 2 | 3;
+  titleLevel?: 1 | 2 | 3;
 }
 
 export function PanelHeader({
@@ -17,7 +17,7 @@ export function PanelHeader({
   title,
   titleLevel = 3,
 }: PanelHeaderProps) {
-  const TitleTag = titleLevel === 2 ? "h2" : "h3";
+  const TitleTag = titleLevel === 1 ? "h1" : titleLevel === 2 ? "h2" : "h3";
 
   return (
     <div className="panel-header">

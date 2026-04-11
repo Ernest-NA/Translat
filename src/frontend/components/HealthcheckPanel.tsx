@@ -113,6 +113,7 @@ export function HealthcheckPanel({
 
       <ActionButton
         disabled={isLoading}
+        mobileFullWidth
         onClick={onRetry}
         size="md"
         variant="primary"

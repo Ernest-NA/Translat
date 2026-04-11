@@ -242,7 +242,7 @@ export function AppShell() {
           description="The shell now keeps project defaults, document intake, chunk readiness, and document-level translation control in the same workspace. Translation stays document-first, with the job visible as an execution envelope and the chunk as the main inspection unit."
           eyebrow="Translat"
           title="Translation workspace"
-          titleLevel={2}
+          titleLevel={1}
         />
 
         <div className="app-shell__header-meta">

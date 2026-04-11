@@ -5,12 +5,14 @@ type ActionButtonSize = "sm" | "md";
 
 interface ActionButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   children: ReactNode;
+  mobileFullWidth?: boolean;
   size?: ActionButtonSize;
   variant?: ActionButtonVariant;
 }
 
 function buildClassName(
   className: string | undefined,
+  mobileFullWidth: boolean,
   size: ActionButtonSize,
   variant: ActionButtonVariant,
 ) {
@@ -18,6 +20,10 @@ function buildClassName(
 
   classes.push(`action-button--${variant}`);
   classes.push(`action-button--${size}`);
+
+  if (mobileFullWidth) {
+    classes.push("action-button--mobile-full-width");
+  }
 
   if (className) {
     classes.push(className);
@@ -29,6 +35,7 @@ function buildClassName(
 export function ActionButton({
   children,
   className,
+  mobileFullWidth = false,
   size = "sm",
   type = "button",
   variant = "secondary",
@@ -37,7 +44,7 @@ export function ActionButton({
   return (
     <button
       {...buttonProps}
-      className={buildClassName(className, size, variant)}
+      className={buildClassName(className, mobileFullWidth, size, variant)}
       type={type}
     >
       {children}

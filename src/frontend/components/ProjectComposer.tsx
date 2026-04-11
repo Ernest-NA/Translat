@@ -74,6 +74,7 @@ export function ProjectComposer({
         <div className="project-form__footer">
           <ActionButton
             disabled={isCreating}
+            mobileFullWidth
             size="md"
             type="submit"
             variant="primary"

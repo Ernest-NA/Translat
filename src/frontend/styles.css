@@ -108,6 +108,7 @@ select {
   flex: 1;
 }
 
+.app-shell__header .panel-header h1,
 .app-shell__header .panel-header h2 {
   font-size: clamp(2.4rem, 4vw, 3.8rem);
   line-height: 1;
@@ -185,6 +186,7 @@ select {
   min-width: 0;
 }
 
+.panel-header h1,
 .panel-header h2,
 .panel-header h3 {
   margin: 0;
@@ -1279,7 +1281,8 @@ select {
     grid-template-columns: 1fr;
   }
 
-  .app-shell__button {
+  .app-shell__button,
+  .action-button--mobile-full-width {
     width: 100%;
   }
 }
