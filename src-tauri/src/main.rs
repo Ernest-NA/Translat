@@ -11,6 +11,8 @@ mod finding_review;
 mod glossaries;
 mod glossary_entries;
 mod observability;
+#[cfg(test)]
+mod performance_tests;
 mod persistence;
 mod projects;
 mod qa_findings;
@@ -18,6 +20,8 @@ mod reconstructed_documents;
 mod rule_sets;
 mod sections;
 mod segments;
+#[cfg(test)]
+mod smoke_tests;
 mod style_profiles;
 mod task_runs;
 #[cfg(test)]
@@ -25,8 +29,6 @@ mod test_support;
 mod translate_chunk;
 mod translate_document;
 mod translation_chunks;
-#[cfg(test)]
-mod smoke_tests;
 
 use tauri::Manager;
 

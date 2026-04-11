@@ -1,6 +1,6 @@
 #![cfg_attr(not(test), allow(dead_code))]
 
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, Row};
 
 use crate::persistence::error::PersistenceError;
 use crate::segments::{SegmentTranslationWrite, SEGMENT_STATUS_TRANSLATED};
@@ -8,6 +8,42 @@ use crate::task_runs::{NewTaskRun, TaskRunSummary};
 
 pub struct TaskRunRepository<'connection> {
     connection: &'connection mut Connection,
+}
+
+fn map_task_run_summary_row(row: &Row<'_>) -> rusqlite::Result<TaskRunSummary> {
+    Ok(TaskRunSummary {
+        id: row.get(0)?,
+        document_id: row.get(1)?,
+        chunk_id: row.get(2)?,
+        job_id: row.get(3)?,
+        action_type: row.get(4)?,
+        status: row.get(5)?,
+        input_payload: row.get(6)?,
+        output_payload: row.get(7)?,
+        error_message: row.get(8)?,
+        started_at: row.get(9)?,
+        completed_at: row.get(10)?,
+        created_at: row.get(11)?,
+        updated_at: row.get(12)?,
+    })
+}
+
+fn map_task_run_trace_row(row: &Row<'_>) -> rusqlite::Result<TaskRunSummary> {
+    Ok(TaskRunSummary {
+        id: row.get(0)?,
+        document_id: row.get(1)?,
+        chunk_id: row.get(2)?,
+        job_id: row.get(3)?,
+        action_type: row.get(4)?,
+        status: row.get(5)?,
+        input_payload: None,
+        output_payload: None,
+        error_message: row.get(6)?,
+        started_at: row.get(7)?,
+        completed_at: row.get(8)?,
+        created_at: row.get(9)?,
+        updated_at: row.get(10)?,
+    })
 }
 
 impl<'connection> TaskRunRepository<'connection> {
@@ -97,23 +133,7 @@ impl<'connection> TaskRunRepository<'connection> {
                 WHERE id = ?1
                 "#,
                 [task_run_id],
-                |row| {
-                    Ok(TaskRunSummary {
-                        id: row.get(0)?,
-                        document_id: row.get(1)?,
-                        chunk_id: row.get(2)?,
-                        job_id: row.get(3)?,
-                        action_type: row.get(4)?,
-                        status: row.get(5)?,
-                        input_payload: row.get(6)?,
-                        output_payload: row.get(7)?,
-                        error_message: row.get(8)?,
-                        started_at: row.get(9)?,
-                        completed_at: row.get(10)?,
-                        created_at: row.get(11)?,
-                        updated_at: row.get(12)?,
-                    })
-                },
+                map_task_run_summary_row,
             )
             .map(Some)
             .or_else(|error| match error {
@@ -162,23 +182,7 @@ impl<'connection> TaskRunRepository<'connection> {
             })?;
 
         let rows = statement
-            .query_map([document_id], |row| {
-                Ok(TaskRunSummary {
-                    id: row.get(0)?,
-                    document_id: row.get(1)?,
-                    chunk_id: row.get(2)?,
-                    job_id: row.get(3)?,
-                    action_type: row.get(4)?,
-                    status: row.get(5)?,
-                    input_payload: row.get(6)?,
-                    output_payload: row.get(7)?,
-                    error_message: row.get(8)?,
-                    started_at: row.get(9)?,
-                    completed_at: row.get(10)?,
-                    created_at: row.get(11)?,
-                    updated_at: row.get(12)?,
-                })
-            })
+            .query_map([document_id], map_task_run_summary_row)
             .map_err(|error| {
                 PersistenceError::with_details(
                     format!("The task-run repository could not read task runs for document {document_id}."),
@@ -193,6 +197,131 @@ impl<'connection> TaskRunRepository<'connection> {
                 PersistenceError::with_details(
                     format!(
                         "The task-run repository could not decode a task-run row for document {document_id}."
+                    ),
+                    error,
+                )
+            })?);
+        }
+
+        Ok(task_runs)
+    }
+
+    pub fn list_trace_by_document(
+        &mut self,
+        document_id: &str,
+    ) -> Result<Vec<TaskRunSummary>, PersistenceError> {
+        let mut statement = self
+            .connection
+            .prepare(
+                r#"
+                SELECT
+                  id,
+                  document_id,
+                  chunk_id,
+                  job_id,
+                  action_type,
+                  status,
+                  error_message,
+                  started_at,
+                  completed_at,
+                  created_at,
+                  updated_at
+                FROM task_runs
+                WHERE document_id = ?1
+                ORDER BY created_at ASC, updated_at ASC, rowid ASC
+                "#,
+            )
+            .map_err(|error| {
+                PersistenceError::with_details(
+                    format!(
+                        "The task-run repository could not prepare the document trace query for document {document_id}."
+                    ),
+                    error,
+                )
+            })?;
+
+        let rows = statement
+            .query_map([document_id], map_task_run_trace_row)
+            .map_err(|error| {
+                PersistenceError::with_details(
+                    format!(
+                        "The task-run repository could not read task-run traces for document {document_id}."
+                    ),
+                    error,
+                )
+            })?;
+
+        let mut task_runs = Vec::new();
+
+        for row in rows {
+            task_runs.push(row.map_err(|error| {
+                PersistenceError::with_details(
+                    format!(
+                        "The task-run repository could not decode a task-run trace row for document {document_id}."
+                    ),
+                    error,
+                )
+            })?);
+        }
+
+        Ok(task_runs)
+    }
+
+    pub fn list_by_document_and_job_id(
+        &mut self,
+        document_id: &str,
+        job_id: &str,
+    ) -> Result<Vec<TaskRunSummary>, PersistenceError> {
+        let mut statement = self
+            .connection
+            .prepare(
+                r#"
+                SELECT
+                  id,
+                  document_id,
+                  chunk_id,
+                  job_id,
+                  action_type,
+                  status,
+                  input_payload,
+                  output_payload,
+                  error_message,
+                  started_at,
+                  completed_at,
+                  created_at,
+                  updated_at
+                FROM task_runs
+                WHERE document_id = ?1 AND job_id = ?2
+                ORDER BY created_at ASC, updated_at ASC, rowid ASC
+                "#,
+            )
+            .map_err(|error| {
+                PersistenceError::with_details(
+                    format!(
+                        "The task-run repository could not prepare the scoped job listing query for job {job_id} in document {document_id}."
+                    ),
+                    error,
+                )
+            })?;
+
+        let rows = statement
+            .query_map(params![document_id, job_id], map_task_run_summary_row)
+            .map_err(|error| {
+                PersistenceError::with_details(
+                    format!(
+                        "The task-run repository could not read task runs for job {job_id} in document {document_id}."
+                    ),
+                    error,
+                )
+            })?;
+
+        let mut task_runs = Vec::new();
+
+        for row in rows {
+            task_runs.push(row.map_err(|error| {
+                PersistenceError::with_details(
+                    format!(
+                        "The task-run repository could not decode a scoped task-run row for job {job_id} in document {document_id}."
                     ),
                     error,
                 )
@@ -239,23 +368,7 @@ impl<'connection> TaskRunRepository<'connection> {
             })?;
 
         let rows = statement
-            .query_map([chunk_id], |row| {
-                Ok(TaskRunSummary {
-                    id: row.get(0)?,
-                    document_id: row.get(1)?,
-                    chunk_id: row.get(2)?,
-                    job_id: row.get(3)?,
-                    action_type: row.get(4)?,
-                    status: row.get(5)?,
-                    input_payload: row.get(6)?,
-                    output_payload: row.get(7)?,
-                    error_message: row.get(8)?,
-                    started_at: row.get(9)?,
-                    completed_at: row.get(10)?,
-                    created_at: row.get(11)?,
-                    updated_at: row.get(12)?,
-                })
-            })
+            .query_map([chunk_id], map_task_run_summary_row)
             .map_err(|error| {
                 PersistenceError::with_details(
                     format!(
@@ -318,23 +431,7 @@ impl<'connection> TaskRunRepository<'connection> {
             })?;
 
         let rows = statement
-            .query_map([job_id], |row| {
-                Ok(TaskRunSummary {
-                    id: row.get(0)?,
-                    document_id: row.get(1)?,
-                    chunk_id: row.get(2)?,
-                    job_id: row.get(3)?,
-                    action_type: row.get(4)?,
-                    status: row.get(5)?,
-                    input_payload: row.get(6)?,
-                    output_payload: row.get(7)?,
-                    error_message: row.get(8)?,
-                    started_at: row.get(9)?,
-                    completed_at: row.get(10)?,
-                    created_at: row.get(11)?,
-                    updated_at: row.get(12)?,
-                })
-            })
+            .query_map([job_id], map_task_run_summary_row)
             .map_err(|error| {
                 PersistenceError::with_details(
                     format!("The task-run repository could not read task runs for job {job_id}."),
@@ -708,6 +805,112 @@ mod tests {
             document_runs[0].chunk_id.as_deref(),
             Some("doc_chunk_001_chunk_0001")
         );
+    }
+
+    #[test]
+    fn list_by_document_and_job_id_scopes_job_runs_without_cross_document_filtering() {
+        let temporary_directory = tempdir().expect("temp dir should be created");
+        let database_path = temporary_directory.path().join("translat.sqlite3");
+        let now = 1_743_517_200_i64;
+
+        bootstrap_database(&database_path, TEST_DATABASE_KEY)
+            .expect("database bootstrap should succeed");
+
+        let mut connection = open_database_with_key(&database_path, TEST_DATABASE_KEY)
+            .expect("database connection should open");
+        seed_chunked_document(&mut connection, now);
+
+        let mut repository = TaskRunRepository::new(&mut connection);
+        repository
+            .create(&NewTaskRun {
+                id: "trun_scoped_doc_001".to_owned(),
+                document_id: "doc_chunk_001".to_owned(),
+                chunk_id: Some("doc_chunk_001_chunk_0001".to_owned()),
+                job_id: Some("job_translate_001".to_owned()),
+                action_type: "translate_chunk".to_owned(),
+                status: TASK_RUN_STATUS_RUNNING.to_owned(),
+                input_payload: Some("{\"chunkId\":\"doc_chunk_001_chunk_0001\"}".to_owned()),
+                output_payload: None,
+                error_message: None,
+                started_at: now,
+                completed_at: None,
+                created_at: now,
+                updated_at: now,
+            })
+            .expect("document task run should persist");
+        repository
+            .create(&NewTaskRun {
+                id: "trun_other_doc_001".to_owned(),
+                document_id: "doc_other_001".to_owned(),
+                chunk_id: Some("doc_other_001_chunk_0001".to_owned()),
+                job_id: Some("job_translate_001".to_owned()),
+                action_type: "translate_chunk".to_owned(),
+                status: TASK_RUN_STATUS_RUNNING.to_owned(),
+                input_payload: Some("{\"chunkId\":\"doc_other_001_chunk_0001\"}".to_owned()),
+                output_payload: None,
+                error_message: None,
+                started_at: now + 1,
+                completed_at: None,
+                created_at: now + 1,
+                updated_at: now + 1,
+            })
+            .expect("other document task run should persist");
+
+        let scoped_runs = repository
+            .list_by_document_and_job_id("doc_chunk_001", "job_translate_001")
+            .expect("scoped job runs should load");
+
+        assert_eq!(scoped_runs.len(), 1);
+        assert_eq!(scoped_runs[0].id, "trun_scoped_doc_001");
+        assert_eq!(scoped_runs[0].document_id, "doc_chunk_001");
+    }
+
+    #[test]
+    fn list_trace_by_document_omits_large_payload_columns() {
+        let temporary_directory = tempdir().expect("temp dir should be created");
+        let database_path = temporary_directory.path().join("translat.sqlite3");
+        let now = 1_743_517_200_i64;
+
+        bootstrap_database(&database_path, TEST_DATABASE_KEY)
+            .expect("database bootstrap should succeed");
+
+        let mut connection = open_database_with_key(&database_path, TEST_DATABASE_KEY)
+            .expect("database connection should open");
+        seed_chunked_document(&mut connection, now);
+
+        let mut repository = TaskRunRepository::new(&mut connection);
+        repository
+            .create(&NewTaskRun {
+                id: "trun_trace_001".to_owned(),
+                document_id: "doc_chunk_001".to_owned(),
+                chunk_id: Some("doc_chunk_001_chunk_0001".to_owned()),
+                job_id: Some("job_translate_001".to_owned()),
+                action_type: "translate_chunk".to_owned(),
+                status: TASK_RUN_STATUS_RUNNING.to_owned(),
+                input_payload: Some("{\"chunkId\":\"doc_chunk_001_chunk_0001\"}".to_owned()),
+                output_payload: Some(
+                    "{\"translations\":[{\"segmentId\":\"doc_chunk_001_seg_0001\"}]}".to_owned(),
+                ),
+                error_message: Some("still running".to_owned()),
+                started_at: now,
+                completed_at: None,
+                created_at: now,
+                updated_at: now,
+            })
+            .expect("task run should persist");
+
+        let trace_runs = repository
+            .list_trace_by_document("doc_chunk_001")
+            .expect("trace runs should load");
+
+        assert_eq!(trace_runs.len(), 1);
+        assert_eq!(trace_runs[0].id, "trun_trace_001");
+        assert_eq!(
+            trace_runs[0].error_message.as_deref(),
+            Some("still running")
+        );
+        assert_eq!(trace_runs[0].input_payload, None);
+        assert_eq!(trace_runs[0].output_payload, None);
     }
 
     #[test]

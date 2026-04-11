@@ -135,17 +135,13 @@ pub(crate) fn list_document_segments_with_runtime(
     )
 }
 
-pub(crate) fn load_segmented_document_overview(
+pub(crate) fn load_segmented_document_record(
     connection: &mut rusqlite::Connection,
-    database_runtime: &DatabaseRuntime,
     project_id: &str,
     document_id: &str,
-    persist_sections: bool,
-    timestamp: i64,
-) -> Result<DocumentSegmentsOverview, DesktopCommandError> {
+) -> Result<DocumentProcessingRecord, DesktopCommandError> {
     ensure_project_exists(connection, project_id)?;
     ensure_project_is_active(connection, project_id)?;
-    reconcile_project_document_storage(database_runtime, connection, project_id)?;
 
     let processing_record = {
         let mut document_repository = DocumentRepository::new(connection);
@@ -171,6 +167,20 @@ pub(crate) fn load_segmented_document_overview(
             None,
         ));
     }
+
+    Ok(processing_record)
+}
+
+pub(crate) fn load_segmented_document_overview(
+    connection: &mut rusqlite::Connection,
+    database_runtime: &DatabaseRuntime,
+    project_id: &str,
+    document_id: &str,
+    persist_sections: bool,
+    timestamp: i64,
+) -> Result<DocumentSegmentsOverview, DesktopCommandError> {
+    reconcile_project_document_storage(database_runtime, connection, project_id)?;
+    let processing_record = load_segmented_document_record(connection, project_id, document_id)?;
 
     let mut segment_repository = SegmentRepository::new(connection);
     let segments = segment_repository
