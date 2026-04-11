@@ -6,6 +6,10 @@ import type {
   ReconstructedSegment,
 } from "../../shared/desktop";
 import type { DesktopCommandError } from "../lib/desktop";
+import { ActionButton } from "./ui/ActionButton";
+import { PanelHeader } from "./ui/PanelHeader";
+import { PanelMessage } from "./ui/PanelMessage";
+import { StatusBadge } from "./ui/StatusBadge";
 
 interface FindingReviewPanelProps {
   activeDocument: DocumentSummary | null;
@@ -44,6 +48,28 @@ function formatStatus(status: QaFindingSummary["status"]) {
       return "Resolved";
     default:
       return "Open";
+  }
+}
+
+function getSeverityTone(severity: QaFindingSummary["severity"]) {
+  switch (severity) {
+    case "high":
+      return "danger";
+    case "low":
+      return "info";
+    default:
+      return "warning";
+  }
+}
+
+function getFindingStatusTone(status: QaFindingSummary["status"]) {
+  switch (status) {
+    case "resolved":
+      return "success";
+    case "dismissed":
+      return "neutral";
+    default:
+      return "warning";
   }
 }
 
@@ -90,49 +116,48 @@ export function FindingReviewPanel({
 
   return (
     <section className="workspace-panel">
-      <div className="surface-card__heading">
-        <div>
-          <p className="surface-card__eyebrow">Finding review</p>
-          <h3>
-            {activeDocument
-              ? `QA findings for ${activeDocument.name}`
-              : "Open a document to review QA findings"}
-          </h3>
-        </div>
-
-        <strong className="status-pill">
-          {activeDocument ? `${findings.length} findings` : "No document"}
-        </strong>
-      </div>
+      <PanelHeader
+        eyebrow="Finding review"
+        meta={
+          <StatusBadge size="md" tone="info">
+            {activeDocument ? `${findings.length} findings` : "No document"}
+          </StatusBadge>
+        }
+        title={
+          activeDocument
+            ? `QA findings for ${activeDocument.name}`
+            : "Open a document to review QA findings"
+        }
+      />
 
       {!activeDocument ? (
-        <p className="surface-card__copy">
+        <PanelMessage>
           Findings review stays inside the Translation Workspace. Open a
           document first to inspect QA output and relaunch a focused chunk
           correction.
-        </p>
+        </PanelMessage>
       ) : null}
 
       {activeDocument && isLoadingFindings ? (
-        <p className="surface-card__copy">
+        <PanelMessage tone="info">
           Loading persisted QA findings for the active document...
-        </p>
+        </PanelMessage>
       ) : null}
 
       {loadError ? (
-        <p className="form-error" role="alert">
+        <PanelMessage role="alert" tone="danger">
           {loadError.message}
-        </p>
+        </PanelMessage>
       ) : null}
 
       {activeDocument &&
       !isLoadingFindings &&
       !loadError &&
       findings.length === 0 ? (
-        <p className="surface-card__copy">
+        <PanelMessage>
           No persisted QA findings exist for this document yet. Run QA first to
           surface chunk-level review anchors here.
-        </p>
+        </PanelMessage>
       ) : null}
 
       {activeDocument && findings.length > 0 ? (
@@ -148,17 +173,17 @@ export function FindingReviewPanel({
                 >
                   <div className="chunk-list__heading">
                     <strong>{finding.findingType}</strong>
-                    <span className="document-status-pill">
+                    <StatusBadge tone={getSeverityTone(finding.severity)}>
                       {formatSeverity(finding.severity)}
-                    </span>
+                    </StatusBadge>
                   </div>
                   <div className="chunk-list__badges">
-                    <span className="document-status-pill">
+                    <StatusBadge tone={getFindingStatusTone(finding.status)}>
                       {formatStatus(finding.status)}
-                    </span>
-                    <span className="chunk-role-pill">
+                    </StatusBadge>
+                    <StatusBadge tone="info">
                       {finding.chunkId ? "Chunk-linked" : "Document-linked"}
-                    </span>
+                    </StatusBadge>
                   </div>
                   <p>{truncateText(finding.message)}</p>
                   <span className="chunk-list__meta">
@@ -172,21 +197,24 @@ export function FindingReviewPanel({
           <div className="chunk-browser__detail">
             {selectedFinding ? (
               <>
-                <div className="surface-card__heading">
-                  <div>
-                    <p className="surface-card__eyebrow">Selected finding</p>
-                    <h3>{selectedFinding.findingType}</h3>
-                  </div>
-
-                  <div className="chunk-detail__heading-badges">
-                    <span className="document-status-pill">
-                      {formatSeverity(selectedFinding.severity)}
-                    </span>
-                    <span className="document-status-pill">
-                      {formatStatus(selectedFinding.status)}
-                    </span>
-                  </div>
-                </div>
+                <PanelHeader
+                  eyebrow="Selected finding"
+                  meta={
+                    <div className="chunk-detail__heading-badges">
+                      <StatusBadge
+                        tone={getSeverityTone(selectedFinding.severity)}
+                      >
+                        {formatSeverity(selectedFinding.severity)}
+                      </StatusBadge>
+                      <StatusBadge
+                        tone={getFindingStatusTone(selectedFinding.status)}
+                      >
+                        {formatStatus(selectedFinding.status)}
+                      </StatusBadge>
+                    </div>
+                  }
+                  title={selectedFinding.findingType}
+                />
 
                 <p className="surface-card__copy">{selectedFinding.message}</p>
 
@@ -222,35 +250,36 @@ export function FindingReviewPanel({
                 </dl>
 
                 {isInspectingFinding ? (
-                  <p className="surface-card__copy">
+                  <PanelMessage tone="info">
                     Resolving the current chunk anchor and reconstructed context
                     for this finding...
-                  </p>
+                  </PanelMessage>
                 ) : null}
 
                 {inspectionError ? (
-                  <p className="form-error" role="alert">
+                  <PanelMessage role="alert" tone="danger">
                     {inspectionError.message}
-                  </p>
+                  </PanelMessage>
                 ) : null}
 
                 {inspection ? (
                   <>
-                    <div className="segment-detail__text segment-detail__text--muted">
-                      <strong>Anchor status</strong>
-                      <p>{inspection.anchor.resolutionMessage}</p>
-                    </div>
+                    <PanelMessage
+                      title="Anchor status"
+                      tone={
+                        inspection.anchor.canRetranslate ? "success" : "warning"
+                      }
+                    >
+                      {inspection.anchor.resolutionMessage}
+                    </PanelMessage>
 
                     {inspection.relatedBlock ? (
-                      <div className="segment-detail__text segment-detail__text--muted">
-                        <strong>Related block</strong>
-                        <p>
-                          {inspection.relatedBlock.title ??
-                            inspection.relatedBlock.id}{" "}
-                          | {inspection.relatedBlock.status} |{" "}
-                          {inspection.relatedBlock.contentSource}
-                        </p>
-                      </div>
+                      <PanelMessage title="Related block" tone="info">
+                        {inspection.relatedBlock.title ??
+                          inspection.relatedBlock.id}{" "}
+                        | {inspection.relatedBlock.status} |{" "}
+                        {inspection.relatedBlock.contentSource}
+                      </PanelMessage>
                     ) : null}
 
                     {inspection.relatedSegments.length > 0 ? (
@@ -266,9 +295,9 @@ export function FindingReviewPanel({
                             >
                               <div className="chunk-link-list__heading">
                                 <strong>Segment #{segment.sequence}</strong>
-                                <span className="chunk-role-pill">
+                                <StatusBadge tone="info">
                                   {formatResolvedFrom(segment.resolvedFrom)}
-                                </span>
+                                </StatusBadge>
                               </div>
                               <p>{segment.sourceText}</p>
                               <p>{segment.resolvedText}</p>
@@ -288,53 +317,48 @@ export function FindingReviewPanel({
                 ) : null}
 
                 <div className="translation-job-monitor__actions">
-                  <button
-                    className="document-action-button"
+                  <ActionButton
                     disabled={
                       !inspection?.anchor.canRetranslate || isRetranslating
                     }
                     onClick={() => void onRetranslateSelectedFinding()}
-                    type="button"
                   >
                     {isRetranslating ? "Retranslating..." : "Retranslate chunk"}
-                  </button>
+                  </ActionButton>
                 </div>
 
                 {actionError ? (
-                  <p className="form-error" role="alert">
+                  <PanelMessage role="alert" tone="danger">
                     {actionError.message}
-                  </p>
+                  </PanelMessage>
                 ) : null}
 
                 {lastRetranslation ? (
                   <>
-                    <div className="segment-detail__text segment-detail__text--muted">
-                      <strong>Latest corrective run</strong>
-                      <p>
-                        Task run {lastRetranslation.translateResult.taskRun.id}{" "}
-                        | job {lastRetranslation.correctionJobId}
-                      </p>
-                    </div>
+                    <PanelMessage title="Latest corrective run" tone="success">
+                      Task run {lastRetranslation.translateResult.taskRun.id} |{" "}
+                      job {lastRetranslation.correctionJobId}
+                    </PanelMessage>
 
                     {lastRetranslation.reviewActionWarning ? (
-                      <p className="form-error" role="alert">
+                      <PanelMessage role="alert" tone="warning">
                         {lastRetranslation.reviewActionWarning}
-                      </p>
+                      </PanelMessage>
                     ) : null}
 
                     {refreshWarning ? (
-                      <p className="form-error" role="alert">
+                      <PanelMessage role="alert" tone="warning">
                         {refreshWarning.message}
-                      </p>
+                      </PanelMessage>
                     ) : null}
                   </>
                 ) : null}
               </>
             ) : (
-              <p className="surface-card__copy">
+              <PanelMessage>
                 Select a finding to resolve its chunk anchor, inspect affected
                 segments, and launch a focused retranslation.
-              </p>
+              </PanelMessage>
             )}
           </div>
         </div>

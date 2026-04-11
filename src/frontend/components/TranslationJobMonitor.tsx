@@ -5,6 +5,10 @@ import type {
   TranslateDocumentStatus,
 } from "../../shared/desktop";
 import type { DesktopCommandError } from "../lib/desktop";
+import { ActionButton } from "./ui/ActionButton";
+import { PanelHeader } from "./ui/PanelHeader";
+import { PanelMessage } from "./ui/PanelMessage";
+import { StatusBadge } from "./ui/StatusBadge";
 
 interface TranslationJobMonitorProps {
   activeDocument: DocumentSummary | null;
@@ -45,6 +49,23 @@ function formatStatusLabel(status: TranslateDocumentStatus) {
       return "Running";
     default:
       return status;
+  }
+}
+
+function getStatusTone(status?: string | null) {
+  switch (status) {
+    case "completed":
+      return "success";
+    case "completed_with_errors":
+    case "cancelled":
+      return "warning";
+    case "failed":
+      return "danger";
+    case "pending":
+    case "running":
+      return "info";
+    default:
+      return "neutral";
   }
 }
 
@@ -93,34 +114,37 @@ export function TranslationJobMonitor({
 
   return (
     <aside className="workspace-panel translation-job-monitor">
-      <div className="surface-card__heading">
-        <div>
-          <p className="surface-card__eyebrow">Job monitor</p>
-          <h3>
-            {activeDocument
-              ? `translate_document for ${activeDocument.name}`
-              : "Select a document"}
-          </h3>
-        </div>
-
-        <span className="document-status-pill">
-          {jobStatus ? formatStatusLabel(jobStatus.status) : "No tracked job"}
-        </span>
-      </div>
+      <PanelHeader
+        eyebrow="Job monitor"
+        meta={
+          <StatusBadge
+            emphasis="strong"
+            size="md"
+            tone={getStatusTone(jobStatus?.status)}
+          >
+            {jobStatus ? formatStatusLabel(jobStatus.status) : "No tracked job"}
+          </StatusBadge>
+        }
+        title={
+          activeDocument
+            ? `translate_document for ${activeDocument.name}`
+            : "Select a document"
+        }
+      />
 
       {!activeDocument ? (
-        <p className="surface-card__copy">
+        <PanelMessage>
           Open a segmented document and build chunks to make the document-level
           execution monitor meaningful.
-        </p>
+        </PanelMessage>
       ) : null}
 
       {activeDocument && !trackedJobId ? (
-        <p className="surface-card__copy">
+        <PanelMessage>
           No translate_document job is tracked for this document yet. Launch one
           from the workspace header to seed progress, incidents, and chunk-level
           task runs.
-        </p>
+        </PanelMessage>
       ) : null}
 
       {trackedJobId ? (
@@ -145,44 +169,39 @@ export function TranslationJobMonitor({
       ) : null}
 
       <div className="translation-job-monitor__actions">
-        <button
-          className="document-action-button"
+        <ActionButton
           disabled={!trackedJobId || isRefreshing}
           onClick={() => void onRefreshStatus()}
-          type="button"
         >
           {isRefreshing ? "Refreshing..." : "Refresh status"}
-        </button>
-        <button
-          className="document-action-button"
+        </ActionButton>
+        <ActionButton
           disabled={!canCancel || isCancelling}
           onClick={() => void onCancelJob()}
-          type="button"
+          variant="danger"
         >
           {isCancelling ? "Cancelling..." : "Cancel job"}
-        </button>
-        <button
-          className="document-action-button"
+        </ActionButton>
+        <ActionButton
           disabled={!trackedJobId || !canResume || isResuming}
           onClick={() => void onResumeTranslation()}
-          type="button"
+          variant="ghost"
         >
           {isResuming ? "Resuming..." : "Resume job"}
-        </button>
-        <button
-          className="document-action-button"
+        </ActionButton>
+        <ActionButton
           disabled={!canClearTrackedJob}
           onClick={onClearTrackedJob}
-          type="button"
+          variant="ghost"
         >
           Clear tracked job
-        </button>
+        </ActionButton>
       </div>
 
       {error ? (
-        <p className="form-error" role="alert">
+        <PanelMessage role="alert" tone="danger">
           {error.message}
-        </p>
+        </PanelMessage>
       ) : null}
 
       {jobStatus ? (
@@ -236,9 +255,9 @@ export function TranslationJobMonitor({
                   >
                     <div className="chunk-link-list__heading">
                       <strong>Chunk #{chunkStatus.chunkSequence}</strong>
-                      <span className="document-status-pill">
+                      <StatusBadge tone={getStatusTone(chunkStatus.status)}>
                         {chunkStatus.status}
-                      </span>
+                      </StatusBadge>
                     </div>
                     <p>
                       {chunkStatus.errorMessage ??
@@ -258,9 +277,9 @@ export function TranslationJobMonitor({
                   <li className="job-run-list__item" key={taskRun.id}>
                     <div className="chunk-link-list__heading">
                       <strong>{formatTaskRunLabel(taskRun)}</strong>
-                      <span className="document-status-pill">
+                      <StatusBadge tone={getStatusTone(taskRun.status)}>
                         {taskRun.status}
-                      </span>
+                      </StatusBadge>
                     </div>
                     <p>
                       {taskRun.errorMessage ??
@@ -270,9 +289,9 @@ export function TranslationJobMonitor({
                 ))}
               </ol>
             ) : (
-              <p className="surface-card__copy">
+              <PanelMessage>
                 No persisted task runs are loaded for this job yet.
-              </p>
+              </PanelMessage>
             )}
           </section>
         </>
