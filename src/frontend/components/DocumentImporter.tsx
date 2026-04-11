@@ -2,6 +2,10 @@ import type { ChangeEvent } from "react";
 import { useRef } from "react";
 import type { ProjectSummary } from "../../shared/desktop";
 import type { DesktopCommandError } from "../lib/desktop";
+import { ActionButton } from "./ui/ActionButton";
+import { PanelHeader } from "./ui/PanelHeader";
+import { PanelMessage } from "./ui/PanelMessage";
+import { StatusBadge } from "./ui/StatusBadge";
 
 interface DocumentImporterProps {
   error: DesktopCommandError | null;
@@ -34,14 +38,15 @@ export function DocumentImporter({
 
   return (
     <section className="workspace-panel">
-      <div className="surface-card__heading">
-        <div>
-          <p className="surface-card__eyebrow">Import documents</p>
-          <h3>Register source files inside the project.</h3>
-        </div>
-
-        <strong className="status-pill">{project.name}</strong>
-      </div>
+      <PanelHeader
+        eyebrow="Import documents"
+        meta={
+          <StatusBadge size="md" tone="info">
+            {project.name}
+          </StatusBadge>
+        }
+        title="Register source files inside the project."
+      />
 
       <p className="surface-card__copy">
         C2 still handles intake here: import keeps the source file under local
@@ -49,14 +54,14 @@ export function DocumentImporter({
       </p>
 
       <div className="document-importer__actions">
-        <button
-          className="app-shell__button"
+        <ActionButton
           disabled={isImporting}
           onClick={() => inputRef.current?.click()}
-          type="button"
+          size="md"
+          variant="primary"
         >
           {isImporting ? "Importing document..." : "Select document file"}
-        </button>
+        </ActionButton>
 
         <span className="project-form__hint">
           Import one source document per action. After it lands in the project,
@@ -67,9 +72,9 @@ export function DocumentImporter({
       <input hidden onChange={handleFileSelection} ref={inputRef} type="file" />
 
       {error ? (
-        <p className="form-error" role="alert">
+        <PanelMessage role="alert" tone="danger">
           {error.message}
-        </p>
+        </PanelMessage>
       ) : null}
     </section>
   );

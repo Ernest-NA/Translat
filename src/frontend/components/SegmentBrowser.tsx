@@ -5,6 +5,9 @@ import type {
   SegmentSummary,
 } from "../../shared/desktop";
 import type { DesktopCommandError } from "../lib/desktop";
+import { PanelHeader } from "./ui/PanelHeader";
+import { PanelMessage } from "./ui/PanelMessage";
+import { StatusBadge } from "./ui/StatusBadge";
 
 interface SegmentBrowserProps {
   activeDocument: DocumentSummary | null;
@@ -24,6 +27,10 @@ function truncateSegmentPreview(value: string) {
   return value.length > 92 ? `${value.slice(0, 89)}...` : value;
 }
 
+function getSegmentStatusTone(status: SegmentSummary["status"]) {
+  return status === "translated" ? "success" : "warning";
+}
+
 export function SegmentBrowser({
   activeDocument,
   error,
@@ -39,20 +46,19 @@ export function SegmentBrowser({
 }: SegmentBrowserProps) {
   return (
     <section className="workspace-panel">
-      <div className="surface-card__heading">
-        <div>
-          <p className="surface-card__eyebrow">Segment navigator</p>
-          <h3>
-            {activeDocument ? activeDocument.name : "Open a segmented document"}
-          </h3>
-        </div>
-
-        <strong className="status-pill">
-          {activeDocument
-            ? `${sections.length} sections | ${segments.length} segments`
-            : "No document"}
-        </strong>
-      </div>
+      <PanelHeader
+        eyebrow="Segment navigator"
+        meta={
+          <StatusBadge size="md" tone="info">
+            {activeDocument
+              ? `${sections.length} sections | ${segments.length} segments`
+              : "No document"}
+          </StatusBadge>
+        }
+        title={
+          activeDocument ? activeDocument.name : "Open a segmented document"
+        }
+      />
 
       {project && activeDocument ? (
         <p className="surface-card__copy">
@@ -67,15 +73,15 @@ export function SegmentBrowser({
       )}
 
       {isLoading ? (
-        <p className="surface-card__copy">
+        <PanelMessage tone="info">
           Loading persisted segments for the selected document...
-        </p>
+        </PanelMessage>
       ) : null}
 
       {error ? (
-        <p className="form-error" role="alert">
+        <PanelMessage role="alert" tone="danger">
           {error.message}
-        </p>
+        </PanelMessage>
       ) : null}
 
       {activeDocument && !isLoading && !error ? (
@@ -105,9 +111,9 @@ export function SegmentBrowser({
                   ))}
                 </ol>
               ) : (
-                <p className="surface-card__copy">
+                <PanelMessage>
                   No persisted structure is available for this document yet.
-                </p>
+                </PanelMessage>
               )}
             </div>
 
@@ -123,9 +129,11 @@ export function SegmentBrowser({
                     >
                       <div className="segment-list__heading">
                         <strong>#{segment.sequence}</strong>
-                        <span className="document-status-pill">
+                        <StatusBadge
+                          tone={getSegmentStatusTone(segment.status)}
+                        >
                           {segment.status}
-                        </span>
+                        </StatusBadge>
                       </div>
                       <p>{truncateSegmentPreview(segment.sourceText)}</p>
                     </button>
@@ -133,9 +141,9 @@ export function SegmentBrowser({
                 ))}
               </ol>
             ) : (
-              <p className="surface-card__copy">
+              <PanelMessage>
                 This document does not have persisted segments yet.
-              </p>
+              </PanelMessage>
             )}
           </div>
 
@@ -148,9 +156,12 @@ export function SegmentBrowser({
                     <h3>Sequence #{selectedSegment.sequence}</h3>
                   </div>
 
-                  <span className="document-status-pill">
+                  <StatusBadge
+                    emphasis="strong"
+                    tone={getSegmentStatusTone(selectedSegment.status)}
+                  >
                     {selectedSegment.status}
-                  </span>
+                  </StatusBadge>
                 </div>
 
                 <dl className="detail-list detail-list--single">
@@ -190,10 +201,10 @@ export function SegmentBrowser({
                 </div>
               </>
             ) : (
-              <p className="surface-card__copy">
+              <PanelMessage>
                 Select a segment from the list to inspect its sequence, state,
                 source text, and current target text.
-              </p>
+              </PanelMessage>
             )}
           </div>
         </div>

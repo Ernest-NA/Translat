@@ -1,5 +1,9 @@
 import type { DocumentSummary } from "../../shared/desktop";
 import type { DesktopCommandError } from "../lib/desktop";
+import { ActionButton } from "./ui/ActionButton";
+import { PanelHeader } from "./ui/PanelHeader";
+import { PanelMessage } from "./ui/PanelMessage";
+import { StatusBadge } from "./ui/StatusBadge";
 
 interface DocumentListProps {
   activeDocumentId: string | null;
@@ -33,6 +37,10 @@ function formatSourceKind(value: string) {
   return value === "local_file" ? "Local file" : value;
 }
 
+function getDocumentStatusTone(status: DocumentSummary["status"]) {
+  return status === "segmented" ? "success" : "warning";
+}
+
 export function DocumentList({
   activeDocumentId,
   documents,
@@ -46,26 +54,27 @@ export function DocumentList({
 }: DocumentListProps) {
   return (
     <section className="workspace-panel">
-      <div className="surface-card__heading">
-        <div>
-          <p className="surface-card__eyebrow">Project documents</p>
-          <h3>Registered inputs</h3>
-        </div>
-
-        <strong className="status-pill">{documents.length} total</strong>
-      </div>
+      <PanelHeader
+        eyebrow="Project documents"
+        meta={
+          <StatusBadge size="md" tone="info">
+            {documents.length} total
+          </StatusBadge>
+        }
+        title="Registered inputs"
+      />
 
       {isLoading ? (
-        <p className="surface-card__copy">
+        <PanelMessage tone="info">
           Loading persisted documents for this workspace...
-        </p>
+        </PanelMessage>
       ) : null}
 
       {!isLoading && !error && documents.length === 0 ? (
-        <p className="surface-card__copy">
+        <PanelMessage>
           No document is registered yet. Import the first file to leave a real
           input ready for segmentation and navigation.
-        </p>
+        </PanelMessage>
       ) : null}
 
       {documents.length > 0 ? (
@@ -82,37 +91,41 @@ export function DocumentList({
                 </div>
 
                 <div className="document-list__actions">
-                  <span className="document-status-pill">
+                  <StatusBadge
+                    emphasis={
+                      document.status === "segmented" ? "strong" : "soft"
+                    }
+                    tone={getDocumentStatusTone(document.status)}
+                  >
                     {document.status}
-                  </span>
-                  <button
-                    className="document-action-button"
+                  </StatusBadge>
+                  <ActionButton
                     disabled={
                       document.status !== "segmented" ||
                       (segmentLoadingDocumentId !== null &&
                         segmentLoadingDocumentId !== document.id)
                     }
                     onClick={() => void onOpenDocument(document.id)}
-                    type="button"
                   >
                     {segmentLoadingDocumentId === document.id
                       ? "Opening..."
                       : activeDocumentId === document.id
                         ? "Viewing"
                         : "Open segments"}
-                  </button>
-                  <button
-                    className="document-action-button"
+                  </ActionButton>
+                  <ActionButton
                     disabled={processingDocumentId !== null}
                     onClick={() => void onProcessDocument(document.id)}
-                    type="button"
+                    variant={
+                      document.status === "segmented" ? "ghost" : "secondary"
+                    }
                   >
                     {processingDocumentId === document.id
                       ? "Processing..."
                       : document.status === "segmented"
                         ? "Re-segment"
                         : "Segment"}
-                  </button>
+                  </ActionButton>
                 </div>
               </div>
 
@@ -140,15 +153,15 @@ export function DocumentList({
       ) : null}
 
       {processError ? (
-        <p className="form-error" role="alert">
+        <PanelMessage role="alert" tone="danger">
           {processError.message}
-        </p>
+        </PanelMessage>
       ) : null}
 
       {error ? (
-        <p className="form-error" role="alert">
+        <PanelMessage role="alert" tone="danger">
           {error.message}
-        </p>
+        </PanelMessage>
       ) : null}
     </section>
   );

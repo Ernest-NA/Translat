@@ -7,6 +7,8 @@ import { ProjectList } from "../components/ProjectList";
 import { ProjectWorkspace } from "../components/ProjectWorkspace";
 import { RuleSetsWorkspace } from "../components/RuleSetsWorkspace";
 import { StyleProfilesWorkspace } from "../components/StyleProfilesWorkspace";
+import { PanelHeader } from "../components/ui/PanelHeader";
+import { StatusBadge } from "../components/ui/StatusBadge";
 import { useDocumentChunks } from "../hooks/useDocumentChunks";
 import { useDocumentSegments } from "../hooks/useDocumentSegments";
 import { useGlossariesWorkspace } from "../hooks/useGlossariesWorkspace";
@@ -236,63 +238,81 @@ export function AppShell() {
   return (
     <main className="app-shell">
       <header className="app-shell__header">
-        <div>
-          <p className="app-shell__eyebrow">Translat</p>
-          <h1>Translation workspace</h1>
-          <p className="app-shell__lead">
-            The shell now keeps project defaults, document intake, chunk
-            readiness, and document-level translation control in the same
-            workspace. Translation stays document-first, with the job visible as
-            an execution envelope and the chunk as the main inspection unit.
-          </p>
-        </div>
+        <PanelHeader
+          description="The shell now keeps project defaults, document intake, chunk readiness, and document-level translation control in the same workspace. Translation stays document-first, with the job visible as an execution envelope and the chunk as the main inspection unit."
+          eyebrow="Translat"
+          title="Translation workspace"
+          titleLevel={2}
+        />
 
         <div className="app-shell__header-meta">
-          <span>{runtimeLabel}</span>
-          <span>{projects.length} persisted projects</span>
-          <span>{totalRuleSetCount} persisted rule sets</span>
-          <span>{totalStyleProfileCount} persisted style profiles</span>
-          <span>{totalGlossaryCount} persisted glossaries</span>
-          <span>
+          <StatusBadge size="md" tone="info">
+            {runtimeLabel}
+          </StatusBadge>
+          <StatusBadge size="md" tone="info">
+            {projects.length} persisted projects
+          </StatusBadge>
+          <StatusBadge size="md" tone="info">
+            {totalRuleSetCount} persisted rule sets
+          </StatusBadge>
+          <StatusBadge size="md" tone="info">
+            {totalStyleProfileCount} persisted style profiles
+          </StatusBadge>
+          <StatusBadge size="md" tone="info">
+            {totalGlossaryCount} persisted glossaries
+          </StatusBadge>
+          <StatusBadge size="md" tone={activeRuleSet ? "success" : "neutral"}>
             {activeRuleSet
               ? `Open rule set: ${activeRuleSet.name}`
               : "No open rule set"}
-          </span>
-          <span>
+          </StatusBadge>
+          <StatusBadge
+            size="md"
+            tone={activeStyleProfile ? "success" : "neutral"}
+          >
             {activeStyleProfile
               ? `Open style profile: ${activeStyleProfile.name}`
               : "No open style profile"}
-          </span>
-          <span>
+          </StatusBadge>
+          <StatusBadge size="md" tone={activeGlossary ? "success" : "neutral"}>
             {activeGlossary
               ? `Open glossary: ${activeGlossary.name}`
               : "No open glossary"}
-          </span>
-          <span>
+          </StatusBadge>
+          <StatusBadge size="md" tone={activeProject ? "success" : "neutral"}>
             {activeProject
               ? `${documents.length} project documents`
               : "No active project"}
-          </span>
-          <span>
+          </StatusBadge>
+          <StatusBadge size="md" tone={activeDocument ? "success" : "neutral"}>
             {activeDocument
               ? `${chunks.length} loaded chunks for ${activeDocument.name}`
               : "No active document"}
-          </span>
-          <span>
+          </StatusBadge>
+          <StatusBadge
+            size="md"
+            tone={activeProjectDefaultGlossary ? "success" : "neutral"}
+          >
             {activeProjectDefaultGlossary
               ? `Project default glossary: ${activeProjectDefaultGlossary.name}`
               : "Project default glossary: none"}
-          </span>
-          <span>
+          </StatusBadge>
+          <StatusBadge
+            size="md"
+            tone={activeProjectDefaultStyleProfile ? "success" : "neutral"}
+          >
             {activeProjectDefaultStyleProfile
               ? `Project default style: ${activeProjectDefaultStyleProfile.name}`
               : "Project default style: none"}
-          </span>
-          <span>
+          </StatusBadge>
+          <StatusBadge
+            size="md"
+            tone={activeProjectDefaultRuleSet ? "success" : "neutral"}
+          >
             {activeProjectDefaultRuleSet
               ? `Project default rules: ${activeProjectDefaultRuleSet.name}`
               : "Project default rules: none"}
-          </span>
+          </StatusBadge>
         </div>
       </header>
 
@@ -411,8 +431,16 @@ export function AppShell() {
           />
 
           <section className="surface-card">
-            <p className="surface-card__eyebrow">Command pattern</p>
-            <h2>{DESKTOP_COMMANDS.updateProjectEditorialDefaults}</h2>
+            <PanelHeader
+              eyebrow="Command pattern"
+              meta={
+                <StatusBadge size="md" tone="info">
+                  invokeDesktopCommand
+                </StatusBadge>
+              }
+              title={DESKTOP_COMMANDS.updateProjectEditorialDefaults}
+              titleLevel={2}
+            />
 
             <dl className="detail-list">
               <div>

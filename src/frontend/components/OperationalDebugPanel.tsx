@@ -8,6 +8,10 @@ import {
   type DesktopCommandError,
   inspectDocumentOperationalState,
 } from "../lib/desktop";
+import { ActionButton } from "./ui/ActionButton";
+import { PanelHeader } from "./ui/PanelHeader";
+import { PanelMessage } from "./ui/PanelMessage";
+import { StatusBadge } from "./ui/StatusBadge";
 
 interface OperationalDebugPanelProps {
   activeDocument: DocumentSummary | null;
@@ -37,6 +41,34 @@ function formatRunLabel(taskRun: TaskRunSummary) {
   }
 
   return taskRun.actionType;
+}
+
+function getWarningTone(severity: string) {
+  if (severity === "error") {
+    return "danger";
+  }
+
+  if (severity === "warning") {
+    return "warning";
+  }
+
+  return "neutral";
+}
+
+function getTaskRunTone(status: TaskRunSummary["status"]) {
+  switch (status) {
+    case "completed":
+      return "success";
+    case "pending":
+    case "running":
+      return "info";
+    case "cancelled":
+      return "warning";
+    case "failed":
+      return "danger";
+    default:
+      return "neutral";
+  }
 }
 
 export function OperationalDebugPanel({
@@ -101,37 +133,34 @@ export function OperationalDebugPanel({
 
   return (
     <aside className="workspace-panel operational-debug-panel">
-      <div className="surface-card__heading">
-        <div>
-          <p className="surface-card__eyebrow">Operational trace</p>
-          <h3>
-            {activeDocument
-              ? `Runs, QA, and export for ${activeDocument.name}`
-              : "Select a document"}
-          </h3>
-        </div>
-
-        <button
-          className="document-action-button"
-          disabled={!activeDocument || !activeProjectId || isLoading}
-          onClick={() => void loadInspection()}
-          type="button"
-        >
-          {isLoading ? "Refreshing..." : "Refresh trace"}
-        </button>
-      </div>
+      <PanelHeader
+        actions={
+          <ActionButton
+            disabled={!activeDocument || !activeProjectId || isLoading}
+            onClick={() => void loadInspection()}
+          >
+            {isLoading ? "Refreshing..." : "Refresh trace"}
+          </ActionButton>
+        }
+        eyebrow="Operational trace"
+        title={
+          activeDocument
+            ? `Runs, QA, and export for ${activeDocument.name}`
+            : "Select a document"
+        }
+      />
 
       {!activeDocument ? (
-        <p className="surface-card__copy">
+        <PanelMessage>
           Open a document to inspect its operational history without querying
           the database manually.
-        </p>
+        </PanelMessage>
       ) : null}
 
       {error ? (
-        <p className="form-error" role="alert">
+        <PanelMessage role="alert" tone="danger">
           {error.message}
-        </p>
+        </PanelMessage>
       ) : null}
 
       {inspection ? (
@@ -175,9 +204,9 @@ export function OperationalDebugPanel({
                   >
                     <div className="chunk-link-list__heading">
                       <strong>{warning.code}</strong>
-                      <span className="document-status-pill">
+                      <StatusBadge tone={getWarningTone(warning.severity)}>
                         {warning.severity}
-                      </span>
+                      </StatusBadge>
                     </div>
                     <p>{warning.message}</p>
                   </li>
@@ -233,9 +262,15 @@ export function OperationalDebugPanel({
                   >
                     <div className="chunk-link-list__heading">
                       <strong>{exportTrace.fileName}</strong>
-                      <span className="document-status-pill">
+                      <StatusBadge
+                        tone={
+                          exportTrace.reconstructedStatus === "complete"
+                            ? "success"
+                            : "warning"
+                        }
+                      >
                         {exportTrace.reconstructedStatus}
-                      </span>
+                      </StatusBadge>
                     </div>
                     <p>
                       Exported {formatTimestamp(exportTrace.exportedAt)} from{" "}
@@ -256,9 +291,9 @@ export function OperationalDebugPanel({
                   <li className="job-run-list__item" key={taskRun.id}>
                     <div className="chunk-link-list__heading">
                       <strong>{formatRunLabel(taskRun)}</strong>
-                      <span className="document-status-pill">
+                      <StatusBadge tone={getTaskRunTone(taskRun.status)}>
                         {taskRun.status}
-                      </span>
+                      </StatusBadge>
                     </div>
                     <p>
                       {taskRun.errorMessage ??
@@ -268,9 +303,9 @@ export function OperationalDebugPanel({
                 ))}
               </ol>
             ) : (
-              <p className="surface-card__copy">
+              <PanelMessage>
                 No task runs were found for this document yet.
-              </p>
+              </PanelMessage>
             )}
           </section>
         </>

@@ -33,6 +33,10 @@ import { FindingReviewPanel } from "./FindingReviewPanel";
 import { OperationalDebugPanel } from "./OperationalDebugPanel";
 import { SegmentBrowser } from "./SegmentBrowser";
 import { TranslationJobMonitor } from "./TranslationJobMonitor";
+import { ActionButton } from "./ui/ActionButton";
+import { PanelHeader } from "./ui/PanelHeader";
+import { PanelMessage } from "./ui/PanelMessage";
+import { StatusBadge } from "./ui/StatusBadge";
 
 interface ProjectWorkspaceProps {
   activeDocument: DocumentSummary | null;
@@ -138,6 +142,37 @@ function formatWorkspaceStatusLabel(
     default:
       return "Ready";
   }
+}
+
+function getWorkspaceStatusTone(
+  status:
+    | "blocked"
+    | "empty"
+    | "incidents"
+    | "ready"
+    | "review"
+    | "running"
+    | "stale",
+) {
+  switch (status) {
+    case "ready":
+      return "success";
+    case "review":
+      return "info";
+    case "running":
+      return "info";
+    case "blocked":
+    case "stale":
+      return "warning";
+    case "incidents":
+      return "danger";
+    default:
+      return "neutral";
+  }
+}
+
+function getOperationalCountTone(count: number) {
+  return count > 0 ? "warning" : "neutral";
 }
 
 export function ProjectWorkspace({
@@ -560,13 +595,12 @@ export function ProjectWorkspace({
   if (!project) {
     return (
       <section className="surface-card surface-card--accent">
-        <p className="surface-card__eyebrow">Workspace</p>
-        <h2>No project open yet.</h2>
-        <p className="surface-card__copy">
-          Select a persisted project or create a new one. Document intake and
-          editorial defaults only become active after a workspace has been
-          explicitly selected.
-        </p>
+        <PanelHeader
+          description="Select a persisted project or create a new one. Document intake and editorial defaults only become active after a workspace has been explicitly selected."
+          eyebrow="Workspace"
+          title="No project open yet."
+          titleLevel={2}
+        />
 
         <ul className="readiness-list">
           <li>Projects are persisted in the encrypted SQLite database.</li>
@@ -579,8 +613,11 @@ export function ProjectWorkspace({
 
   return (
     <section className="surface-card surface-card--accent">
-      <p className="surface-card__eyebrow">Open workspace</p>
-      <h2>{project.name}</h2>
+      <PanelHeader
+        eyebrow="Open workspace"
+        title={project.name}
+        titleLevel={2}
+      />
       <p className="surface-card__copy">
         {project.description ??
           "This project has no description yet. It is ready to receive imported documents and keep a reusable editorial baseline visible from the same workspace."}
@@ -606,16 +643,16 @@ export function ProjectWorkspace({
       </dl>
 
       <section className="workspace-panel project-editorial-defaults">
-        <p className="surface-card__eyebrow">Editorial defaults</p>
-        <h3>Associate one glossary, style profile, and rule set by default</h3>
-        <p className="surface-card__copy">
-          D5 keeps the project baseline explicit and persisted. Each project can
-          point to zero or one default glossary, style profile, and rule set
-          without adding precedence logic or automatic AI usage.
-        </p>
+        <PanelHeader
+          description="D5 keeps the project baseline explicit and persisted. Each project can point to zero or one default glossary, style profile, and rule set without adding precedence logic or automatic AI usage."
+          eyebrow="Editorial defaults"
+          title="Associate one glossary, style profile, and rule set by default"
+        />
 
         {projectError ? (
-          <p className="form-error">{projectError.message}</p>
+          <PanelMessage role="alert" tone="danger">
+            {projectError.message}
+          </PanelMessage>
         ) : null}
 
         <dl className="detail-list detail-list--single">
@@ -715,15 +752,16 @@ export function ProjectWorkspace({
                 : "Project editorial defaults are synchronized."}
             </span>
 
-            <button
-              className="app-shell__button"
+            <ActionButton
               disabled={isSavingEditorialDefaults || !isDirty}
+              size="md"
               type="submit"
+              variant="primary"
             >
               {isSavingEditorialDefaults
                 ? "Saving editorial defaults..."
                 : "Save editorial defaults"}
-            </button>
+            </ActionButton>
           </div>
         </form>
       </section>
@@ -753,115 +791,118 @@ export function ProjectWorkspace({
         className="workspace-panel translation-workspace-header"
         data-state={workspaceState.state}
       >
-        <div className="surface-card__heading">
-          <div>
-            <p className="surface-card__eyebrow">Translation workspace</p>
-            <h3>
-              {activeDocument
-                ? activeDocument.name
-                : "Select a document to start"}
-            </h3>
-          </div>
-
-          <div className="translation-workspace-header__actions">
-            <span className="document-status-pill">
-              {formatWorkspaceStatusLabel(workspaceState.state)}
-            </span>
-            <button
-              className="document-action-button"
-              disabled={!canLaunchTranslation}
-              onClick={() => void startTranslation()}
-              type="button"
-            >
-              {isRestoringTrackedJob
-                ? "Restoring job..."
-                : isStarting
-                  ? "Launching..."
-                  : "Translate document"}
-            </button>
-            <button
-              className="document-action-button"
-              disabled={
-                activeDocument?.status !== "segmented" ||
-                disableChunkBuildActions ||
-                isBuildingChunks
-              }
-              onClick={() => void handleBuildChunks()}
-              type="button"
-            >
-              {isBuildingChunks ? "Building..." : "Build chunks"}
-            </button>
-            <button
-              className="document-action-button"
-              disabled={!canResumeTranslation}
-              onClick={() => void resumeTranslation()}
-              type="button"
-            >
-              {isResuming ? "Resuming..." : "Resume translation"}
-            </button>
-            <button
-              className="document-action-button"
-              disabled={!canExportDocument}
-              onClick={() => void handleExportDocument()}
-              type="button"
-            >
-              {isExportingDocument ? "Exporting..." : "Export markdown"}
-            </button>
-          </div>
-        </div>
+        <PanelHeader
+          actions={
+            <div className="translation-workspace-header__actions">
+              <StatusBadge
+                emphasis="strong"
+                size="md"
+                tone={getWorkspaceStatusTone(workspaceState.state)}
+              >
+                {formatWorkspaceStatusLabel(workspaceState.state)}
+              </StatusBadge>
+              <ActionButton
+                disabled={!canLaunchTranslation}
+                onClick={() => void startTranslation()}
+                variant="primary"
+              >
+                {isRestoringTrackedJob
+                  ? "Restoring job..."
+                  : isStarting
+                    ? "Launching..."
+                    : "Translate document"}
+              </ActionButton>
+              <ActionButton
+                disabled={
+                  activeDocument?.status !== "segmented" ||
+                  disableChunkBuildActions ||
+                  isBuildingChunks
+                }
+                onClick={() => void handleBuildChunks()}
+                variant="ghost"
+              >
+                {isBuildingChunks ? "Building..." : "Build chunks"}
+              </ActionButton>
+              <ActionButton
+                disabled={!canResumeTranslation}
+                onClick={() => void resumeTranslation()}
+                variant="secondary"
+              >
+                {isResuming ? "Resuming..." : "Resume translation"}
+              </ActionButton>
+              <ActionButton
+                disabled={!canExportDocument}
+                onClick={() => void handleExportDocument()}
+                variant="ghost"
+              >
+                {isExportingDocument ? "Exporting..." : "Export markdown"}
+              </ActionButton>
+            </div>
+          }
+          eyebrow="Translation workspace"
+          title={
+            activeDocument ? activeDocument.name : "Select a document to start"
+          }
+        />
 
         <p className="surface-card__copy">{workspaceState.detail}</p>
 
         {exportError ? (
-          <p className="form-error" role="alert">
+          <PanelMessage role="alert" tone="danger">
             {exportError.message}
-          </p>
+          </PanelMessage>
         ) : null}
 
         {lastExport ? (
-          <p className="surface-card__copy">
+          <PanelMessage tone="success">
             Exported <strong>{lastExport.fileName}</strong> from the current{" "}
             {lastExport.status} reconstructed document snapshot.
-          </p>
+          </PanelMessage>
         ) : null}
 
         <div className="translation-workspace-header__badges">
-          <span className="status-pill">
+          <StatusBadge
+            tone={
+              activeDocument?.status === "segmented" ? "success" : "warning"
+            }
+          >
             {activeDocument ? activeDocument.status : "No active document"}
-          </span>
-          <span className="status-pill">
+          </StatusBadge>
+          <StatusBadge tone="info">
             {activeDocument
               ? `${chunks.length} chunks loaded`
               : "Chunk list idle"}
-          </span>
-          <span className="status-pill">
+          </StatusBadge>
+          <StatusBadge tone="info">
             {jobStatus
               ? `${jobStatus.completedChunks}/${jobStatus.totalChunks} completed`
               : "No job progress yet"}
-          </span>
-          <span className="status-pill">
+          </StatusBadge>
+          <StatusBadge
+            tone={getOperationalCountTone(jobStatus?.failedChunks ?? 0)}
+          >
             {jobStatus?.failedChunks
               ? `${jobStatus.failedChunks} failed chunks`
               : "No failed chunks"}
-          </span>
-          <span className="status-pill">
+          </StatusBadge>
+          <StatusBadge tone={trackedJobId ? "info" : "neutral"}>
             {trackedJobId ? `Tracked job ${trackedJobId}` : "No tracked job"}
-          </span>
-          <span className="status-pill">
+          </StatusBadge>
+          <StatusBadge tone={getOperationalCountTone(findings.length)}>
             {activeDocument
               ? `${findings.length} QA findings`
               : "QA findings idle"}
-          </span>
-          <span className="status-pill">
+          </StatusBadge>
+          <StatusBadge tone={lastExport ? "success" : "neutral"}>
             {lastExport
               ? `Last export ${lastExport.fileName}`
               : "No export yet"}
-          </span>
-          <span className="status-pill">
+          </StatusBadge>
+          <StatusBadge tone={isRestoringTrackedJob ? "warning" : "neutral"}>
             {isRestoringTrackedJob
               ? "Restoring tracked job"
               : "Job restore idle"}
-          </span>
+          </StatusBadge>
         </div>
 
         {activeDocument ? (
@@ -982,8 +1023,10 @@ export function ProjectWorkspace({
       />
 
       <section className="workspace-readiness">
-        <p className="surface-card__eyebrow">Workspace behavior</p>
-        <h3>Document, job, and chunk stay aligned in one workspace</h3>
+        <PanelHeader
+          eyebrow="Workspace behavior"
+          title="Document, job, and chunk stay aligned in one workspace"
+        />
         <ul className="readiness-list">
           <li>Imported documents are linked explicitly to this project id.</li>
           <li>

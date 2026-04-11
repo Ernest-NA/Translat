@@ -1,4 +1,7 @@
 import type { ProjectSummary } from "../../shared/desktop";
+import { PanelHeader } from "./ui/PanelHeader";
+import { PanelMessage } from "./ui/PanelMessage";
+import { StatusBadge } from "./ui/StatusBadge";
 
 interface ProjectListProps {
   activeProjectId: string | null;
@@ -21,24 +24,26 @@ export function ProjectList({
 }: ProjectListProps) {
   return (
     <section className="surface-card">
-      <div className="surface-card__heading">
-        <div>
-          <p className="surface-card__eyebrow">Projects</p>
-          <h2>Persisted workspaces</h2>
-        </div>
-
-        <strong className="status-pill">{projects.length} total</strong>
-      </div>
+      <PanelHeader
+        eyebrow="Projects"
+        meta={
+          <StatusBadge size="md" tone="info">
+            {projects.length} total
+          </StatusBadge>
+        }
+        title="Persisted workspaces"
+        titleLevel={2}
+      />
 
       {isLoading ? (
-        <p className="surface-card__copy">Loading persisted projects…</p>
+        <PanelMessage tone="info">Loading persisted projects...</PanelMessage>
       ) : null}
 
       {!isLoading && projects.length === 0 ? (
-        <p className="surface-card__copy">
+        <PanelMessage>
           No project exists yet. Create the first one to unlock the workspace
           for C2 document import.
-        </p>
+        </PanelMessage>
       ) : null}
 
       {projects.length > 0 ? (
