@@ -15,7 +15,8 @@ import {
 } from "../lib/desktop";
 
 const JOB_STORAGE_KEY = "translat.translation-workspace-jobs.v1";
-const JOB_STATUS_POLL_INTERVAL_MS = 4000;
+const JOB_STATUS_ACTIVE_VISIBLE_POLL_INTERVAL_MS = 6000;
+const JOB_STATUS_ACTIVE_HIDDEN_POLL_INTERVAL_MS = 30000;
 const JOB_STATUS_MISSING_CLEAR_GRACE_MS = 15000;
 
 interface UseTranslateDocumentJobOptions {
@@ -219,6 +220,14 @@ function buildDocumentSyncFingerprint(status: TranslateDocumentJobStatus) {
   ].join(":");
 }
 
+function isDocumentVisible() {
+  if (typeof document === "undefined") {
+    return true;
+  }
+
+  return document.visibilityState !== "hidden";
+}
+
 export function useTranslateDocumentJob({
   activeDocument,
   activeProjectId,
@@ -231,6 +240,7 @@ export function useTranslateDocumentJob({
   const [isRestoringTrackedJob, setIsRestoringTrackedJob] = useState(false);
   const [isResuming, setIsResuming] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
+  const [isVisible, setIsVisible] = useState(() => isDocumentVisible());
   const [jobStatus, setJobStatus] = useState<TranslateDocumentJobStatus | null>(
     null,
   );
@@ -241,6 +251,7 @@ export function useTranslateDocumentJob({
   const cancelRequestIdRef = useRef(0);
   const commandInFlightRef = useRef(false);
   const cancelInFlightRef = useRef(false);
+  const refreshInFlightRef = useRef(false);
   const missingJobClearGraceUntilRef = useRef(0);
   const refreshRequestIdRef = useRef(0);
 
@@ -289,8 +300,17 @@ export function useTranslateDocumentJob({
         activeProjectId,
         activeDocument.id,
       );
+
+      if (refreshInFlightRef.current) {
+        return {
+          missingJobConfirmed: false,
+          status: null,
+        };
+      }
+
       const requestId = refreshRequestIdRef.current + 1;
       refreshRequestIdRef.current = requestId;
+      refreshInFlightRef.current = true;
 
       if (!options?.silent) {
         setIsRefreshing(true);
@@ -367,6 +387,8 @@ export function useTranslateDocumentJob({
           status: null,
         };
       } finally {
+        refreshInFlightRef.current = false;
+
         if (refreshRequestIdRef.current === requestId) {
           setIsRefreshing(false);
         }
@@ -552,6 +574,22 @@ export function useTranslateDocumentJob({
   }, [activeDocument, activeProjectId]);
 
   useEffect(() => {
+    if (typeof document === "undefined") {
+      return;
+    }
+
+    const handleVisibilityChange = () => {
+      setIsVisible(isDocumentVisible());
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!trackedJobId) {
       setIsRestoringTrackedJob(false);
       setJobStatus(null);
@@ -568,6 +606,35 @@ export function useTranslateDocumentJob({
 
   useEffect(() => {
     if (
+      !isVisible ||
+      !trackedJobId ||
+      !(
+        jobStatus?.status === "pending" ||
+        jobStatus?.status === "running" ||
+        isStarting ||
+        isResuming
+      )
+    ) {
+      return;
+    }
+
+    void refreshStatus(trackedJobId, {
+      clearMissingJob:
+        Date.now() >= missingJobClearGraceUntilRef.current &&
+        !commandInFlightRef.current,
+      silent: true,
+    });
+  }, [
+    isResuming,
+    isStarting,
+    isVisible,
+    jobStatus?.status,
+    refreshStatus,
+    trackedJobId,
+  ]);
+
+  useEffect(() => {
+    if (
       !(
         trackedJobId &&
         (jobStatus?.status === "pending" ||
@@ -579,19 +646,31 @@ export function useTranslateDocumentJob({
       return;
     }
 
-    const intervalId = window.setInterval(() => {
-      void refreshStatus(trackedJobId, {
-        clearMissingJob:
-          Date.now() >= missingJobClearGraceUntilRef.current &&
-          !commandInFlightRef.current,
-        silent: true,
-      });
-    }, JOB_STATUS_POLL_INTERVAL_MS);
+    const intervalId = window.setInterval(
+      () => {
+        void refreshStatus(trackedJobId, {
+          clearMissingJob:
+            Date.now() >= missingJobClearGraceUntilRef.current &&
+            !commandInFlightRef.current,
+          silent: true,
+        });
+      },
+      isVisible
+        ? JOB_STATUS_ACTIVE_VISIBLE_POLL_INTERVAL_MS
+        : JOB_STATUS_ACTIVE_HIDDEN_POLL_INTERVAL_MS,
+    );
 
     return () => {
       window.clearInterval(intervalId);
     };
-  }, [isResuming, isStarting, jobStatus?.status, refreshStatus, trackedJobId]);
+  }, [
+    isResuming,
+    isStarting,
+    isVisible,
+    jobStatus?.status,
+    refreshStatus,
+    trackedJobId,
+  ]);
 
   const startTranslation = useCallback(async () => {
     if (

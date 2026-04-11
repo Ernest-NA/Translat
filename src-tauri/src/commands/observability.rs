@@ -1,12 +1,14 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 
 use serde::Deserialize;
 use tauri::State;
 
 use crate::commands::document_export::select_export_source_task_run;
 use crate::commands::reconstructed_documents::get_reconstructed_document_with_runtime;
+use crate::commands::segments::load_segmented_document_record;
 use crate::commands::translate_document_jobs::{
-    build_job_status_if_exists, current_timestamp, validate_identifier,
+    build_job_status_from_task_runs_and_chunks, build_job_status_if_exists, current_timestamp,
+    validate_identifier,
 };
 use crate::document_export::EXPORT_RECONSTRUCTED_DOCUMENT_ACTION_TYPE;
 use crate::error::DesktopCommandError;
@@ -21,6 +23,7 @@ use crate::persistence::documents::DocumentRepository;
 use crate::persistence::qa_findings::QaFindingRepository;
 use crate::persistence::segments::SegmentRepository;
 use crate::persistence::task_runs::TaskRunRepository;
+use crate::persistence::translation_chunks::TranslationChunkRepository;
 use crate::qa_findings::{QaFindingSummary, QA_FINDING_STATUS_OPEN};
 use crate::reconstructed_documents::GetReconstructedDocumentInput;
 use crate::task_runs::{TaskRunSummary, TASK_RUN_STATUS_COMPLETED};
@@ -131,7 +134,6 @@ pub(crate) fn inspect_document_operational_state_with_runtime(
             .map(|task_run| task_run.id);
     let jobs = collect_job_overviews(
         &mut connection,
-        database_runtime,
         &project_id,
         &document_id,
         &findings,
@@ -140,11 +142,7 @@ pub(crate) fn inspect_document_operational_state_with_runtime(
     let requested_selected_job_id = selected_job_id.clone();
     let fallback_selected_job_id = jobs.first().map(|job| job.job_id.clone());
     let selected_job_id = match requested_selected_job_id.as_deref() {
-        Some(job_id)
-            if jobs
-                .iter()
-                .any(|job| job.job_id.as_str() == job_id) =>
-        {
+        Some(job_id) if jobs.iter().any(|job| job.job_id.as_str() == job_id) => {
             Some(job_id.to_owned())
         }
         Some(_) => None,
@@ -153,7 +151,6 @@ pub(crate) fn inspect_document_operational_state_with_runtime(
     let selected_job = match selected_job_id.clone() {
         Some(job_id) => Some(inspect_job_trace_internal(
             &mut connection,
-            database_runtime,
             &project_id,
             &document_id,
             &job_id,
@@ -179,7 +176,10 @@ pub(crate) fn inspect_document_operational_state_with_runtime(
         document_status: document.status,
         observed_at,
         selected_job_id,
-        recent_runs: sort_task_runs_desc(task_runs).into_iter().take(12).collect(),
+        recent_runs: sort_task_runs_desc(task_runs)
+            .into_iter()
+            .take(12)
+            .collect(),
         jobs,
         selected_job,
         open_finding_count: open_finding_count(&findings),
@@ -243,7 +243,6 @@ pub(crate) fn inspect_job_trace_with_runtime(
 
     inspect_job_trace_internal(
         &mut connection,
-        database_runtime,
         &project_id,
         &document_id,
         &job_id,
@@ -254,26 +253,19 @@ pub(crate) fn inspect_job_trace_with_runtime(
 
 fn inspect_job_trace_internal(
     connection: &mut rusqlite::Connection,
-    database_runtime: &DatabaseRuntime,
     project_id: &str,
     document_id: &str,
     job_id: &str,
     document_findings: &[QaFindingSummary],
     exports: &[OperationalExportTrace],
 ) -> Result<JobTraceInspection, DesktopCommandError> {
-    let job_status = build_job_status_if_exists(
-        connection,
-        database_runtime,
-        project_id,
-        document_id,
-        job_id,
-    )?
-    .ok_or_else(|| {
-        DesktopCommandError::validation(
-            "The selected job does not exist for the active document.",
-            None,
-        )
-    })?;
+    let job_status = build_job_status_if_exists(connection, project_id, document_id, job_id)?
+        .ok_or_else(|| {
+            DesktopCommandError::validation(
+                "The selected job does not exist for the active document.",
+                None,
+            )
+        })?;
     let findings = sort_findings_desc(
         document_findings
             .iter()
@@ -299,15 +291,17 @@ fn inspect_job_trace_internal(
     })
 }
 
-fn collect_job_overviews(
+pub(crate) fn collect_job_overviews(
     connection: &mut rusqlite::Connection,
-    database_runtime: &DatabaseRuntime,
     project_id: &str,
     document_id: &str,
     findings: &[QaFindingSummary],
     task_runs: &[TaskRunSummary],
 ) -> Result<Vec<DocumentJobOverview>, DesktopCommandError> {
-    let mut job_ids = BTreeSet::new();
+    let observed_at = current_timestamp()?;
+    let current_chunks =
+        load_document_chunks_for_observability(connection, project_id, document_id)?;
+    let mut task_runs_by_job_id = HashMap::<String, Vec<TaskRunSummary>>::new();
 
     for task_run in task_runs.iter().filter(|task_run| {
         matches!(
@@ -316,28 +310,35 @@ fn collect_job_overviews(
         )
     }) {
         if let Some(job_id) = task_run.job_id.as_deref() {
-            job_ids.insert(job_id.to_owned());
+            task_runs_by_job_id
+                .entry(job_id.to_owned())
+                .or_default()
+                .push(task_run.clone());
         }
     }
 
+    let job_ids = task_runs_by_job_id.keys().cloned().collect::<BTreeSet<_>>();
     let mut jobs = Vec::with_capacity(job_ids.len());
 
     for job_id in job_ids {
-        if let Some(job_status) = build_job_status_if_exists(
-            connection,
-            database_runtime,
+        let Some(job_task_runs) = task_runs_by_job_id.remove(job_id.as_str()) else {
+            continue;
+        };
+        let job_status = build_job_status_from_task_runs_and_chunks(
             project_id,
             document_id,
             &job_id,
-        )? {
-            let job_findings = findings
-                .iter()
-                .filter(|finding| finding.job_id.as_deref() == Some(job_id.as_str()))
-                .cloned()
-                .collect::<Vec<_>>();
+            job_task_runs,
+            &current_chunks,
+            observed_at,
+        )?;
+        let job_findings = findings
+            .iter()
+            .filter(|finding| finding.job_id.as_deref() == Some(job_id.as_str()))
+            .cloned()
+            .collect::<Vec<_>>();
 
-            jobs.push(build_job_overview(&job_status, &job_findings));
-        }
+        jobs.push(build_job_overview(&job_status, &job_findings));
     }
 
     jobs.sort_by(|left, right| {
@@ -348,6 +349,23 @@ fn collect_job_overviews(
     });
 
     Ok(jobs)
+}
+
+fn load_document_chunks_for_observability(
+    connection: &mut rusqlite::Connection,
+    project_id: &str,
+    document_id: &str,
+) -> Result<Vec<crate::translation_chunks::TranslationChunkSummary>, DesktopCommandError> {
+    let _ = load_segmented_document_record(connection, project_id, document_id)?;
+
+    TranslationChunkRepository::new(connection)
+        .list_chunks_by_document(document_id)
+        .map_err(|error| {
+            DesktopCommandError::internal(
+                "The desktop shell could not load translation chunks for operational inspection.",
+                Some(error.to_string()),
+            )
+        })
 }
 
 fn build_job_overview(
@@ -384,13 +402,17 @@ fn collect_export_traces(task_runs: &[TaskRunSummary]) -> Vec<OperationalExportT
 
             OperationalExportTrace {
                 task_run: task_run.clone(),
-                file_name: payload.file_name.unwrap_or_else(|| "unknown.translated.md".to_owned()),
+                file_name: payload
+                    .file_name
+                    .unwrap_or_else(|| "unknown.translated.md".to_owned()),
                 format: payload.format.unwrap_or_else(|| "md".to_owned()),
                 exported_at: payload.exported_at.unwrap_or(task_run.updated_at),
                 reconstructed_status: payload
                     .reconstructed_status
                     .unwrap_or_else(|| "unknown".to_owned()),
-                content_source: payload.content_source.unwrap_or_else(|| "unknown".to_owned()),
+                content_source: payload
+                    .content_source
+                    .unwrap_or_else(|| "unknown".to_owned()),
                 is_complete: payload.is_complete.unwrap_or(false),
                 total_segments: payload.total_segments.unwrap_or(0),
                 translated_segments: payload.translated_segments.unwrap_or(0),
@@ -533,7 +555,10 @@ fn derive_job_warnings(
         });
     }
 
-    if task_runs.iter().any(|task_run| task_run.status == "cancelled") {
+    if task_runs
+        .iter()
+        .any(|task_run| task_run.status == "cancelled")
+    {
         warnings.push(OperationalInspectionWarning {
             code: "cancelled_task_runs".to_owned(),
             severity: OPERATIONAL_WARNING_SEVERITY_INFO.to_owned(),
@@ -590,9 +615,7 @@ fn sort_findings_desc(mut findings: Vec<QaFindingSummary>) -> Vec<QaFindingSumma
 mod tests {
     use tempfile::{tempdir, TempDir};
 
-    use super::{
-        inspect_document_operational_state_with_runtime, inspect_job_trace_with_runtime,
-    };
+    use super::{inspect_document_operational_state_with_runtime, inspect_job_trace_with_runtime};
     use crate::commands::document_export::export_reconstructed_document_with_runtime;
     use crate::document_export::{
         ExportReconstructedDocumentInput, EXPORT_RECONSTRUCTED_DOCUMENT_ACTION_TYPE,
@@ -609,11 +632,11 @@ mod tests {
     use crate::persistence::task_runs::TaskRunRepository;
     use crate::persistence::translation_chunks::TranslationChunkRepository;
     use crate::projects::NewProject;
-    use crate::qa_findings::{
-        NewQaFinding, QA_FINDING_SEVERITY_HIGH, QA_FINDING_STATUS_OPEN,
-    };
+    use crate::qa_findings::{NewQaFinding, QA_FINDING_SEVERITY_HIGH, QA_FINDING_STATUS_OPEN};
     use crate::sections::{NewDocumentSection, DOCUMENT_SECTION_TYPE_CHAPTER};
-    use crate::segments::{NewSegment, SegmentTranslationWrite, SEGMENT_STATUS_PENDING_TRANSLATION};
+    use crate::segments::{
+        NewSegment, SegmentTranslationWrite, SEGMENT_STATUS_PENDING_TRANSLATION,
+    };
     use crate::task_runs::{
         NewTaskRun, TASK_RUN_STATUS_COMPLETED, TASK_RUN_STATUS_FAILED, TASK_RUN_STATUS_RUNNING,
     };
@@ -919,7 +942,10 @@ mod tests {
             .iter()
             .all(|warning| warning.code != "export_behind_latest_document_run"));
         assert_eq!(
-            inspection.exports.first().and_then(|export| export.source_task_run_id.as_deref()),
+            inspection
+                .exports
+                .first()
+                .and_then(|export| export.source_task_run_id.as_deref()),
             Some("task_observability_chunk_review_0002")
         );
     }
@@ -1208,7 +1234,9 @@ mod tests {
                 severity: QA_FINDING_SEVERITY_HIGH.to_owned(),
                 status: QA_FINDING_STATUS_OPEN.to_owned(),
                 message: "The second chapter still needs review.".to_owned(),
-                details: Some("The reconstructed document still falls back to the source text.".to_owned()),
+                details: Some(
+                    "The reconstructed document still falls back to the source text.".to_owned(),
+                ),
                 created_at: NOW + 61,
                 updated_at: NOW + 61,
             })

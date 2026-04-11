@@ -58,6 +58,28 @@ use crate::translation_chunks::{
 
 pub const SAMPLE_CHAPTERED_DOCUMENT_TEXT: &str = "Chapter I\n\nThe gate remained closed.\nThe lantern burned all night.\n\nChapter II\n\nGuard the archive.\nKeep the signal hidden.";
 
+pub fn generate_performance_document_text(
+    chapter_count: usize,
+    paragraphs_per_chapter: usize,
+) -> String {
+    let mut sections = Vec::new();
+
+    for chapter_index in 1..=chapter_count {
+        sections.push(format!("Chapter {chapter_index}"));
+        sections.push(String::new());
+
+        for paragraph_index in 1..=paragraphs_per_chapter {
+            sections.push(format!(
+                "Chapter {chapter_index} paragraph {paragraph_index} keeps the archive sealed while the signal remains hidden through the evening watch."
+            ));
+        }
+
+        sections.push(String::new());
+    }
+
+    sections.join("\n")
+}
+
 pub struct RuntimeFixture {
     _temporary_directory: TempDir,
     pub runtime: DatabaseRuntime,
@@ -71,8 +93,7 @@ pub fn create_runtime_fixture() -> RuntimeFixture {
     let encryption_key =
         load_or_create_encryption_key(&encryption_key_path).expect("key should persist");
 
-    bootstrap_database(&database_path, &encryption_key)
-        .expect("database bootstrap should succeed");
+    bootstrap_database(&database_path, &encryption_key).expect("database bootstrap should succeed");
 
     RuntimeFixture {
         _temporary_directory: temporary_directory,

@@ -91,7 +91,7 @@ pub(crate) fn load_reconstructed_document(
             )
         })?;
     let task_runs = TaskRunRepository::new(connection)
-        .list_by_document(document_id)
+        .list_trace_by_document(document_id)
         .map_err(|error| {
             DesktopCommandError::internal(
                 "The desktop shell could not load task runs for reconstruction.",
@@ -110,7 +110,7 @@ pub(crate) fn load_reconstructed_document(
     ))
 }
 
-fn build_reconstructed_document(
+pub(crate) fn build_reconstructed_document(
     project_id: &str,
     document_id: &str,
     sections: &[DocumentSectionSummary],
@@ -275,13 +275,25 @@ fn build_reconstructed_document(
                 .map(|section_id| (section_id.clone(), block.id.clone()))
         })
         .collect::<HashMap<_, _>>();
+    let block_indexes_by_section_id = blocks
+        .iter()
+        .enumerate()
+        .filter_map(|(index, block)| {
+            block
+                .section_id
+                .as_ref()
+                .map(|section_id| (section_id.clone(), index))
+        })
+        .collect::<HashMap<_, _>>();
     let reconstructed_sections = sections
         .iter()
         .map(|section| {
-            let block = blocks
-                .iter()
-                .find(|block| block.section_id.as_deref() == Some(section.id.as_str()))
-                .expect("section block should exist");
+            let block_id = block_ids_by_section_id
+                .get(&section.id)
+                .expect("section block id should exist");
+            let block = &blocks[*block_indexes_by_section_id
+                .get(&section.id)
+                .expect("section block index should exist")];
 
             ReconstructedDocumentSection {
                 section: section.clone(),
@@ -290,10 +302,7 @@ fn build_reconstructed_document(
                 translated_segment_count: block.translated_segment_count,
                 untranslated_segment_count: block.untranslated_segment_count,
                 fallback_segment_count: block.fallback_segment_count,
-                block_id: block_ids_by_section_id
-                    .get(&section.id)
-                    .cloned()
-                    .expect("section block id should exist"),
+                block_id: block_id.clone(),
             }
         })
         .collect::<Vec<_>>();
@@ -390,10 +399,11 @@ fn collect_block_segments(
 
 fn ordered_primary_chunk_ids(segments: &[ReconstructedSegment]) -> Vec<String> {
     let mut chunk_ids = Vec::new();
+    let mut seen_chunk_ids = HashSet::new();
 
     for segment in segments {
         if let Some(chunk_id) = segment.primary_chunk_id.as_ref() {
-            if !chunk_ids.contains(chunk_id) {
+            if seen_chunk_ids.insert(chunk_id.as_str()) {
                 chunk_ids.push(chunk_id.clone());
             }
         }

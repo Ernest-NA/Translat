@@ -6,7 +6,7 @@ use base64::Engine;
 use serde_json::{json, Value};
 use tauri::State;
 
-use crate::commands::segments::load_segmented_document_overview;
+use crate::commands::segments::load_segmented_document_record;
 use crate::commands::translate_chunk::translate_chunk_with_runtime_and_executor;
 use crate::error::DesktopCommandError;
 use crate::persistence::bootstrap::DatabaseRuntime;
@@ -112,13 +112,7 @@ pub(crate) fn get_translate_document_job_status_with_runtime(
         )
     })?;
 
-    build_job_status(
-        &mut connection,
-        database_runtime,
-        &project_id,
-        &document_id,
-        &job_id,
-    )
+    build_job_status(&mut connection, &project_id, &document_id, &job_id)
 }
 
 pub(crate) fn cancel_translate_document_job_with_runtime(
@@ -135,13 +129,7 @@ pub(crate) fn cancel_translate_document_job_with_runtime(
             Some(error.to_string()),
         )
     })?;
-    let _ = load_document_chunks(
-        &mut connection,
-        database_runtime,
-        &project_id,
-        &document_id,
-        cancelled_at,
-    )?;
+    let _ = load_document_chunks(&mut connection, &project_id, &document_id)?;
     let task_runs = list_job_task_runs_for_document(&mut connection, &document_id, &job_id)?;
 
     if task_runs.is_empty() {
@@ -176,13 +164,7 @@ pub(crate) fn cancel_translate_document_job_with_runtime(
             })?;
     }
 
-    build_job_status(
-        &mut connection,
-        database_runtime,
-        &project_id,
-        &document_id,
-        &job_id,
-    )
+    build_job_status(&mut connection, &project_id, &document_id, &job_id)
 }
 
 pub(crate) fn resume_translate_document_job_with_runtime_and_executor<E: TranslateChunkExecutor>(
@@ -204,7 +186,6 @@ pub(crate) fn resume_translate_document_job_with_runtime_and_executor<E: Transla
 
 pub(crate) fn build_job_status(
     connection: &mut rusqlite::Connection,
-    database_runtime: &DatabaseRuntime,
     project_id: &str,
     document_id: &str,
     job_id: &str,
@@ -218,19 +199,11 @@ pub(crate) fn build_job_status(
         ));
     }
 
-    build_job_status_from_task_runs(
-        connection,
-        database_runtime,
-        project_id,
-        document_id,
-        job_id,
-        task_runs,
-    )
+    build_job_status_from_task_runs(connection, project_id, document_id, job_id, task_runs)
 }
 
 pub(crate) fn build_job_status_if_exists(
     connection: &mut rusqlite::Connection,
-    database_runtime: &DatabaseRuntime,
     project_id: &str,
     document_id: &str,
     job_id: &str,
@@ -241,31 +214,42 @@ pub(crate) fn build_job_status_if_exists(
         return Ok(None);
     }
 
-    build_job_status_from_task_runs(
-        connection,
-        database_runtime,
-        project_id,
-        document_id,
-        job_id,
-        task_runs,
-    )
-    .map(Some)
+    build_job_status_from_task_runs(connection, project_id, document_id, job_id, task_runs)
+        .map(Some)
 }
 
 fn build_job_status_from_task_runs(
     connection: &mut rusqlite::Connection,
-    database_runtime: &DatabaseRuntime,
     project_id: &str,
     document_id: &str,
     job_id: &str,
     task_runs: Vec<TaskRunSummary>,
 ) -> Result<TranslateDocumentJobStatus, DesktopCommandError> {
     let observed_at = current_timestamp()?;
-    let current_chunks =
-        load_document_chunks(connection, database_runtime, project_id, document_id, 0)?;
+    let current_chunks = load_document_chunks(connection, project_id, document_id)?;
+
+    build_job_status_from_task_runs_and_chunks(
+        project_id,
+        document_id,
+        job_id,
+        task_runs,
+        &current_chunks,
+        observed_at,
+    )
+}
+
+pub(crate) fn build_job_status_from_task_runs_and_chunks(
+    project_id: &str,
+    document_id: &str,
+    job_id: &str,
+    task_runs: Vec<TaskRunSummary>,
+    current_chunks: &[TranslationChunkSummary],
+    observed_at: i64,
+) -> Result<TranslateDocumentJobStatus, DesktopCommandError> {
     let latest_document_task_run = select_latest_document_task_run(&task_runs);
     let latest_chunk_task_runs = select_latest_chunk_task_runs(&task_runs);
-    let tracked_chunks = collect_tracked_chunks(&current_chunks, &task_runs, &latest_chunk_task_runs);
+    let tracked_chunks =
+        collect_tracked_chunks(current_chunks, &task_runs, &latest_chunk_task_runs);
     let latest_document_status = latest_document_task_run
         .as_ref()
         .map(|task_run| task_run.status.as_str());
@@ -399,19 +383,10 @@ fn build_job_status_from_task_runs(
 
 fn load_document_chunks(
     connection: &mut rusqlite::Connection,
-    database_runtime: &DatabaseRuntime,
     project_id: &str,
     document_id: &str,
-    timestamp: i64,
 ) -> Result<Vec<TranslationChunkSummary>, DesktopCommandError> {
-    let _ = load_segmented_document_overview(
-        connection,
-        database_runtime,
-        project_id,
-        document_id,
-        false,
-        timestamp,
-    )?;
+    let _ = load_segmented_document_record(connection, project_id, document_id)?;
 
     TranslationChunkRepository::new(connection)
         .list_chunks_by_document(document_id)
@@ -429,13 +404,7 @@ fn list_job_task_runs_for_document(
     job_id: &str,
 ) -> Result<Vec<TaskRunSummary>, DesktopCommandError> {
     TaskRunRepository::new(connection)
-        .list_by_job_id(job_id)
-        .map(|task_runs| {
-            task_runs
-                .into_iter()
-                .filter(|task_run| task_run.document_id == document_id)
-                .collect()
-        })
+        .list_by_document_and_job_id(document_id, job_id)
         .map_err(|error| {
             DesktopCommandError::internal(
                 "The desktop shell could not load task runs for the selected translate_document job.",
@@ -723,13 +692,7 @@ pub(crate) fn run_translate_document_with_runtime_and_executor<E: TranslateChunk
             Some(error.to_string()),
         )
     })?;
-    let chunks = load_document_chunks(
-        &mut connection,
-        database_runtime,
-        &project_id,
-        &document_id,
-        started_at,
-    )?;
+    let chunks = load_document_chunks(&mut connection, &project_id, &document_id)?;
 
     if chunks.is_empty() {
         return Err(DesktopCommandError::validation(
@@ -754,13 +717,8 @@ pub(crate) fn run_translate_document_with_runtime_and_executor<E: TranslateChunk
         }
     };
 
-    let existing_status = build_job_status_if_exists(
-        &mut connection,
-        database_runtime,
-        &project_id,
-        &document_id,
-        &job_id,
-    )?;
+    let existing_status =
+        build_job_status_if_exists(&mut connection, &project_id, &document_id, &job_id)?;
 
     if existing_status
         .as_ref()
@@ -849,14 +807,8 @@ pub(crate) fn run_translate_document_with_runtime_and_executor<E: TranslateChunk
                     cancellation_message: Some(CANCELLATION_MESSAGE),
                 },
             )?;
-            return build_job_status(
-                &mut connection,
-                database_runtime,
-                &project_id,
-                &document_id,
-                &job_id,
-            )
-            .and_then(job_status_to_result);
+            return build_job_status(&mut connection, &project_id, &document_id, &job_id)
+                .and_then(job_status_to_result);
         }
 
         if translate_chunk_with_runtime_and_executor(
@@ -895,14 +847,8 @@ pub(crate) fn run_translate_document_with_runtime_and_executor<E: TranslateChunk
         },
     )?;
 
-    build_job_status(
-        &mut connection,
-        database_runtime,
-        &project_id,
-        &document_id,
-        &job_id,
-    )
-    .and_then(job_status_to_result)
+    build_job_status(&mut connection, &project_id, &document_id, &job_id)
+        .and_then(job_status_to_result)
 }
 
 fn finalize_document_attempt(
@@ -2028,7 +1974,10 @@ mod tests {
         .expect("job status should load");
 
         assert_eq!(
-            status.latest_document_task_run.as_ref().map(|task_run| task_run.id.as_str()),
+            status
+                .latest_document_task_run
+                .as_ref()
+                .map(|task_run| task_run.id.as_str()),
             Some("trun_tie_doc_002")
         );
         assert_eq!(status.status, TRANSLATE_DOCUMENT_STATUS_CANCELLED);
