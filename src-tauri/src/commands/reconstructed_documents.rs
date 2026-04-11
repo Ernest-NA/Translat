@@ -266,25 +266,19 @@ pub(crate) fn build_reconstructed_document(
             }
         })
         .collect::<Vec<_>>();
-    let block_ids_by_section_id = blocks
-        .iter()
-        .filter_map(|block| {
-            block
-                .section_id
-                .as_ref()
-                .map(|section_id| (section_id.clone(), block.id.clone()))
-        })
-        .collect::<HashMap<_, _>>();
-    let block_indexes_by_section_id = blocks
-        .iter()
-        .enumerate()
-        .filter_map(|(index, block)| {
-            block
-                .section_id
-                .as_ref()
-                .map(|section_id| (section_id.clone(), index))
-        })
-        .collect::<HashMap<_, _>>();
+    let mut block_ids_by_section_id = HashMap::new();
+    let mut block_indexes_by_section_id = HashMap::new();
+
+    for (index, block) in blocks.iter().enumerate() {
+        if let Some(section_id) = block.section_id.as_ref() {
+            block_ids_by_section_id
+                .entry(section_id.clone())
+                .or_insert_with(|| block.id.clone());
+            block_indexes_by_section_id
+                .entry(section_id.clone())
+                .or_insert(index);
+        }
+    }
     let reconstructed_sections = sections
         .iter()
         .map(|section| {
@@ -1252,6 +1246,81 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["task_chunk_stale_0001"]
         );
+    }
+
+    #[test]
+    fn reconstructed_document_keeps_first_block_mapping_when_section_ids_repeat() {
+        let sections = vec![
+            DocumentSectionSummary {
+                id: "doc_reconstruct_dup_sec_0001".to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                sequence: 1,
+                title: "Chapter I".to_owned(),
+                section_type: DOCUMENT_SECTION_TYPE_CHAPTER.to_owned(),
+                level: 1,
+                start_segment_sequence: 1,
+                end_segment_sequence: 1,
+                segment_count: 1,
+                created_at: NOW,
+                updated_at: NOW,
+            },
+            DocumentSectionSummary {
+                id: "doc_reconstruct_dup_sec_0001".to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                sequence: 2,
+                title: "Chapter II".to_owned(),
+                section_type: DOCUMENT_SECTION_TYPE_CHAPTER.to_owned(),
+                level: 1,
+                start_segment_sequence: 2,
+                end_segment_sequence: 2,
+                segment_count: 1,
+                created_at: NOW,
+                updated_at: NOW,
+            },
+        ];
+        let segments = vec![
+            SegmentSummary {
+                id: "seg_dup_0001".to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                sequence: 1,
+                source_text: "Chapter I".to_owned(),
+                target_text: Some("Capítulo I".to_owned()),
+                source_word_count: 2,
+                source_character_count: 9,
+                status: "translated".to_owned(),
+                created_at: NOW,
+                updated_at: NOW,
+            },
+            SegmentSummary {
+                id: "seg_dup_0002".to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                sequence: 2,
+                source_text: "Chapter II".to_owned(),
+                target_text: None,
+                source_word_count: 2,
+                source_character_count: 10,
+                status: "pending_translation".to_owned(),
+                created_at: NOW,
+                updated_at: NOW,
+            },
+        ];
+
+        let document = build_reconstructed_document(
+            PROJECT_ID,
+            DOCUMENT_ID,
+            &sections,
+            &segments,
+            &[],
+            &[],
+            &[],
+        );
+
+        assert_eq!(document.blocks.len(), 2);
+        assert_eq!(document.sections.len(), 2);
+        assert_eq!(document.sections[0].block_id, document.blocks[0].id);
+        assert_eq!(document.sections[0].status, document.blocks[0].status);
+        assert_eq!(document.sections[1].block_id, document.blocks[0].id);
+        assert_eq!(document.sections[1].status, document.blocks[0].status);
     }
 
     #[test]

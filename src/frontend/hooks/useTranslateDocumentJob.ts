@@ -302,10 +302,37 @@ export function useTranslateDocumentJob({
       );
 
       if (refreshInFlightRef.current) {
-        return {
-          missingJobConfirmed: false,
-          status: null,
-        };
+        const queuedRequestId = refreshRequestIdRef.current + 1;
+        refreshRequestIdRef.current = queuedRequestId;
+
+        return new Promise((resolve) => {
+          const retryRefresh = () => {
+            if (latestDocumentKeyRef.current !== documentJobKey) {
+              resolve({
+                missingJobConfirmed: false,
+                status: null,
+              });
+              return;
+            }
+
+            if (refreshRequestIdRef.current !== queuedRequestId) {
+              resolve({
+                missingJobConfirmed: false,
+                status: null,
+              });
+              return;
+            }
+
+            if (refreshInFlightRef.current) {
+              window.setTimeout(retryRefresh, 50);
+              return;
+            }
+
+            void refreshStatusWithOutcome(jobId, options).then(resolve);
+          };
+
+          retryRefresh();
+        });
       }
 
       const requestId = refreshRequestIdRef.current + 1;
