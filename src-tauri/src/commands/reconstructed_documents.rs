@@ -21,6 +21,7 @@ use crate::sections::DocumentSectionSummary;
 use crate::segments::SegmentSummary;
 use crate::task_runs::TaskRunSummary;
 use crate::translate_chunk::TRANSLATE_CHUNK_ACTION_TYPE;
+use crate::translate_document::TRANSLATE_DOCUMENT_ACTION_TYPE;
 use crate::translation_chunks::{
     TranslationChunkSegmentSummary, TranslationChunkSummary,
     TRANSLATION_CHUNK_SEGMENT_ROLE_CONTEXT_AFTER, TRANSLATION_CHUNK_SEGMENT_ROLE_CONTEXT_BEFORE,
@@ -90,7 +91,7 @@ pub(crate) fn load_reconstructed_document(
             )
         })?;
     let task_runs = TaskRunRepository::new(connection)
-        .list_by_document(document_id)
+        .list_trace_by_document(document_id)
         .map_err(|error| {
             DesktopCommandError::internal(
                 "The desktop shell could not load task runs for reconstruction.",
@@ -109,7 +110,7 @@ pub(crate) fn load_reconstructed_document(
     ))
 }
 
-fn build_reconstructed_document(
+pub(crate) fn build_reconstructed_document(
     project_id: &str,
     document_id: &str,
     sections: &[DocumentSectionSummary],
@@ -182,7 +183,7 @@ fn build_reconstructed_document(
                 .push(task_run.clone());
         } else if task_run.action_type == TRANSLATE_CHUNK_ACTION_TYPE {
             orphaned_chunk_task_runs.push(task_run.clone());
-        } else {
+        } else if task_run.action_type == TRANSLATE_DOCUMENT_ACTION_TYPE {
             document_task_runs.push(task_run.clone());
         }
     }
@@ -265,22 +266,28 @@ fn build_reconstructed_document(
             }
         })
         .collect::<Vec<_>>();
-    let block_ids_by_section_id = blocks
-        .iter()
-        .filter_map(|block| {
-            block
-                .section_id
-                .as_ref()
-                .map(|section_id| (section_id.clone(), block.id.clone()))
-        })
-        .collect::<HashMap<_, _>>();
+    let mut block_ids_by_section_id = HashMap::new();
+    let mut block_indexes_by_section_id = HashMap::new();
+
+    for (index, block) in blocks.iter().enumerate() {
+        if let Some(section_id) = block.section_id.as_ref() {
+            block_ids_by_section_id
+                .entry(section_id.clone())
+                .or_insert_with(|| block.id.clone());
+            block_indexes_by_section_id
+                .entry(section_id.clone())
+                .or_insert(index);
+        }
+    }
     let reconstructed_sections = sections
         .iter()
         .map(|section| {
-            let block = blocks
-                .iter()
-                .find(|block| block.section_id.as_deref() == Some(section.id.as_str()))
-                .expect("section block should exist");
+            let block_id = block_ids_by_section_id
+                .get(&section.id)
+                .expect("section block id should exist");
+            let block = &blocks[*block_indexes_by_section_id
+                .get(&section.id)
+                .expect("section block index should exist")];
 
             ReconstructedDocumentSection {
                 section: section.clone(),
@@ -289,10 +296,7 @@ fn build_reconstructed_document(
                 translated_segment_count: block.translated_segment_count,
                 untranslated_segment_count: block.untranslated_segment_count,
                 fallback_segment_count: block.fallback_segment_count,
-                block_id: block_ids_by_section_id
-                    .get(&section.id)
-                    .cloned()
-                    .expect("section block id should exist"),
+                block_id: block_id.clone(),
             }
         })
         .collect::<Vec<_>>();
@@ -389,10 +393,11 @@ fn collect_block_segments(
 
 fn ordered_primary_chunk_ids(segments: &[ReconstructedSegment]) -> Vec<String> {
     let mut chunk_ids = Vec::new();
+    let mut seen_chunk_ids = HashSet::new();
 
     for segment in segments {
         if let Some(chunk_id) = segment.primary_chunk_id.as_ref() {
-            if !chunk_ids.contains(chunk_id) {
+            if seen_chunk_ids.insert(chunk_id.as_str()) {
                 chunk_ids.push(chunk_id.clone());
             }
         }
@@ -494,6 +499,7 @@ mod tests {
     use tempfile::{tempdir, TempDir};
 
     use super::{build_reconstructed_document, get_reconstructed_document_with_runtime};
+    use crate::document_export::EXPORT_RECONSTRUCTED_DOCUMENT_ACTION_TYPE;
     use crate::documents::{NewDocument, DOCUMENT_SOURCE_LOCAL_FILE, DOCUMENT_STATUS_IMPORTED};
     use crate::persistence::bootstrap::{bootstrap_database, DatabaseRuntime};
     use crate::persistence::documents::DocumentRepository;
@@ -993,6 +999,55 @@ mod tests {
     }
 
     #[test]
+    fn reconstructed_document_ignores_export_runs_in_document_level_trace() {
+        let fixture = create_runtime_fixture();
+        seed_reconstruction_graph(&fixture.runtime);
+        let mut connection = fixture
+            .runtime
+            .open_connection()
+            .expect("database connection should open");
+
+        TaskRunRepository::new(&mut connection)
+            .create(&NewTaskRun {
+                id: "task_export_snapshot_0001".to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                chunk_id: None,
+                job_id: None,
+                action_type: EXPORT_RECONSTRUCTED_DOCUMENT_ACTION_TYPE.to_owned(),
+                status: TASK_RUN_STATUS_COMPLETED.to_owned(),
+                input_payload: Some("{\"fileName\":\"draft.translated.md\"}".to_owned()),
+                output_payload: Some("{\"status\":\"complete\"}".to_owned()),
+                error_message: None,
+                started_at: NOW + 65,
+                completed_at: Some(NOW + 65),
+                created_at: NOW + 65,
+                updated_at: NOW + 65,
+            })
+            .expect("export snapshot should persist");
+        drop(connection);
+
+        let document = get_reconstructed_document_with_runtime(
+            GetReconstructedDocumentInput {
+                project_id: PROJECT_ID.to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+            },
+            &fixture.runtime,
+        )
+        .expect("reconstructed document should load after export snapshot");
+
+        assert_eq!(document.trace.task_run_count, 4);
+        assert_eq!(document.trace.document_task_run_ids, vec!["task_doc_0001"]);
+        assert_eq!(
+            document
+                .trace
+                .latest_document_task_run
+                .as_ref()
+                .map(|task_run| task_run.id.as_str()),
+            Some("task_doc_0001")
+        );
+    }
+
+    #[test]
     fn reconstructed_document_keeps_orphaned_chunk_runs_out_of_document_level_history() {
         let fixture = create_runtime_fixture();
         seed_reconstruction_graph(&fixture.runtime);
@@ -1191,6 +1246,81 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["task_chunk_stale_0001"]
         );
+    }
+
+    #[test]
+    fn reconstructed_document_keeps_first_block_mapping_when_section_ids_repeat() {
+        let sections = vec![
+            DocumentSectionSummary {
+                id: "doc_reconstruct_dup_sec_0001".to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                sequence: 1,
+                title: "Chapter I".to_owned(),
+                section_type: DOCUMENT_SECTION_TYPE_CHAPTER.to_owned(),
+                level: 1,
+                start_segment_sequence: 1,
+                end_segment_sequence: 1,
+                segment_count: 1,
+                created_at: NOW,
+                updated_at: NOW,
+            },
+            DocumentSectionSummary {
+                id: "doc_reconstruct_dup_sec_0001".to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                sequence: 2,
+                title: "Chapter II".to_owned(),
+                section_type: DOCUMENT_SECTION_TYPE_CHAPTER.to_owned(),
+                level: 1,
+                start_segment_sequence: 2,
+                end_segment_sequence: 2,
+                segment_count: 1,
+                created_at: NOW,
+                updated_at: NOW,
+            },
+        ];
+        let segments = vec![
+            SegmentSummary {
+                id: "seg_dup_0001".to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                sequence: 1,
+                source_text: "Chapter I".to_owned(),
+                target_text: Some("Capítulo I".to_owned()),
+                source_word_count: 2,
+                source_character_count: 9,
+                status: "translated".to_owned(),
+                created_at: NOW,
+                updated_at: NOW,
+            },
+            SegmentSummary {
+                id: "seg_dup_0002".to_owned(),
+                document_id: DOCUMENT_ID.to_owned(),
+                sequence: 2,
+                source_text: "Chapter II".to_owned(),
+                target_text: None,
+                source_word_count: 2,
+                source_character_count: 10,
+                status: "pending_translation".to_owned(),
+                created_at: NOW,
+                updated_at: NOW,
+            },
+        ];
+
+        let document = build_reconstructed_document(
+            PROJECT_ID,
+            DOCUMENT_ID,
+            &sections,
+            &segments,
+            &[],
+            &[],
+            &[],
+        );
+
+        assert_eq!(document.blocks.len(), 2);
+        assert_eq!(document.sections.len(), 2);
+        assert_eq!(document.sections[0].block_id, document.blocks[0].id);
+        assert_eq!(document.sections[0].status, document.blocks[0].status);
+        assert_eq!(document.sections[1].block_id, document.blocks[0].id);
+        assert_eq!(document.sections[1].status, document.blocks[0].status);
     }
 
     #[test]

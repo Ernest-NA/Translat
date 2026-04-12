@@ -7,6 +7,10 @@ import type {
   TranslationContextPreview,
 } from "../../shared/desktop";
 import type { DesktopCommandError } from "../lib/desktop";
+import { ActionButton } from "./ui/ActionButton";
+import { PanelHeader } from "./ui/PanelHeader";
+import { PanelMessage } from "./ui/PanelMessage";
+import { StatusBadge } from "./ui/StatusBadge";
 
 interface ChunkBrowserProps {
   activeDocument: DocumentSummary | null;
@@ -61,6 +65,21 @@ function formatChunkExecutionStatus(
   }
 }
 
+function getChunkStatusTone(status: TranslateDocumentChunkResult["status"]) {
+  switch (status) {
+    case "completed":
+      return "success";
+    case "running":
+      return "info";
+    case "cancelled":
+      return "warning";
+    case "failed":
+      return "danger";
+    default:
+      return "neutral";
+  }
+}
+
 export function ChunkBrowser({
   activeDocument,
   chunkSegments,
@@ -96,64 +115,62 @@ export function ChunkBrowser({
 
   return (
     <section className="workspace-panel">
-      <div className="surface-card__heading">
-        <div>
-          <p className="surface-card__eyebrow">Translation chunks</p>
-          <h3>
-            {activeDocument
-              ? `Chunked view for ${activeDocument.name}`
-              : "Open a segmented document"}
-          </h3>
-        </div>
-
-        <div className="chunk-browser__actions">
-          <strong className="status-pill">
-            {activeDocument
-              ? `${chunks.length} persisted chunks`
-              : "No document"}
-          </strong>
-          <button
-            className="document-action-button"
-            disabled={
-              !activeDocument || disableBuild || isBuilding || isLoading
-            }
-            onClick={() => void onBuildChunks()}
-            type="button"
-          >
-            {isBuilding
-              ? "Building..."
-              : chunks.length > 0
-                ? "Rebuild chunks"
-                : "Build chunks"}
-          </button>
-        </div>
-      </div>
+      <PanelHeader
+        actions={
+          <div className="chunk-browser__actions">
+            <StatusBadge size="md" tone="info">
+              {activeDocument
+                ? `${chunks.length} persisted chunks`
+                : "No document"}
+            </StatusBadge>
+            <ActionButton
+              disabled={
+                !activeDocument || disableBuild || isBuilding || isLoading
+              }
+              onClick={() => void onBuildChunks()}
+              variant={chunks.length > 0 ? "ghost" : "secondary"}
+            >
+              {isBuilding
+                ? "Building..."
+                : chunks.length > 0
+                  ? "Rebuild chunks"
+                  : "Build chunks"}
+            </ActionButton>
+          </div>
+        }
+        eyebrow="Translation chunks"
+        title={
+          activeDocument
+            ? `Chunked view for ${activeDocument.name}`
+            : "Open a segmented document"
+        }
+      />
 
       {!activeDocument ? (
-        <p className="surface-card__copy">
+        <PanelMessage>
           Open a segmented document first. This view will then show persisted
           translation chunks, their core ranges, and the attached overlap
           segments.
-        </p>
+        </PanelMessage>
       ) : null}
 
       {activeDocument && isLoading ? (
-        <p className="surface-card__copy">
+        <PanelMessage tone="info">
           Loading persisted translation chunks for the selected document...
-        </p>
+        </PanelMessage>
       ) : null}
 
       {error ? (
-        <p className="form-error" role="alert">
+        <PanelMessage role="alert" tone="danger">
           {error.message}
-        </p>
+        </PanelMessage>
       ) : null}
 
       {activeDocument && !isLoading && !error && chunks.length === 0 ? (
-        <p className="surface-card__copy">
+        <PanelMessage>
           No persisted translation chunks exist for this document yet. Build
           them to inspect reproducible core ranges and adjacent context overlap.
-        </p>
+        </PanelMessage>
       ) : null}
 
       {activeDocument && !isLoading && !error && chunks.length > 0 ? (
@@ -170,22 +187,26 @@ export function ChunkBrowser({
                   >
                     <div className="chunk-list__heading">
                       <strong>Chunk #{chunk.sequence}</strong>
-                      <span className="document-status-pill">
+                      <StatusBadge tone="info">
                         #{chunk.startSegmentSequence}-#
                         {chunk.endSegmentSequence}
-                      </span>
+                      </StatusBadge>
                     </div>
                     <div className="chunk-list__badges">
-                      <span className="document-status-pill">
+                      <StatusBadge
+                        tone={getChunkStatusTone(
+                          chunkStatusLookup.get(chunk.id)?.status ?? "pending",
+                        )}
+                      >
                         {formatChunkExecutionStatus(
                           chunkStatusLookup.get(chunk.id)?.status ?? "pending",
                         )}
-                      </span>
-                      <span className="chunk-role-pill">
+                      </StatusBadge>
+                      <StatusBadge tone="info">
                         {chunkStatusLookup.get(chunk.id)
                           ?.translatedSegmentCount ?? 0}
                         /{chunk.segmentCount} translated
-                      </span>
+                      </StatusBadge>
                     </div>
                     <p>{truncateText(chunk.sourceText)}</p>
                     <span className="chunk-list__meta">
@@ -202,33 +223,36 @@ export function ChunkBrowser({
               ))}
             </ol>
 
-            <p className="surface-card__copy">
+            <PanelMessage tone="info">
               {chunkSegments.length} persisted chunk-to-segment links are loaded
               for this document.
-            </p>
+            </PanelMessage>
           </div>
 
           <div className="chunk-browser__detail">
             {selectedChunk ? (
               <>
-                <div className="surface-card__heading">
-                  <div>
-                    <p className="surface-card__eyebrow">Selected chunk</p>
-                    <h3>Chunk #{selectedChunk.sequence}</h3>
-                  </div>
-
-                  <div className="chunk-detail__heading-badges">
-                    <span className="document-status-pill">
-                      {formatChunkExecutionStatus(
-                        selectedChunkStatus?.status ?? "pending",
-                      )}
-                    </span>
-                    <span className="document-status-pill">
-                      #{selectedChunk.startSegmentSequence}-#
-                      {selectedChunk.endSegmentSequence}
-                    </span>
-                  </div>
-                </div>
+                <PanelHeader
+                  eyebrow="Selected chunk"
+                  meta={
+                    <div className="chunk-detail__heading-badges">
+                      <StatusBadge
+                        tone={getChunkStatusTone(
+                          selectedChunkStatus?.status ?? "pending",
+                        )}
+                      >
+                        {formatChunkExecutionStatus(
+                          selectedChunkStatus?.status ?? "pending",
+                        )}
+                      </StatusBadge>
+                      <StatusBadge tone="info">
+                        #{selectedChunk.startSegmentSequence}-#
+                        {selectedChunk.endSegmentSequence}
+                      </StatusBadge>
+                    </div>
+                  }
+                  title={`Chunk #${selectedChunk.sequence}`}
+                />
 
                 <dl className="detail-list detail-list--single">
                   <div>
@@ -303,16 +327,16 @@ export function ChunkBrowser({
                   </p>
 
                   {isLoadingContext ? (
-                    <p className="surface-card__copy">
+                    <PanelMessage tone="info">
                       Loading the persisted translation context for this
                       chunk...
-                    </p>
+                    </PanelMessage>
                   ) : null}
 
                   {contextError ? (
-                    <p className="form-error" role="alert">
+                    <PanelMessage role="alert" tone="danger">
                       {contextError.message}
-                    </p>
+                    </PanelMessage>
                   ) : null}
 
                   {contextPreview ? (
@@ -400,9 +424,15 @@ export function ChunkBrowser({
                         >
                           <div className="chunk-link-list__heading">
                             <strong>Segment #{segment.sequence}</strong>
-                            <span className="document-status-pill">
+                            <StatusBadge
+                              tone={
+                                segment.status === "translated"
+                                  ? "success"
+                                  : "warning"
+                              }
+                            >
                               {segment.status}
-                            </span>
+                            </StatusBadge>
                           </div>
                           <div className="chunk-result-list__texts">
                             <div>
@@ -423,18 +453,18 @@ export function ChunkBrowser({
                       ))}
                     </ol>
                   ) : (
-                    <p className="surface-card__copy">
+                    <PanelMessage>
                       This chunk does not expose persisted core segments yet.
-                    </p>
+                    </PanelMessage>
                   )}
                 </div>
 
                 {selectedChunkStatus?.errorMessage ? (
                   <div className="chunk-incident-panel">
                     <p className="surface-card__eyebrow">Incident</p>
-                    <p className="form-error" role="alert">
+                    <PanelMessage role="alert" tone="danger">
                       {selectedChunkStatus.errorMessage}
-                    </p>
+                    </PanelMessage>
                   </div>
                 ) : null}
 
@@ -455,9 +485,9 @@ export function ChunkBrowser({
                               #{chunkSegment.segmentSequence}{" "}
                               {formatChunkRole(chunkSegment.role)}
                             </strong>
-                            <span className="chunk-role-pill">
+                            <StatusBadge tone="info">
                               pos {chunkSegment.position}
-                            </span>
+                            </StatusBadge>
                           </div>
                           <p>
                             {segment
@@ -471,10 +501,10 @@ export function ChunkBrowser({
                 </div>
               </>
             ) : (
-              <p className="surface-card__copy">
+              <PanelMessage>
                 Select a chunk to inspect its core text, overlap context, and
                 linked persisted segments.
-              </p>
+              </PanelMessage>
             )}
           </div>
         </div>

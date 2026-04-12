@@ -1,5 +1,8 @@
 import { useState } from "react";
 import type { DesktopCommandError } from "../lib/desktop";
+import { ActionButton } from "./ui/ActionButton";
+import { PanelHeader } from "./ui/PanelHeader";
+import { PanelMessage } from "./ui/PanelMessage";
 
 interface ProjectComposerProps {
   error: DesktopCommandError | null;
@@ -31,14 +34,12 @@ export function ProjectComposer({
 
   return (
     <section className="surface-card surface-card--split">
-      <div>
-        <p className="surface-card__eyebrow">Create project</p>
-        <h2>Start a real translation workspace.</h2>
-        <p className="surface-card__copy">
-          Create the container that will hold documents and later workflow
-          modules. C1 keeps the metadata deliberately small.
-        </p>
-      </div>
+      <PanelHeader
+        description="Create the container that will hold documents and later workflow modules. C1 keeps the metadata deliberately small."
+        eyebrow="Create project"
+        title="Start a real translation workspace."
+        titleLevel={2}
+      />
 
       <form className="project-form" onSubmit={handleSubmit}>
         <label className="field-group">
@@ -71,13 +72,15 @@ export function ProjectComposer({
         </label>
 
         <div className="project-form__footer">
-          <button
-            className="app-shell__button"
+          <ActionButton
             disabled={isCreating}
+            mobileFullWidth
+            size="md"
             type="submit"
+            variant="primary"
           >
             {isCreating ? "Creating project..." : "Create project"}
-          </button>
+          </ActionButton>
 
           <span className="project-form__hint">
             The new project is opened immediately after persistence.
@@ -85,9 +88,9 @@ export function ProjectComposer({
         </div>
 
         {error ? (
-          <p className="form-error" role="alert">
+          <PanelMessage role="alert" tone="danger">
             {error.message}
-          </p>
+          </PanelMessage>
         ) : null}
       </form>
     </section>

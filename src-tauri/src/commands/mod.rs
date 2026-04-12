@@ -6,6 +6,7 @@ pub mod finding_review;
 pub mod glossaries;
 pub mod glossary_entries;
 pub mod healthcheck;
+pub mod observability;
 pub mod projects;
 pub mod reconstructed_documents;
 pub mod rule_sets;

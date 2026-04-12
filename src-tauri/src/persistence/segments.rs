@@ -2,7 +2,7 @@ use rusqlite::{params, Connection};
 
 use crate::documents::DOCUMENT_STATUS_SEGMENTED;
 use crate::persistence::error::PersistenceError;
-use crate::segments::{NewSegment, SegmentSummary};
+use crate::segments::{NewSegment, SegmentSummary, SegmentTranslationTraceSummary};
 
 pub struct SegmentRepository<'connection> {
     connection: &'connection mut Connection,
@@ -218,5 +218,68 @@ impl<'connection> SegmentRepository<'connection> {
         }
 
         Ok(segments)
+    }
+
+    pub fn list_translation_trace_by_document(
+        &mut self,
+        document_id: &str,
+    ) -> Result<Vec<SegmentTranslationTraceSummary>, PersistenceError> {
+        let mut statement = self
+            .connection
+            .prepare(
+                r#"
+                SELECT
+                  id,
+                  document_id,
+                  sequence,
+                  target_text,
+                  last_task_run_id
+                FROM segments
+                WHERE document_id = ?1
+                ORDER BY sequence ASC
+                "#,
+            )
+            .map_err(|error| {
+                PersistenceError::with_details(
+                    format!(
+                        "The segment repository could not prepare the segment trace query for document {document_id}."
+                    ),
+                    error,
+                )
+            })?;
+
+        let rows = statement
+            .query_map([document_id], |row| {
+                Ok(SegmentTranslationTraceSummary {
+                    id: row.get(0)?,
+                    document_id: row.get(1)?,
+                    sequence: row.get(2)?,
+                    target_text: row.get(3)?,
+                    last_task_run_id: row.get(4)?,
+                })
+            })
+            .map_err(|error| {
+                PersistenceError::with_details(
+                    format!(
+                        "The segment repository could not read segment trace rows for document {document_id}."
+                    ),
+                    error,
+                )
+            })?;
+
+        let mut segment_traces = Vec::new();
+
+        for row in rows {
+            segment_traces.push(row.map_err(|error| {
+                PersistenceError::with_details(
+                    format!(
+                        "The segment repository could not decode a segment trace row for document {document_id}."
+                    ),
+                    error,
+                )
+            })?);
+        }
+
+        Ok(segment_traces)
     }
 }

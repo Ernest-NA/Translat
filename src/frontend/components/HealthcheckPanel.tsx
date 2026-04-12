@@ -1,5 +1,9 @@
 import type { HealthcheckResponse } from "../../shared/desktop";
 import type { DesktopCommandError } from "../lib/desktop";
+import { ActionButton } from "./ui/ActionButton";
+import { PanelHeader } from "./ui/PanelHeader";
+import { PanelMessage } from "./ui/PanelMessage";
+import { StatusBadge } from "./ui/StatusBadge";
 
 interface HealthcheckPanelProps {
   error: DesktopCommandError | null;
@@ -24,6 +28,22 @@ function getStatusLabel(
   return healthcheck?.status ?? "idle";
 }
 
+function getStatusTone(
+  isLoading: boolean,
+  error: DesktopCommandError | null,
+  healthcheck: HealthcheckResponse | null,
+) {
+  if (isLoading) {
+    return "info";
+  }
+
+  if (error) {
+    return "danger";
+  }
+
+  return healthcheck?.status === "ok" ? "success" : "neutral";
+}
+
 export function HealthcheckPanel({
   error,
   healthcheck,
@@ -35,22 +55,28 @@ export function HealthcheckPanel({
       className="surface-card surface-card--accent"
       data-state={error ? "error" : (healthcheck?.status ?? "idle")}
     >
-      <div className="health-panel__header">
-        <div>
-          <p className="surface-card__eyebrow">Frontend to backend</p>
-          <h2>Desktop handshake</h2>
-        </div>
+      <PanelHeader
+        eyebrow="Frontend to backend"
+        meta={
+          <StatusBadge
+            size="md"
+            tone={getStatusTone(isLoading, error, healthcheck)}
+          >
+            {getStatusLabel(isLoading, error, healthcheck)}
+          </StatusBadge>
+        }
+        title="Desktop handshake"
+        titleLevel={2}
+      />
 
-        <strong className="status-pill">
-          {getStatusLabel(isLoading, error, healthcheck)}
-        </strong>
-      </div>
-
-      <p className="health-panel__message">
+      <PanelMessage
+        className="health-panel__message"
+        tone={error ? "danger" : isLoading ? "info" : "neutral"}
+      >
         {error?.message ??
           healthcheck?.message ??
           "Waiting for the first backend response."}
-      </p>
+      </PanelMessage>
 
       <dl className="detail-list">
         <div>
@@ -85,14 +111,15 @@ export function HealthcheckPanel({
         </div>
       </dl>
 
-      <button
-        className="app-shell__button"
+      <ActionButton
         disabled={isLoading}
+        mobileFullWidth
         onClick={onRetry}
-        type="button"
+        size="md"
+        variant="primary"
       >
         {isLoading ? "Checking backend..." : "Run healthcheck again"}
-      </button>
+      </ActionButton>
     </section>
   );
 }

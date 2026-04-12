@@ -21,6 +21,15 @@ pub struct SegmentSummary {
     pub updated_at: i64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SegmentTranslationTraceSummary {
+    pub id: String,
+    pub document_id: String,
+    pub sequence: i64,
+    pub target_text: Option<String>,
+    pub last_task_run_id: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentSegmentsOverview {

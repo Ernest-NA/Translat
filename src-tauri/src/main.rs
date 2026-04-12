@@ -10,6 +10,9 @@ mod error;
 mod finding_review;
 mod glossaries;
 mod glossary_entries;
+mod observability;
+#[cfg(test)]
+mod performance_tests;
 mod persistence;
 mod projects;
 mod qa_findings;
@@ -17,8 +20,12 @@ mod reconstructed_documents;
 mod rule_sets;
 mod sections;
 mod segments;
+#[cfg(test)]
+mod smoke_tests;
 mod style_profiles;
 mod task_runs;
+#[cfg(test)]
+mod test_support;
 mod translate_chunk;
 mod translate_document;
 mod translation_chunks;
@@ -68,8 +75,10 @@ fn main() {
             commands::projects::list_projects,
             commands::projects::open_project,
             commands::projects::update_project_editorial_defaults,
-            commands::reconstructed_documents::get_reconstructed_document,
             commands::document_export::export_reconstructed_document,
+            commands::observability::inspect_document_operational_state,
+            commands::observability::inspect_job_trace,
+            commands::reconstructed_documents::get_reconstructed_document,
             commands::document_qa::run_document_consistency_qa,
             commands::document_qa::list_document_qa_findings,
             commands::finding_review::inspect_qa_finding,

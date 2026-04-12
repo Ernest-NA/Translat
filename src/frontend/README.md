@@ -27,3 +27,4 @@ Planned responsibility areas:
 
 Current workflow reference:
 - [Translation Workspace frontend workflow](../../docs/product/translation-workspace-frontend-workflow.md)
+- [Frontend design system foundations](../../docs/product/frontend-design-system-foundations.md)
