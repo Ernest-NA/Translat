@@ -150,7 +150,7 @@ jobs:
 
       - name: Publish PR review comment
         if: ${{ steps.gate.outputs.enabled == 'true' && always() }}
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         env:
           REVIEW_JSON_PATH: codex-output.json
           REVIEW_MARKER: ${{ env.REVIEW_MARKER }}
