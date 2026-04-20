@@ -82,6 +82,7 @@ interface ProjectWorkspaceProps {
   selectedSegmentId: string | null;
   showOperationalDebug?: boolean;
   styleProfiles: StyleProfileSummary[];
+  viewMode?: "workspace" | "operational-debug";
 }
 
 function formatTimestamp(timestamp: number) {
@@ -218,6 +219,7 @@ export function ProjectWorkspace({
   selectedSegmentId,
   showOperationalDebug = true,
   styleProfiles,
+  viewMode = "workspace",
 }: ProjectWorkspaceProps) {
   const [draftDefaultGlossaryId, setDraftDefaultGlossaryId] = useState(() =>
     normalizeSelectionValue(project?.defaultGlossaryId),
@@ -592,6 +594,16 @@ export function ProjectWorkspace({
     if (!wasSaved) {
       pendingDefaultsSyncRef.current = null;
     }
+  }
+
+  if (viewMode === "operational-debug") {
+    return (
+      <OperationalDebugPanel
+        activeDocument={activeDocument}
+        activeProjectId={project?.id ?? null}
+        trackedJobId={trackedJobId}
+      />
+    );
   }
 
   if (!project) {

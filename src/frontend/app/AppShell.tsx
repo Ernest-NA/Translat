@@ -548,7 +548,11 @@ export function AppShell() {
 
           <div
             className="app-shell__view"
-            hidden={activeView !== "documents" && activeView !== "translation"}
+            hidden={
+              activeView !== "documents" &&
+              activeView !== "translation" &&
+              activeView !== "diagnostics"
+            }
           >
             <ProjectWorkspace
               activeDocument={activeDocument}
@@ -592,8 +596,11 @@ export function AppShell() {
               segments={segments}
               selectedSegment={selectedSegment}
               selectedSegmentId={selectedSegmentId}
-              showOperationalDebug={false}
+              showOperationalDebug={activeView === "diagnostics"}
               styleProfiles={styleProfiles}
+              viewMode={
+                activeView === "diagnostics" ? "operational-debug" : "workspace"
+              }
             />
           </div>
 
