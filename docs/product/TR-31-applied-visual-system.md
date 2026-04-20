@@ -8,10 +8,12 @@ TR-31 defines the applied visual direction for the Release 08 shell and Translat
 This task does not implement frontend code. It fixes the visual rules that TR-32 and TR-33 should apply.
 
 ## Figma / FigJam artifacts
-- [TR-31 Translat Applied Visual System](https://www.figma.com/online-whiteboard/create-diagram/5b9301bf-0e81-48c8-aa05-e851cf9cdc15?utm_source=chatgpt&utm_content=edit_in_figjam&oai_id=&request_id=61d095ed-8ac3-4e3d-929c-44845990735c)
-- [TR-31 Translat Screen State Visual Coverage](https://www.figma.com/online-whiteboard/create-diagram/476c6055-271f-4cd6-b244-acada480e38f?utm_source=chatgpt&utm_content=edit_in_figjam&oai_id=&request_id=cad55a03-c991-4c64-bb7c-402db35d38af)
+- [TR-31 Translat Applied Visual System](figjam/TR-31-applied-visual-system.mmd)
+- [TR-31 Translat Screen State Visual Coverage](figjam/TR-31-screen-state-visual-coverage.mmd)
 
-These artifacts complement the TR-30 navigation and operational state maps. TR-30 defines where things live; TR-31 defines how they should look and behave visually.
+These Mermaid sources are the repository-stable FigJam diagram definitions used for TR-31. They replace transient `create-diagram` URLs from the Figma MCP generation flow, which are creation endpoints rather than durable shared board URLs.
+
+TR-30 defines where things live; TR-31 defines how they should look and behave visually.
 
 ## Visual thesis
 Translat should read as a precise desktop workstation:
@@ -350,4 +352,3 @@ TR-24 remains the baseline for reusable primitives and semantic states. TR-31 ad
 - The direction supports shell, project/document workspace, Translation Workspace, job/QA, empty/error states, and diagnostics.
 - The design preserves segment vs chunk vs document, job traceability, QA findings, layered editorial artifacts, and action-scoped rules.
 - The UI direction is a workstation, not documentation pasted into the product.
-

@@ -91,7 +91,7 @@ TR-24 does not attempt:
 TR-31 adjusts this foundation for the full Release 08 redesign:
 
 - `docs/product/TR-31-applied-visual-system.md`
-- [TR-31 Translat Applied Visual System](https://www.figma.com/online-whiteboard/create-diagram/5b9301bf-0e81-48c8-aa05-e851cf9cdc15?utm_source=chatgpt&utm_content=edit_in_figjam&oai_id=&request_id=61d095ed-8ac3-4e3d-929c-44845990735c)
-- [TR-31 Translat Screen State Visual Coverage](https://www.figma.com/online-whiteboard/create-diagram/476c6055-271f-4cd6-b244-acada480e38f?utm_source=chatgpt&utm_content=edit_in_figjam&oai_id=&request_id=cad55a03-c991-4c64-bb7c-402db35d38af)
+- [TR-31 Translat Applied Visual System](figjam/TR-31-applied-visual-system.mmd)
+- [TR-31 Translat Screen State Visual Coverage](figjam/TR-31-screen-state-visual-coverage.mmd)
 
 TR-24 remains the baseline for reusable primitives and semantic state language. TR-31 supersedes the current visual treatment where it calls for lower radius, less decorative gradient usage, denser rows/lists, clearer shell navigation, and diagnostics outside the primary UX.
