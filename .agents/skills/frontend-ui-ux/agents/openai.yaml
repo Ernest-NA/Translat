@@ -1,0 +1,4 @@
+interface:
+  display_name: "Translat Frontend UI/UX"
+  short_description: "Guide Translat frontend UI/UX redesign work"
+  default_prompt: "Use this skill when planning, designing, implementing, or reviewing Translat frontend UI/UX changes."
