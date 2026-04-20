@@ -80,6 +80,7 @@ interface ProjectWorkspaceProps {
   segments: SegmentSummary[];
   selectedSegment: SegmentSummary | null;
   selectedSegmentId: string | null;
+  showOperationalDebug?: boolean;
   styleProfiles: StyleProfileSummary[];
 }
 
@@ -215,6 +216,7 @@ export function ProjectWorkspace({
   segments,
   selectedSegment,
   selectedSegmentId,
+  showOperationalDebug = true,
   styleProfiles,
 }: ProjectWorkspaceProps) {
   const [draftDefaultGlossaryId, setDraftDefaultGlossaryId] = useState(() =>
@@ -1002,11 +1004,13 @@ export function ProjectWorkspace({
         </div>
       </div>
 
-      <OperationalDebugPanel
-        activeDocument={activeDocument}
-        activeProjectId={project?.id ?? null}
-        trackedJobId={trackedJobId}
-      />
+      {showOperationalDebug ? (
+        <OperationalDebugPanel
+          activeDocument={activeDocument}
+          activeProjectId={project?.id ?? null}
+          trackedJobId={trackedJobId}
+        />
+      ) : null}
 
       <SegmentBrowser
         activeDocument={activeDocument}
