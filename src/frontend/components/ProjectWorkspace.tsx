@@ -449,6 +449,7 @@ export function ProjectWorkspace({
     },
     [onSyncDocumentState],
   );
+  const isTranslationWorkspace = viewMode === "translation-workspace";
   const {
     cancelJob,
     clearTrackedJob,
@@ -467,6 +468,7 @@ export function ProjectWorkspace({
     activeDocument,
     activeProjectId: project?.id ?? null,
     chunks,
+    enabled: isTranslationWorkspace,
     onDocumentStateSync: syncActiveDocumentState,
   });
   const {
@@ -477,6 +479,7 @@ export function ProjectWorkspace({
     activeDocument,
     activeProjectId: project?.id ?? null,
     editorialDefaultsFingerprint,
+    enabled: isTranslationWorkspace,
     selectedChunk,
   });
   const {
@@ -497,6 +500,7 @@ export function ProjectWorkspace({
   } = useDocumentFindingReview({
     activeDocument,
     activeProjectId: project?.id ?? null,
+    enabled: isTranslationWorkspace,
     onRefreshDocument: syncActiveDocumentState,
     onSelectChunk,
   });
@@ -659,6 +663,22 @@ export function ProjectWorkspace({
     () => new Map(segments.map((segment) => [segment.id, segment])),
     [segments],
   );
+  const chunkCoreSegmentCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+
+    for (const chunkSegment of chunkSegments) {
+      if (chunkSegment.role !== "core") {
+        continue;
+      }
+
+      counts.set(
+        chunkSegment.chunkId,
+        (counts.get(chunkSegment.chunkId) ?? 0) + 1,
+      );
+    }
+
+    return counts;
+  }, [chunkSegments]);
   const selectedChunkStatus = selectedChunk
     ? (chunkStatusLookup.get(selectedChunk.id) ?? null)
     : null;
@@ -666,6 +686,10 @@ export function ProjectWorkspace({
     .filter((chunkSegment) => chunkSegment.role === "core")
     .map((chunkSegment) => segmentLookup.get(chunkSegment.segmentId) ?? null)
     .filter((segment): segment is SegmentSummary => segment !== null);
+  const selectedCoreChunkSegmentCount = selectedChunk
+    ? (chunkCoreSegmentCounts.get(selectedChunk.id) ??
+      selectedCoreSegments.length)
+    : 0;
   const orderedChunks = useMemo(() => {
     return [...chunks].sort((left, right) => {
       const leftStatus = chunkStatusLookup.get(left.id)?.status ?? "pending";
@@ -784,6 +808,22 @@ export function ProjectWorkspace({
                       : isStarting
                         ? "Launching..."
                         : "Translate document"}
+                  </ActionButton>
+                ) : null}
+                {chunks.length > 0 ? (
+                  <ActionButton
+                    disabled={
+                      activeDocument?.status !== "segmented" ||
+                      disableChunkBuildActions ||
+                      isBuildingChunks
+                    }
+                    onClick={() => void handleBuildChunks()}
+                    size="md"
+                    variant="ghost"
+                  >
+                    {isBuildingChunks
+                      ? "Rebuilding chunks..."
+                      : "Rebuild chunks"}
                   </ActionButton>
                 ) : null}
                 {runningJob ? (
@@ -968,6 +1008,9 @@ export function ProjectWorkspace({
                     const status = chunkStatusLookup.get(chunk.id);
                     const statusName: TranslateDocumentChunkResult["status"] =
                       status?.status ?? "pending";
+                    const coreSegmentCount =
+                      chunkCoreSegmentCounts.get(chunk.id) ??
+                      chunk.segmentCount;
 
                     return (
                       <li key={chunk.id}>
@@ -988,7 +1031,7 @@ export function ProjectWorkspace({
                             </strong>
                             <small>
                               {status?.translatedSegmentCount ?? 0}/
-                              {chunk.segmentCount} translated |{" "}
+                              {coreSegmentCount} translated |{" "}
                               {chunk.sourceWordCount} words
                             </small>
                             {status?.errorMessage ? (
@@ -1024,7 +1067,7 @@ export function ProjectWorkspace({
                         )}
                       </StatusBadge>
                       <StatusBadge tone="info">
-                        {translatedCoreCount}/{selectedChunk.segmentCount}{" "}
+                        {translatedCoreCount}/{selectedCoreChunkSegmentCount}{" "}
                         result
                       </StatusBadge>
                     </div>
