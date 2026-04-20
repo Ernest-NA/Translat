@@ -281,6 +281,7 @@ TR-32/TR-33 should implement and visually validate:
 4. Document segmented, no chunks
    - primary action: build chunks
    - segment/section readiness visible
+   - translate actions disabled until chunks exist
 
 5. Chunk-ready document
    - primary action: translate document
