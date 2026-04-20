@@ -546,55 +546,56 @@ export function AppShell() {
             </div>
           ) : null}
 
-          {activeView === "documents" || activeView === "translation" ? (
-            <div className="app-shell__view">
-              <ProjectWorkspace
-                activeDocument={activeDocument}
-                chunkError={chunkError}
-                chunkSegments={chunkSegments}
-                chunks={chunks}
-                documents={documents}
-                importError={importError}
-                isBuildingChunks={isBuildingChunks}
-                isImportingDocuments={isImporting}
-                isLoadingDocuments={isLoadingDocuments}
-                isLoadingChunks={isLoadingChunks}
-                isLoadingSegments={isLoadingSegments}
-                isSavingEditorialDefaults={isSavingEditorialDefaults}
-                loadError={loadError}
-                glossaries={glossaries}
-                onBuildChunks={buildChunks}
-                onDirtyChange={setHasUnsavedProjectDefaults}
-                onOpenDocument={openDocument}
-                onSyncDocumentState={refreshDocument}
-                onImportDocuments={handleImportDocuments}
-                onProcessDocument={handleProcessDocument}
-                onSelectChunk={selectChunk}
-                onSaveEditorialDefaults={saveProjectEditorialDefaults}
-                onSelectSection={selectSection}
-                onSelectSegment={selectSegment}
-                processError={processError}
-                processingDocumentId={processingDocumentId}
-                project={activeProject}
-                projectError={projectError}
-                ruleSets={ruleSets}
-                segmentError={segmentError}
-                segmentLoadingDocumentId={
-                  isLoadingSegments ? (activeDocument?.id ?? null) : null
-                }
-                sections={sections}
-                selectedChunk={selectedChunk}
-                selectedChunkId={selectedChunkId}
-                selectedChunkSegments={selectedChunkSegments}
-                selectedSection={selectedSection}
-                segments={segments}
-                selectedSegment={selectedSegment}
-                selectedSegmentId={selectedSegmentId}
-                showOperationalDebug={false}
-                styleProfiles={styleProfiles}
-              />
-            </div>
-          ) : null}
+          <div
+            className="app-shell__view"
+            hidden={activeView !== "documents" && activeView !== "translation"}
+          >
+            <ProjectWorkspace
+              activeDocument={activeDocument}
+              chunkError={chunkError}
+              chunkSegments={chunkSegments}
+              chunks={chunks}
+              documents={documents}
+              importError={importError}
+              isBuildingChunks={isBuildingChunks}
+              isImportingDocuments={isImporting}
+              isLoadingDocuments={isLoadingDocuments}
+              isLoadingChunks={isLoadingChunks}
+              isLoadingSegments={isLoadingSegments}
+              isSavingEditorialDefaults={isSavingEditorialDefaults}
+              loadError={loadError}
+              glossaries={glossaries}
+              onBuildChunks={buildChunks}
+              onDirtyChange={setHasUnsavedProjectDefaults}
+              onOpenDocument={openDocument}
+              onSyncDocumentState={refreshDocument}
+              onImportDocuments={handleImportDocuments}
+              onProcessDocument={handleProcessDocument}
+              onSelectChunk={selectChunk}
+              onSaveEditorialDefaults={saveProjectEditorialDefaults}
+              onSelectSection={selectSection}
+              onSelectSegment={selectSegment}
+              processError={processError}
+              processingDocumentId={processingDocumentId}
+              project={activeProject}
+              projectError={projectError}
+              ruleSets={ruleSets}
+              segmentError={segmentError}
+              segmentLoadingDocumentId={
+                isLoadingSegments ? (activeDocument?.id ?? null) : null
+              }
+              sections={sections}
+              selectedChunk={selectedChunk}
+              selectedChunkId={selectedChunkId}
+              selectedChunkSegments={selectedChunkSegments}
+              selectedSection={selectedSection}
+              segments={segments}
+              selectedSegment={selectedSegment}
+              selectedSegmentId={selectedSegmentId}
+              showOperationalDebug={false}
+              styleProfiles={styleProfiles}
+            />
+          </div>
 
           {activeView === "libraries" ? (
             <div className="app-shell__view app-shell__view--libraries">
