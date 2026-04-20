@@ -190,9 +190,11 @@ export function AppShell() {
     retry,
   } = useHealthcheck();
   const activeProjectIdRef = useRef<string | null>(activeProject?.id ?? null);
+  const activeViewRef = useRef<ShellView>(activeView);
   const [hasUnsavedProjectDefaults, setHasUnsavedProjectDefaults] =
     useState(false);
   activeProjectIdRef.current = activeProject?.id ?? null;
+  activeViewRef.current = activeView;
 
   const activeProjectDefaultGlossary =
     glossaries.find(
@@ -268,10 +270,16 @@ export function AppShell() {
 
   const handleImportDocuments = useCallback(
     async (files: FileList): Promise<number> => {
+      const initiatingView = activeViewRef.current;
       const importedCount = await importDocuments(files);
 
       if (importedCount > 0) {
-        setActiveView("documents");
+        if (
+          activeViewRef.current === initiatingView &&
+          (initiatingView === "documents" || initiatingView === "translation")
+        ) {
+          setActiveView("documents");
+        }
 
         try {
           await reloadProjects();
@@ -287,6 +295,7 @@ export function AppShell() {
 
   const handleProcessDocument = useCallback(
     async (documentId: string): Promise<void> => {
+      const initiatingView = activeViewRef.current;
       const processedDocument = await processDocument(documentId);
 
       if (processedDocument) {
@@ -300,7 +309,12 @@ export function AppShell() {
           return;
         }
 
-        setActiveView("translation");
+        if (
+          activeViewRef.current === initiatingView &&
+          (initiatingView === "documents" || initiatingView === "translation")
+        ) {
+          setActiveView("translation");
+        }
 
         try {
           await reloadProjects();
@@ -480,71 +494,72 @@ export function AppShell() {
             />
           </div>
 
-          {activeView === "projects" ? (
-            <div className="app-shell__view app-shell__view--projects">
-              <section className="app-shell__split">
-                <ProjectComposer
-                  error={projectError}
-                  isCreating={isCreating}
-                  onSubmit={handleSubmitProject}
-                />
+          <div
+            className="app-shell__view app-shell__view--projects"
+            hidden={activeView !== "projects"}
+          >
+            <section className="app-shell__split">
+              <ProjectComposer
+                error={projectError}
+                isCreating={isCreating}
+                onSubmit={handleSubmitProject}
+              />
 
-                <ProjectList
-                  activeProjectId={activeProject?.id ?? null}
-                  isLoading={isLoadingProjects}
-                  onOpen={handleSelectProject}
-                  openingProjectId={openingProjectId}
-                  projects={projects}
-                />
-              </section>
+              <ProjectList
+                activeProjectId={activeProject?.id ?? null}
+                isLoading={isLoadingProjects}
+                onOpen={handleSelectProject}
+                openingProjectId={openingProjectId}
+                projects={projects}
+              />
+            </section>
 
-              <section className="surface-card app-shell__overview-card">
-                <PanelHeader
-                  description={
-                    activeProject
-                      ? (activeProject.description ??
-                        "Ready for document import and editorial setup.")
-                      : "Select or create a project to unlock document and translation work."
-                  }
-                  eyebrow="Active workspace"
-                  meta={
-                    <>
-                      <StatusBadge
-                        tone={activeProject ? "success" : "neutral"}
-                        size="sm"
-                      >
-                        {activeProject ? "Project open" : "Waiting"}
-                      </StatusBadge>
-                      <StatusBadge tone={documentStateTone} size="sm">
-                        {documentStateLabel}
-                      </StatusBadge>
-                    </>
-                  }
-                  title={activeProject?.name ?? "No project selected"}
-                  titleLevel={2}
-                />
+            <section className="surface-card app-shell__overview-card">
+              <PanelHeader
+                description={
+                  activeProject
+                    ? (activeProject.description ??
+                      "Ready for document import and editorial setup.")
+                    : "Select or create a project to unlock document and translation work."
+                }
+                eyebrow="Active workspace"
+                meta={
+                  <>
+                    <StatusBadge
+                      tone={activeProject ? "success" : "neutral"}
+                      size="sm"
+                    >
+                      {activeProject ? "Project open" : "Waiting"}
+                    </StatusBadge>
+                    <StatusBadge tone={documentStateTone} size="sm">
+                      {documentStateLabel}
+                    </StatusBadge>
+                  </>
+                }
+                title={activeProject?.name ?? "No project selected"}
+                titleLevel={2}
+              />
 
-                <div className="app-shell__metric-grid">
-                  <div>
-                    <span>Documents</span>
-                    <strong>{formatCount(documents.length)}</strong>
-                  </div>
-                  <div>
-                    <span>Segments</span>
-                    <strong>{formatCount(segments.length)}</strong>
-                  </div>
-                  <div>
-                    <span>Chunks</span>
-                    <strong>{formatCount(chunks.length)}</strong>
-                  </div>
-                  <div>
-                    <span>Defaults</span>
-                    <strong>{activeDefaultsCount}/3</strong>
-                  </div>
+              <div className="app-shell__metric-grid">
+                <div>
+                  <span>Documents</span>
+                  <strong>{formatCount(documents.length)}</strong>
                 </div>
-              </section>
-            </div>
-          ) : null}
+                <div>
+                  <span>Segments</span>
+                  <strong>{formatCount(segments.length)}</strong>
+                </div>
+                <div>
+                  <span>Chunks</span>
+                  <strong>{formatCount(chunks.length)}</strong>
+                </div>
+                <div>
+                  <span>Defaults</span>
+                  <strong>{activeDefaultsCount}/3</strong>
+                </div>
+              </div>
+            </section>
+          </div>
 
           <div
             className="app-shell__view"
@@ -604,60 +619,61 @@ export function AppShell() {
             />
           </div>
 
-          {activeView === "libraries" ? (
-            <div className="app-shell__view app-shell__view--libraries">
-              <RuleSetsWorkspace
-                activeRuleSet={activeRuleSet}
-                activeRuleSetCount={activeRuleSetCount}
-                archivedRuleSetCount={archivedRuleSetCount}
-                error={ruleSetError}
-                isCreating={isCreatingRuleSet}
-                isLoading={isLoadingRuleSets}
-                isSaving={isSavingRuleSet}
-                onOpenRuleSet={selectRuleSet}
-                onReloadRuleSets={reloadRuleSets}
-                onSubmitRuleSet={submitRuleSet}
-                onUpdateRuleSet={saveRuleSet}
-                openingRuleSetId={openingRuleSetId}
-                ruleSets={ruleSets}
-                totalRuleSetCount={totalRuleSetCount}
-              />
+          <div
+            className="app-shell__view app-shell__view--libraries"
+            hidden={activeView !== "libraries"}
+          >
+            <RuleSetsWorkspace
+              activeRuleSet={activeRuleSet}
+              activeRuleSetCount={activeRuleSetCount}
+              archivedRuleSetCount={archivedRuleSetCount}
+              error={ruleSetError}
+              isCreating={isCreatingRuleSet}
+              isLoading={isLoadingRuleSets}
+              isSaving={isSavingRuleSet}
+              onOpenRuleSet={selectRuleSet}
+              onReloadRuleSets={reloadRuleSets}
+              onSubmitRuleSet={submitRuleSet}
+              onUpdateRuleSet={saveRuleSet}
+              openingRuleSetId={openingRuleSetId}
+              ruleSets={ruleSets}
+              totalRuleSetCount={totalRuleSetCount}
+            />
 
-              <StyleProfilesWorkspace
-                activeStyleProfile={activeStyleProfile}
-                activeStyleProfileCount={activeStyleProfileCount}
-                archivedStyleProfileCount={archivedStyleProfileCount}
-                error={styleProfileError}
-                isCreating={isCreatingStyleProfile}
-                isLoading={isLoadingStyleProfiles}
-                isSaving={isSavingStyleProfile}
-                onOpenStyleProfile={selectStyleProfile}
-                onSubmitStyleProfile={submitStyleProfile}
-                onUpdateStyleProfile={saveStyleProfile}
-                openingStyleProfileId={openingStyleProfileId}
-                styleProfiles={styleProfiles}
-                totalStyleProfileCount={totalStyleProfileCount}
-              />
+            <StyleProfilesWorkspace
+              activeStyleProfile={activeStyleProfile}
+              activeStyleProfileCount={activeStyleProfileCount}
+              archivedStyleProfileCount={archivedStyleProfileCount}
+              error={styleProfileError}
+              isCreating={isCreatingStyleProfile}
+              isLoading={isLoadingStyleProfiles}
+              isSaving={isSavingStyleProfile}
+              onOpenStyleProfile={selectStyleProfile}
+              onSubmitStyleProfile={submitStyleProfile}
+              onUpdateStyleProfile={saveStyleProfile}
+              openingStyleProfileId={openingStyleProfileId}
+              styleProfiles={styleProfiles}
+              totalStyleProfileCount={totalStyleProfileCount}
+            />
 
-              <GlossaryWorkspace
-                activeGlossary={activeGlossary}
-                activeGlossaryCount={activeGlossaryCount}
-                archivedGlossaryCount={archivedGlossaryCount}
-                error={glossaryError}
-                glossaries={glossaries}
-                isCreating={isCreatingGlossary}
-                isLoading={isLoadingGlossaries}
-                isSaving={isSavingGlossary}
-                onOpenGlossary={selectGlossary}
-                onSubmitGlossary={submitGlossary}
-                onUpdateGlossary={saveGlossary}
-                openingGlossaryId={openingGlossaryId}
-                onReloadGlossaries={reloadGlossaries}
-                projects={projects}
-                totalGlossaryCount={totalGlossaryCount}
-              />
-            </div>
-          ) : null}
+            <GlossaryWorkspace
+              activeGlossary={activeGlossary}
+              activeGlossaryCount={activeGlossaryCount}
+              archivedGlossaryCount={archivedGlossaryCount}
+              error={glossaryError}
+              glossaries={glossaries}
+              isCreating={isCreatingGlossary}
+              isLoading={isLoadingGlossaries}
+              isSaving={isSavingGlossary}
+              onOpenGlossary={selectGlossary}
+              onSubmitGlossary={submitGlossary}
+              onUpdateGlossary={saveGlossary}
+              openingGlossaryId={openingGlossaryId}
+              onReloadGlossaries={reloadGlossaries}
+              projects={projects}
+              totalGlossaryCount={totalGlossaryCount}
+            />
+          </div>
 
           {activeView === "diagnostics" ? (
             <div className="app-shell__view app-shell__view--diagnostics">
