@@ -37,6 +37,12 @@ The user should not need to read long explanatory copy inside the app to underst
 6. TR-33: rebuild Translation Workspace hierarchy around document, chunk, job, and QA.
 7. TR-34: validate visual quality, responsive behavior, and operational states.
 
+## Release 08 design artifacts
+- `docs/product/TR-29-ui-ux-audit.md`
+- `docs/product/TR-30-information-architecture.md`
+- [TR-30 Translat Navigation IA Map](https://www.figma.com/online-whiteboard/create-diagram/920bb8e4-d330-4d97-b2f3-8e2f4839468d?utm_source=chatgpt&utm_content=edit_in_figjam&oai_id=&request_id=7ac97ca2-39dc-49b6-aa16-bdc826aff2d2)
+- [TR-30 Translat Operational State Map](https://www.figma.com/online-whiteboard/create-diagram/c751e2b9-23d7-444a-9585-7fb5111c080e?utm_source=chatgpt&utm_content=edit_in_figjam&oai_id=&request_id=a38a6d9e-4419-4b21-a09a-2e89914e3007)
+
 ## Design constraints
 - Do not make a landing page; the first screen should be the usable product.
 - Do not stack all product modules as a long sequence of equal cards.
@@ -70,4 +76,3 @@ When Tauri cannot run, document that separately from visual findings. Browser-on
 - `docs/product/translation-workspace-frontend-workflow.md`
 - `docs/product/frontend-design-system-foundations.md`
 - `docs/runbooks/frontend-quality.md`
-
