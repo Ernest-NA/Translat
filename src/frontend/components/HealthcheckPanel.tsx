@@ -69,7 +69,13 @@ export function HealthcheckPanel({
   return (
     <section
       className="surface-card surface-card--accent"
-      data-state={error ? "error" : (healthcheck?.status ?? "idle")}
+      data-state={
+        isRuntimeUnavailable
+          ? "preview"
+          : error
+            ? "error"
+            : (healthcheck?.status ?? "idle")
+      }
     >
       <PanelHeader
         eyebrow="Frontend to backend"

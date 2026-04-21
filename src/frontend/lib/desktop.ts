@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import {
   type BuildDocumentTranslationChunksInput,
   type BuildTranslationContextInput,
@@ -103,27 +103,12 @@ function isDesktopCommandErrorPayload(
   );
 }
 
-function isDesktopRuntimeUnavailableError(
-  caughtError: unknown,
-): caughtError is Error {
-  if (!(caughtError instanceof Error)) {
-    return false;
-  }
-
-  const message = caughtError.message.toLowerCase();
-  const isBridgeIdentifier =
-    message.includes("invoke") ||
-    message.includes("ipc") ||
-    message.includes("__tauri") ||
-    message.includes("tauri");
-  const isUnavailableShape =
-    message.includes("undefined") ||
-    message.includes("not defined") ||
-    message.includes("not a function") ||
-    message.includes("not available") ||
-    message.includes("unavailable");
-
-  return isBridgeIdentifier && isUnavailableShape;
+function createDesktopRuntimeUnavailableError(command: DesktopCommandName) {
+  return new DesktopCommandError(command, {
+    code: DESKTOP_RUNTIME_UNAVAILABLE_CODE,
+    message:
+      "Desktop runtime unavailable in this browser preview. Open the Tauri desktop app to use persisted project and document commands.",
+  });
 }
 
 function normalizeDesktopCommandError(
@@ -132,15 +117,6 @@ function normalizeDesktopCommandError(
 ) {
   if (isDesktopCommandErrorPayload(caughtError)) {
     return new DesktopCommandError(command, caughtError);
-  }
-
-  if (isDesktopRuntimeUnavailableError(caughtError)) {
-    return new DesktopCommandError(command, {
-      code: DESKTOP_RUNTIME_UNAVAILABLE_CODE,
-      details: caughtError.stack,
-      message:
-        "Desktop runtime unavailable in this browser preview. Open the Tauri desktop app to use persisted project and document commands.",
-    });
   }
 
   if (caughtError instanceof Error) {
@@ -161,6 +137,10 @@ export async function invokeDesktopCommand<TResponse>(
   command: DesktopCommandName,
   args?: Record<string, unknown>,
 ) {
+  if (!isTauri()) {
+    throw createDesktopRuntimeUnavailableError(command);
+  }
+
   try {
     return await invoke<TResponse>(command, args);
   } catch (caughtError) {
