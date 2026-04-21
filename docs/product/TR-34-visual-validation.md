@@ -10,6 +10,7 @@ Validation date: 2026-04-21.
 ## Evidence
 - Browser runtime: `http://127.0.0.1:1420/`
 - Desktop capture: `docs/product/assets/TR-34/browser-desktop.png`
+- Wide tablet capture: `docs/product/assets/TR-34/browser-tablet-wide.png`
 - Intermediate responsive Documents capture: `docs/product/assets/TR-34/browser-tablet.png`
 - Intermediate responsive Translation capture: `docs/product/assets/TR-34/browser-tablet-translation.png`
 - Wide phone capture: `docs/product/assets/TR-34/browser-phone-wide.png`
@@ -17,6 +18,8 @@ Validation date: 2026-04-21.
 - Browser mode: Vite web preview, with Tauri command bridge unavailable.
 
 ![TR-34 browser desktop](assets/TR-34/browser-desktop.png)
+
+![TR-34 browser wide tablet](assets/TR-34/browser-tablet-wide.png)
 
 ![TR-34 browser intermediate responsive](assets/TR-34/browser-tablet.png)
 
@@ -57,6 +60,7 @@ Wide phone viewport:
 
 Intermediate responsive viewport:
 - Documents and Translation navigation use a compact horizontal row without an elastic empty area below the tabs.
+- Tablet navigation wraps with a readable minimum tab width instead of compressing all five tabs into narrow columns.
 - The view header starts immediately after the navigation boundary, preserving route orientation without duplicated chrome.
 
 ## Operational State Matrix
@@ -80,7 +84,7 @@ Intermediate responsive viewport:
 ## Accessibility And Layout Review
 - The shell uses real buttons for navigation, project actions, document rows, chunk rows, and job/QA actions.
 - Disabled operational states are explicit for non-segmented documents, missing chunks, inactive jobs, and unavailable export.
-- Browser preview disables persistence commands when the Tauri desktop bridge is unavailable and shows a clear runtime message.
+- Browser preview disables persistence commands when the Tauri desktop bridge is unavailable, guards form submit paths, and shows a clear runtime message.
 - Semantic status colors are restrained and consistent with TR-31 roles: info for progress, success for ready/completed, warning for blocked/incomplete, danger for incidents.
 - Dense workstation layout is preserved on desktop through left navigation, compact operational context, and the three-zone Translation Workspace.
 - Mobile layout stacks major regions and avoids horizontal overflow in the captured state.

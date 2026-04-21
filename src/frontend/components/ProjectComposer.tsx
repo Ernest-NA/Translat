@@ -25,6 +25,10 @@ export function ProjectComposer({
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
+    if (isRuntimeUnavailable) {
+      return;
+    }
+
     const wasCreated = await onSubmit({
       description,
       name,

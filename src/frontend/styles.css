@@ -1595,7 +1595,7 @@ select {
     flex: 0 0 auto;
     align-self: start;
     width: 100%;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
     overflow-x: auto;
   }
 
@@ -1640,6 +1640,12 @@ select {
   }
 }
 
+@media (max-width: 720px) {
+  .app-shell__nav-list {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 640px) {
   .app-shell,
   .app-shell__nav,
@@ -1653,7 +1659,6 @@ select {
     padding: 16px 12px;
   }
 
-  .app-shell__nav-list,
   .app-shell__operational-strip,
   .app-shell__metric-grid {
     grid-template-columns: 1fr;
