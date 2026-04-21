@@ -40,7 +40,7 @@ Validation date: 2026-04-21.
 | `npm run build` | Blocked | `tauri build` panics in `tauri-cli` at `crates\tauri-cli\src\interface\rust.rs:1149:14` after the same toolchain issue. |
 
 ## Browser Runtime Findings
-The browser preview renders the redesigned shell without a blank screen at desktop and mobile sizes. Because this is a web preview, desktop commands cannot run without the Tauri bridge; persistence actions are disabled and surfaced as explicit browser-preview runtime states rather than raw command failures. Runtime unavailability is inferred from the actual `invoke` failure path, not from a narrow `window.__TAURI__` global probe, so supported desktop builds can still call the imported Tauri API.
+The browser preview renders the redesigned shell without a blank screen at desktop and mobile sizes. Because this is a web preview, desktop commands cannot run without the Tauri bridge; persistence actions are disabled and surfaced as explicit browser-preview runtime states rather than raw command failures. Runtime unavailability is inferred from the actual `invoke` failure path, not from a narrow `window.__TAURI__` global probe, so supported desktop builds can still call the imported Tauri API. Browser-preview gating applies to the whole command surface: Projects disables creation, Documents/Translation/Editorial render a non-interactive runtime-required panel, and Diagnostics remains available for runtime inspection with sanitized bridge-unavailable details.
 
 Desktop viewport:
 - Left navigation, compact operational context, project composer, and active workspace overview are visible in the first viewport.
@@ -84,7 +84,7 @@ Intermediate responsive viewport:
 ## Accessibility And Layout Review
 - The shell uses real buttons for navigation, project actions, document rows, chunk rows, and job/QA actions.
 - Disabled operational states are explicit for non-segmented documents, missing chunks, inactive jobs, and unavailable export.
-- Browser preview disables persistence commands when the Tauri desktop bridge is unavailable, guards form submit paths, and shows a clear runtime message.
+- Browser preview disables persistence commands across the shell when the Tauri desktop bridge is unavailable, guards form submit paths, and shows a clear runtime message instead of raw `invoke` exceptions.
 - Semantic status colors are restrained and consistent with TR-31 roles: info for progress, success for ready/completed, warning for blocked/incomplete, danger for incidents.
 - Dense workstation layout is preserved on desktop through left navigation, compact operational context, and the three-zone Translation Workspace.
 - Mobile layout stacks major regions and avoids horizontal overflow in the captured state.

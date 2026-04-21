@@ -110,10 +110,20 @@ function isDesktopRuntimeUnavailableError(
     return false;
   }
 
-  return (
-    caughtError.message.includes("Cannot read properties of undefined") &&
-    caughtError.message.includes("invoke")
-  );
+  const message = caughtError.message.toLowerCase();
+  const isBridgeIdentifier =
+    message.includes("invoke") ||
+    message.includes("ipc") ||
+    message.includes("__tauri") ||
+    message.includes("tauri");
+  const isUnavailableShape =
+    message.includes("undefined") ||
+    message.includes("not defined") ||
+    message.includes("not a function") ||
+    message.includes("not available") ||
+    message.includes("unavailable");
+
+  return isBridgeIdentifier && isUnavailableShape;
 }
 
 function normalizeDesktopCommandError(

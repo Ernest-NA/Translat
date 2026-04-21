@@ -1,5 +1,8 @@
 import type { HealthcheckResponse } from "../../shared/desktop";
-import type { DesktopCommandError } from "../lib/desktop";
+import {
+  DESKTOP_RUNTIME_UNAVAILABLE_CODE,
+  type DesktopCommandError,
+} from "../lib/desktop";
 import { ActionButton } from "./ui/ActionButton";
 import { PanelHeader } from "./ui/PanelHeader";
 import { PanelMessage } from "./ui/PanelMessage";
@@ -21,6 +24,10 @@ function getStatusLabel(
     return "checking";
   }
 
+  if (error?.code === DESKTOP_RUNTIME_UNAVAILABLE_CODE) {
+    return "web preview";
+  }
+
   if (error) {
     return "error";
   }
@@ -37,6 +44,10 @@ function getStatusTone(
     return "info";
   }
 
+  if (error?.code === DESKTOP_RUNTIME_UNAVAILABLE_CODE) {
+    return "warning";
+  }
+
   if (error) {
     return "danger";
   }
@@ -50,6 +61,11 @@ export function HealthcheckPanel({
   isLoading,
   onRetry,
 }: HealthcheckPanelProps) {
+  const isRuntimeUnavailable = error?.code === DESKTOP_RUNTIME_UNAVAILABLE_CODE;
+  const errorDetails = isRuntimeUnavailable
+    ? "Tauri desktop bridge unavailable in this browser preview."
+    : (error?.details ?? "No desktop error reported.");
+
   return (
     <section
       className="surface-card surface-card--accent"
@@ -71,7 +87,15 @@ export function HealthcheckPanel({
 
       <PanelMessage
         className="health-panel__message"
-        tone={error ? "danger" : isLoading ? "info" : "neutral"}
+        tone={
+          isRuntimeUnavailable
+            ? "warning"
+            : error
+              ? "danger"
+              : isLoading
+                ? "info"
+                : "neutral"
+        }
       >
         {error?.message ??
           healthcheck?.message ??
@@ -107,7 +131,7 @@ export function HealthcheckPanel({
         </div>
         <div>
           <dt>Error details</dt>
-          <dd>{error?.details ?? "No desktop error reported."}</dd>
+          <dd>{errorDetails}</dd>
         </div>
       </dl>
 
