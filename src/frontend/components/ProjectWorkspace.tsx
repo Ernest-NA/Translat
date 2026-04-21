@@ -450,6 +450,7 @@ export function ProjectWorkspace({
     [onSyncDocumentState],
   );
   const isTranslationWorkspace = viewMode === "translation-workspace";
+  const isOperationalDebug = viewMode === "operational-debug";
   const {
     cancelJob,
     clearTrackedJob,
@@ -468,9 +469,43 @@ export function ProjectWorkspace({
     activeDocument,
     activeProjectId: project?.id ?? null,
     chunks,
-    enabled: isTranslationWorkspace,
     onDocumentStateSync: syncActiveDocumentState,
   });
+  const activeDocumentTrackingKey =
+    project && activeDocument ? `${project.id}:${activeDocument.id}` : null;
+  const [documentFindingTrackingKey, setDocumentFindingTrackingKey] = useState<
+    string | null
+  >(null);
+  const shouldKeepFindingReviewLive =
+    Boolean(trackedJobId) || Boolean(jobStatus);
+
+  useEffect(() => {
+    if (!activeDocumentTrackingKey) {
+      setDocumentFindingTrackingKey(null);
+      return;
+    }
+
+    if (
+      isTranslationWorkspace ||
+      isOperationalDebug ||
+      shouldKeepFindingReviewLive
+    ) {
+      setDocumentFindingTrackingKey(activeDocumentTrackingKey);
+    }
+  }, [
+    activeDocumentTrackingKey,
+    isOperationalDebug,
+    isTranslationWorkspace,
+    shouldKeepFindingReviewLive,
+  ]);
+
+  const shouldTrackDocumentFindings =
+    activeDocumentTrackingKey !== null &&
+    (documentFindingTrackingKey === activeDocumentTrackingKey ||
+      isTranslationWorkspace ||
+      isOperationalDebug ||
+      shouldKeepFindingReviewLive);
+  const shouldLoadSelectedChunkContext = isTranslationWorkspace;
   const {
     error: contextPreviewError,
     isLoading: isLoadingContextPreview,
@@ -479,7 +514,7 @@ export function ProjectWorkspace({
     activeDocument,
     activeProjectId: project?.id ?? null,
     editorialDefaultsFingerprint,
-    enabled: isTranslationWorkspace,
+    enabled: shouldLoadSelectedChunkContext,
     selectedChunk,
   });
   const {
@@ -500,7 +535,7 @@ export function ProjectWorkspace({
   } = useDocumentFindingReview({
     activeDocument,
     activeProjectId: project?.id ?? null,
-    enabled: isTranslationWorkspace,
+    enabled: shouldTrackDocumentFindings,
     onRefreshDocument: syncActiveDocumentState,
     onSelectChunk,
   });
