@@ -346,7 +346,6 @@ export function AppShell() {
     activeProjectDefaultStyleProfile,
     activeProjectDefaultRuleSet,
   ].filter(Boolean).length;
-  const shouldShowTopbar = activeView !== "projects";
   const navigationItems: NavigationItem[] = [
     {
       count: projects.length,
@@ -415,15 +414,6 @@ export function AppShell() {
       </aside>
 
       <section className="app-shell__main">
-        {shouldShowTopbar ? (
-          <header className="app-shell__topbar">
-            <div className="app-shell__route">
-              <span>{viewCopy.eyebrow}</span>
-              <h1>{viewCopy.title}</h1>
-            </div>
-          </header>
-        ) : null}
-
         <section className="app-shell__content">
           <div className="app-shell__view-header">
             <PanelHeader

@@ -38,7 +38,7 @@ Desktop viewport:
 
 Mobile viewport:
 - Navigation collapses into a vertical stacked layout.
-- Brand, nav entries, route title, and project creation flow remain readable.
+- Brand, nav entries, view title, and project creation flow remain readable.
 - No obvious horizontal clipping in the captured viewport.
 - The content requires vertical scrolling, which is expected for the current shell structure.
 

@@ -295,30 +295,6 @@ select {
   min-width: 0;
 }
 
-.app-shell__topbar {
-  position: sticky;
-  top: 0;
-  z-index: 5;
-  min-height: 72px;
-  padding: 16px 24px;
-  border-bottom: 1px solid var(--color-border-default);
-  background: rgba(16, 20, 24, 0.96);
-}
-
-.app-shell__route {
-  min-width: 0;
-}
-
-.app-shell__route span {
-  display: block;
-  margin: 0 0 4px;
-  color: var(--color-accent-strong);
-  font-size: 0.76rem;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
 .app-shell__content {
   display: grid;
   gap: 20px;
@@ -1573,10 +1549,6 @@ select {
     overflow-x: auto;
   }
 
-  .app-shell__topbar {
-    position: static;
-  }
-
   .app-shell__view--projects {
     grid-template-columns: 1fr;
   }
@@ -1624,7 +1596,6 @@ select {
     grid-template-columns: 1fr;
   }
 
-  .app-shell__topbar,
   .app-shell__content {
     padding: 16px;
   }
