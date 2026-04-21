@@ -965,6 +965,29 @@ export function ProjectWorkspace({
                 title="Active input"
               />
 
+              {activeDocument && isLoadingSegments ? (
+                <PanelMessage tone="info">
+                  Loading segment trace for {activeDocument.name}...
+                </PanelMessage>
+              ) : null}
+
+              {segmentError ? (
+                <PanelMessage role="alert" tone="danger">
+                  {segmentError.message}
+                </PanelMessage>
+              ) : null}
+
+              {activeDocument &&
+              !isLoadingSegments &&
+              !segmentError &&
+              activeDocument.status === "segmented" &&
+              segments.length === 0 ? (
+                <PanelMessage tone="warning">
+                  This document is segmented, but no segment trace is currently
+                  loaded.
+                </PanelMessage>
+              ) : null}
+
               {documents.length > 0 ? (
                 <ol className="translation-document-list">
                   {documents.map((document) => (
