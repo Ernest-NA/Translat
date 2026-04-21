@@ -1534,14 +1534,21 @@ select {
 
 @media (max-width: 960px) {
   .app-shell {
+    align-items: start;
+    grid-auto-rows: max-content;
     grid-template-columns: 1fr;
   }
 
   .app-shell__nav {
     position: static;
-    grid-template-rows: auto auto;
+    display: flex;
+    flex-direction: column;
     gap: 12px;
-    min-height: auto;
+    min-height: 0;
+    height: auto;
+    max-height: none;
+    align-self: start;
+    width: 100%;
     border-right: 0;
     border-bottom: 1px solid var(--color-border-default);
   }
@@ -1551,7 +1558,9 @@ select {
   }
 
   .app-shell__nav-list {
+    flex: 0 0 auto;
     align-self: start;
+    width: 100%;
     grid-template-columns: repeat(5, minmax(0, 1fr));
     overflow-x: auto;
   }

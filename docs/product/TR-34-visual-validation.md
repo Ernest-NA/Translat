@@ -10,13 +10,16 @@ Validation date: 2026-04-21.
 ## Evidence
 - Browser runtime: `http://127.0.0.1:1420/`
 - Desktop capture: `docs/product/assets/TR-34/browser-desktop.png`
-- Intermediate responsive capture: `docs/product/assets/TR-34/browser-tablet.png`
+- Intermediate responsive Documents capture: `docs/product/assets/TR-34/browser-tablet.png`
+- Intermediate responsive Translation capture: `docs/product/assets/TR-34/browser-tablet-translation.png`
 - Mobile capture: `docs/product/assets/TR-34/browser-mobile.png`
 - Browser mode: Vite web preview, with Tauri command bridge unavailable.
 
 ![TR-34 browser desktop](assets/TR-34/browser-desktop.png)
 
 ![TR-34 browser intermediate responsive](assets/TR-34/browser-tablet.png)
+
+![TR-34 browser intermediate responsive translation](assets/TR-34/browser-tablet-translation.png)
 
 ![TR-34 browser mobile](assets/TR-34/browser-mobile.png)
 
@@ -46,7 +49,7 @@ Mobile viewport:
 - The content requires vertical scrolling, which is expected for the current shell structure.
 
 Intermediate responsive viewport:
-- Navigation uses a compact horizontal row without an elastic empty area below the tabs.
+- Documents and Translation navigation use a compact horizontal row without an elastic empty area below the tabs.
 - The view header starts immediately after the navigation boundary, preserving route orientation without duplicated chrome.
 
 ## Operational State Matrix
