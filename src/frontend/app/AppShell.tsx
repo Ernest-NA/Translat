@@ -326,9 +326,6 @@ export function AppShell() {
     [openDocument, processDocument, reloadProjects],
   );
 
-  const runtimeLabel = healthcheck
-    ? `${healthcheck.environment} | v${healthcheck.version}`
-    : "Desktop runtime";
   const viewCopy = SHELL_VIEW_COPY[activeView];
   const documentStateLabel = activeDocument
     ? chunks.length > 0
@@ -349,11 +346,7 @@ export function AppShell() {
     activeProjectDefaultStyleProfile,
     activeProjectDefaultRuleSet,
   ].filter(Boolean).length;
-  const runtimeTone: BadgeTone = healthcheckError
-    ? "danger"
-    : healthcheck
-      ? "success"
-      : "warning";
+  const shouldShowTopbar = activeView !== "projects";
   const navigationItems: NavigationItem[] = [
     {
       count: projects.length,
@@ -419,70 +412,17 @@ export function AppShell() {
             </button>
           ))}
         </nav>
-
-        <div className="app-shell__runtime">
-          <span
-            className="app-shell__runtime-dot"
-            data-online={Boolean(healthcheck)}
-          />
-          <div>
-            <strong>{runtimeLabel}</strong>
-            <small>Last check {formatCheckedAt(healthcheck?.checkedAt)}</small>
-          </div>
-        </div>
       </aside>
 
       <section className="app-shell__main">
-        <header className="app-shell__topbar">
-          <div className="app-shell__route">
-            <span>{viewCopy.eyebrow}</span>
-            <h1>{viewCopy.title}</h1>
-          </div>
-
-          <section
-            className="app-shell__context-strip"
-            aria-label="Workspace context"
-          >
-            <div className="app-shell__context-item">
-              <span>Project</span>
-              <strong>{activeProject?.name ?? "No project"}</strong>
-              <StatusBadge
-                tone={activeProject ? "success" : "neutral"}
-                size="sm"
-              >
-                {activeProject ? "Open" : "Not selected"}
-              </StatusBadge>
+        {shouldShowTopbar ? (
+          <header className="app-shell__topbar">
+            <div className="app-shell__route">
+              <span>{viewCopy.eyebrow}</span>
+              <h1>{viewCopy.title}</h1>
             </div>
-            <div className="app-shell__context-item">
-              <span>Document</span>
-              <strong>{activeDocument?.name ?? "No document"}</strong>
-              <StatusBadge tone={documentStateTone} size="sm">
-                {documentStateLabel}
-              </StatusBadge>
-            </div>
-            <div className="app-shell__context-item">
-              <span>Defaults</span>
-              <strong>{activeDefaultsCount}/3 active</strong>
-              <StatusBadge
-                tone={hasUnsavedProjectDefaults ? "warning" : "neutral"}
-                size="sm"
-              >
-                {hasUnsavedProjectDefaults ? "Unsaved" : "Synced"}
-              </StatusBadge>
-            </div>
-            <div className="app-shell__context-item">
-              <span>Runtime</span>
-              <strong>{runtimeLabel}</strong>
-              <StatusBadge tone={runtimeTone} size="sm">
-                {isLoadingHealthcheck
-                  ? "Checking"
-                  : healthcheck
-                    ? "Online"
-                    : "Offline"}
-              </StatusBadge>
-            </div>
-          </section>
-        </header>
+          </header>
+        ) : null}
 
         <section className="app-shell__content">
           <div className="app-shell__view-header">

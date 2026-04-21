@@ -80,6 +80,7 @@ select {
 }
 
 .surface-card {
+  min-width: 0;
   border: 1px solid var(--color-border-default);
   border-radius: var(--radius-lg);
   background: var(--color-bg-elevated);
@@ -131,6 +132,7 @@ select {
   margin: 12px 0 0;
   color: var(--color-text-secondary);
   font-size: var(--font-size-body);
+  overflow-wrap: anywhere;
 }
 
 .panel-header__aside {
@@ -151,6 +153,7 @@ select {
 .surface-card__copy {
   margin: 16px 0 0;
   color: var(--color-text-secondary);
+  overflow-wrap: anywhere;
 }
 
 .surface-card--accent {
@@ -288,46 +291,6 @@ select {
   text-align: center;
 }
 
-.app-shell__runtime {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  min-width: 0;
-  padding: 14px 4px 0;
-  border-top: 1px solid var(--color-border-default);
-  color: var(--color-text-secondary);
-}
-
-.app-shell__runtime strong,
-.app-shell__runtime small {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.app-shell__runtime strong {
-  color: var(--color-text-primary);
-  font-size: 0.86rem;
-}
-
-.app-shell__runtime small {
-  color: var(--color-text-muted);
-  font-size: 0.76rem;
-}
-
-.app-shell__runtime-dot {
-  width: 9px;
-  height: 9px;
-  flex: 0 0 auto;
-  border-radius: 999px;
-  background: var(--color-danger);
-}
-
-.app-shell__runtime-dot[data-online="true"] {
-  background: var(--color-success);
-}
-
 .app-shell__main {
   min-width: 0;
 }
@@ -336,12 +299,8 @@ select {
   position: sticky;
   top: 0;
   z-index: 5;
-  display: grid;
-  grid-template-columns: minmax(180px, 0.5fr) minmax(0, 1fr);
-  gap: 20px;
-  align-items: center;
-  min-height: 88px;
-  padding: 14px 24px;
+  min-height: 72px;
+  padding: 16px 24px;
   border-bottom: 1px solid var(--color-border-default);
   background: rgba(16, 20, 24, 0.96);
 }
@@ -360,51 +319,17 @@ select {
   text-transform: uppercase;
 }
 
-.app-shell__context-strip {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.app-shell__context-item {
-  display: grid;
-  min-width: 0;
-  gap: 4px;
-  padding: 10px 12px;
-  border: 1px solid var(--color-border-default);
-  border-radius: var(--radius-md);
-  background: var(--color-bg-panel-quiet);
-}
-
-.app-shell__context-item span,
-.app-shell__context-item strong {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.app-shell__context-item > span {
-  color: var(--color-text-subtle);
-  font-size: 0.72rem;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.app-shell__context-item strong {
-  color: var(--color-text-primary);
-  font-size: 0.86rem;
-}
-
 .app-shell__content {
   display: grid;
   gap: 20px;
+  min-width: 0;
   width: min(100%, 1440px);
   margin: 0 auto;
   padding: 24px;
 }
 
 .app-shell__view-header {
+  min-width: 0;
   padding-bottom: 2px;
 }
 
@@ -1648,17 +1573,8 @@ select {
     overflow-x: auto;
   }
 
-  .app-shell__runtime {
-    margin-top: 16px;
-  }
-
   .app-shell__topbar {
     position: static;
-    grid-template-columns: 1fr;
-  }
-
-  .app-shell__context-strip {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .app-shell__view--projects {
@@ -1704,7 +1620,6 @@ select {
   }
 
   .app-shell__nav-list,
-  .app-shell__context-strip,
   .app-shell__metric-grid {
     grid-template-columns: 1fr;
   }
@@ -1712,6 +1627,11 @@ select {
   .app-shell__topbar,
   .app-shell__content {
     padding: 16px;
+  }
+
+  .app-shell__content {
+    margin: 0;
+    max-width: 390px;
   }
 
   .surface-card {
@@ -1737,6 +1657,11 @@ select {
   .project-list__item-heading {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .app-shell__view-header .panel-header__copy,
+  .app-shell__view-header .panel-header__description {
+    max-width: calc(100vw - 32px);
   }
 
   .panel-header__aside,

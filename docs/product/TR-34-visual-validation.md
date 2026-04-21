@@ -31,14 +31,14 @@ Validation date: 2026-04-21.
 The browser preview renders the redesigned shell without a blank screen at desktop and mobile sizes. Because this is a web preview, desktop commands fail without the Tauri bridge; the first screen still surfaces a raw command failure inside the project form area. That is a browser-runtime limitation already visible in TR-29 and not evidence of the native command path.
 
 Desktop viewport:
-- Left navigation, top context strip, project composer, and active workspace overview are visible in the first viewport.
+- Left navigation, project composer, and active workspace overview are visible in the first viewport.
 - Primary hierarchy is readable: `Projects` route, project creation, active workspace summary.
 - No obvious text overlap in the captured viewport.
 - The page scrolls vertically; lower form error content is partly below the first viewport.
 
 Mobile viewport:
 - Navigation collapses into a vertical stacked layout.
-- Brand, nav entries, runtime status, route title, and first context card remain readable.
+- Brand, nav entries, route title, and project creation flow remain readable.
 - No obvious horizontal clipping in the captured viewport.
 - The content requires vertical scrolling, which is expected for the current shell structure.
 
