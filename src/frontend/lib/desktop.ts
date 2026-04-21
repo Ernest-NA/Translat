@@ -89,23 +89,6 @@ export class DesktopCommandError extends Error {
 
 export const DESKTOP_RUNTIME_UNAVAILABLE_CODE = "DESKTOP_RUNTIME_UNAVAILABLE";
 
-declare global {
-  interface Window {
-    __TAURI__?: {
-      core?: {
-        invoke?: unknown;
-      };
-    };
-  }
-}
-
-export function isDesktopRuntimeAvailable() {
-  return (
-    typeof window !== "undefined" &&
-    typeof window.__TAURI__?.core?.invoke === "function"
-  );
-}
-
 function isDesktopCommandErrorPayload(
   value: unknown,
 ): value is DesktopCommandErrorPayload {
@@ -120,12 +103,34 @@ function isDesktopCommandErrorPayload(
   );
 }
 
+function isDesktopRuntimeUnavailableError(
+  caughtError: unknown,
+): caughtError is Error {
+  if (!(caughtError instanceof Error)) {
+    return false;
+  }
+
+  return (
+    caughtError.message.includes("Cannot read properties of undefined") &&
+    caughtError.message.includes("invoke")
+  );
+}
+
 function normalizeDesktopCommandError(
   command: DesktopCommandName,
   caughtError: unknown,
 ) {
   if (isDesktopCommandErrorPayload(caughtError)) {
     return new DesktopCommandError(command, caughtError);
+  }
+
+  if (isDesktopRuntimeUnavailableError(caughtError)) {
+    return new DesktopCommandError(command, {
+      code: DESKTOP_RUNTIME_UNAVAILABLE_CODE,
+      details: caughtError.stack,
+      message:
+        "Desktop runtime unavailable in this browser preview. Open the Tauri desktop app to use persisted project and document commands.",
+    });
   }
 
   if (caughtError instanceof Error) {
@@ -146,14 +151,6 @@ export async function invokeDesktopCommand<TResponse>(
   command: DesktopCommandName,
   args?: Record<string, unknown>,
 ) {
-  if (!isDesktopRuntimeAvailable()) {
-    throw new DesktopCommandError(command, {
-      code: DESKTOP_RUNTIME_UNAVAILABLE_CODE,
-      message:
-        "Desktop runtime unavailable in this browser preview. Open the Tauri desktop app to use persisted project and document commands.",
-    });
-  }
-
   try {
     return await invoke<TResponse>(command, args);
   } catch (caughtError) {

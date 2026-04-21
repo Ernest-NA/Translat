@@ -17,10 +17,7 @@ import { useProjectDocuments } from "../hooks/useProjectDocuments";
 import { useProjectsWorkspace } from "../hooks/useProjectsWorkspace";
 import { useRuleSetsWorkspace } from "../hooks/useRuleSetsWorkspace";
 import { useStyleProfilesWorkspace } from "../hooks/useStyleProfilesWorkspace";
-import {
-  DESKTOP_RUNTIME_UNAVAILABLE_CODE,
-  isDesktopRuntimeAvailable,
-} from "../lib/desktop";
+import { DESKTOP_RUNTIME_UNAVAILABLE_CODE } from "../lib/desktop";
 
 type BadgeTone = "neutral" | "info" | "success" | "warning" | "danger";
 type ShellView =
@@ -351,8 +348,8 @@ export function AppShell() {
     activeProjectDefaultRuleSet,
   ].filter(Boolean).length;
   const isDesktopRuntimeUnavailable =
-    !isDesktopRuntimeAvailable() ||
-    healthcheckError?.code === DESKTOP_RUNTIME_UNAVAILABLE_CODE;
+    healthcheckError?.code === DESKTOP_RUNTIME_UNAVAILABLE_CODE ||
+    projectError?.code === DESKTOP_RUNTIME_UNAVAILABLE_CODE;
   const runtimeContextTone: BadgeTone = isDesktopRuntimeUnavailable
     ? "warning"
     : healthcheck

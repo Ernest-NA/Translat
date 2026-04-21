@@ -40,7 +40,7 @@ Validation date: 2026-04-21.
 | `npm run build` | Blocked | `tauri build` panics in `tauri-cli` at `crates\tauri-cli\src\interface\rust.rs:1149:14` after the same toolchain issue. |
 
 ## Browser Runtime Findings
-The browser preview renders the redesigned shell without a blank screen at desktop and mobile sizes. Because this is a web preview, desktop commands cannot run without the Tauri bridge; persistence actions are disabled and surfaced as explicit browser-preview runtime states rather than raw command failures.
+The browser preview renders the redesigned shell without a blank screen at desktop and mobile sizes. Because this is a web preview, desktop commands cannot run without the Tauri bridge; persistence actions are disabled and surfaced as explicit browser-preview runtime states rather than raw command failures. Runtime unavailability is inferred from the actual `invoke` failure path, not from a narrow `window.__TAURI__` global probe, so supported desktop builds can still call the imported Tauri API.
 
 Desktop viewport:
 - Left navigation, compact operational context, project composer, and active workspace overview are visible in the first viewport.
