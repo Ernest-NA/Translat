@@ -1539,13 +1539,20 @@ select {
 
   .app-shell__nav {
     position: static;
+    grid-template-rows: auto auto;
+    gap: 12px;
     min-height: auto;
     border-right: 0;
     border-bottom: 1px solid var(--color-border-default);
   }
 
+  .app-shell__brand {
+    padding-bottom: 0;
+  }
+
   .app-shell__nav-list {
-    grid-template-columns: repeat(5, minmax(140px, 1fr));
+    align-self: start;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     overflow-x: auto;
   }
 

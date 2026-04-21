@@ -10,10 +10,13 @@ Validation date: 2026-04-21.
 ## Evidence
 - Browser runtime: `http://127.0.0.1:1420/`
 - Desktop capture: `docs/product/assets/TR-34/browser-desktop.png`
+- Intermediate responsive capture: `docs/product/assets/TR-34/browser-tablet.png`
 - Mobile capture: `docs/product/assets/TR-34/browser-mobile.png`
 - Browser mode: Vite web preview, with Tauri command bridge unavailable.
 
 ![TR-34 browser desktop](assets/TR-34/browser-desktop.png)
+
+![TR-34 browser intermediate responsive](assets/TR-34/browser-tablet.png)
 
 ![TR-34 browser mobile](assets/TR-34/browser-mobile.png)
 
@@ -42,6 +45,10 @@ Mobile viewport:
 - No obvious horizontal clipping in the captured viewport.
 - The content requires vertical scrolling, which is expected for the current shell structure.
 
+Intermediate responsive viewport:
+- Navigation uses a compact horizontal row without an elastic empty area below the tabs.
+- The view header starts immediately after the navigation boundary, preserving route orientation without duplicated chrome.
+
 ## Operational State Matrix
 | State | Validation method | Result |
 |---|---|---|
@@ -64,7 +71,7 @@ Mobile viewport:
 - The shell uses real buttons for navigation, project actions, document rows, chunk rows, and job/QA actions.
 - Disabled operational states are explicit for non-segmented documents, missing chunks, inactive jobs, and unavailable export.
 - Semantic status colors are restrained and consistent with TR-31 roles: info for progress, success for ready/completed, warning for blocked/incomplete, danger for incidents.
-- Dense workstation layout is preserved on desktop through left navigation, top context, and three-zone Translation Workspace.
+- Dense workstation layout is preserved on desktop through left navigation and the three-zone Translation Workspace.
 - Mobile layout stacks major regions and avoids horizontal overflow in the captured state.
 
 ## Residual Risks
