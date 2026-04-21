@@ -12,6 +12,7 @@ Validation date: 2026-04-21.
 - Desktop capture: `docs/product/assets/TR-34/browser-desktop.png`
 - Intermediate responsive Documents capture: `docs/product/assets/TR-34/browser-tablet.png`
 - Intermediate responsive Translation capture: `docs/product/assets/TR-34/browser-tablet-translation.png`
+- Wide phone capture: `docs/product/assets/TR-34/browser-phone-wide.png`
 - Mobile capture: `docs/product/assets/TR-34/browser-mobile.png`
 - Browser mode: Vite web preview, with Tauri command bridge unavailable.
 
@@ -20,6 +21,8 @@ Validation date: 2026-04-21.
 ![TR-34 browser intermediate responsive](assets/TR-34/browser-tablet.png)
 
 ![TR-34 browser intermediate responsive translation](assets/TR-34/browser-tablet-translation.png)
+
+![TR-34 browser wide phone](assets/TR-34/browser-phone-wide.png)
 
 ![TR-34 browser mobile](assets/TR-34/browser-mobile.png)
 
@@ -34,10 +37,10 @@ Validation date: 2026-04-21.
 | `npm run build` | Blocked | `tauri build` panics in `tauri-cli` at `crates\tauri-cli\src\interface\rust.rs:1149:14` after the same toolchain issue. |
 
 ## Browser Runtime Findings
-The browser preview renders the redesigned shell without a blank screen at desktop and mobile sizes. Because this is a web preview, desktop commands fail without the Tauri bridge; the first screen still surfaces a raw command failure inside the project form area. That is a browser-runtime limitation already visible in TR-29 and not evidence of the native command path.
+The browser preview renders the redesigned shell without a blank screen at desktop and mobile sizes. Because this is a web preview, desktop commands cannot run without the Tauri bridge; persistence actions are disabled and surfaced as explicit browser-preview runtime states rather than raw command failures.
 
 Desktop viewport:
-- Left navigation, project composer, and active workspace overview are visible in the first viewport.
+- Left navigation, compact operational context, project composer, and active workspace overview are visible in the first viewport.
 - Primary hierarchy is readable: `Projects` route, project creation, active workspace summary.
 - No obvious text overlap in the captured viewport.
 - The page scrolls vertically; lower form error content is partly below the first viewport.
@@ -47,6 +50,10 @@ Mobile viewport:
 - Brand, nav entries, view title, and project creation flow remain readable.
 - No obvious horizontal clipping in the captured viewport.
 - The content requires vertical scrolling, which is expected for the current shell structure.
+
+Wide phone viewport:
+- The shell content uses the full available 400-449px range instead of clamping to a narrow fixed column.
+- Compact operational context keeps runtime availability visible in the primary shell.
 
 Intermediate responsive viewport:
 - Documents and Translation navigation use a compact horizontal row without an elastic empty area below the tabs.
@@ -73,21 +80,20 @@ Intermediate responsive viewport:
 ## Accessibility And Layout Review
 - The shell uses real buttons for navigation, project actions, document rows, chunk rows, and job/QA actions.
 - Disabled operational states are explicit for non-segmented documents, missing chunks, inactive jobs, and unavailable export.
+- Browser preview disables persistence commands when the Tauri desktop bridge is unavailable and shows a clear runtime message.
 - Semantic status colors are restrained and consistent with TR-31 roles: info for progress, success for ready/completed, warning for blocked/incomplete, danger for incidents.
-- Dense workstation layout is preserved on desktop through left navigation and the three-zone Translation Workspace.
+- Dense workstation layout is preserved on desktop through left navigation, compact operational context, and the three-zone Translation Workspace.
 - Mobile layout stacks major regions and avoids horizontal overflow in the captured state.
 
 ## Residual Risks
 - Browser-only validation cannot exercise persisted projects, imports, segmentation, jobs, QA, or export end to end until the Tauri desktop toolchain is repaired.
 - No automated visual regression suite exists for the Release 08 shell or Translation Workspace states.
 - Representative operational states were validated by component/code review rather than seeded runtime data.
-- The browser preview still exposes raw Tauri-bridge command failures in web mode.
 
 ## Follow-ups
 1. Repair the local Rust/Tauri toolchain so `check:desktop`, `tauri dev`, and `tauri build` can validate native command behavior.
 2. Add a lightweight visual-state harness or mocked Tauri adapter for browser validation of seeded project/document/chunk/job/QA/export states.
 3. Add Playwright or equivalent visual smoke tests once the harness exists.
-4. Replace raw browser-only Tauri bridge failures with a clearer web-preview runtime message.
 
 ## Release 08 Decision
-Release 08 visual validation is sufficient for the current repository phase, with the explicit limitation that native Tauri runtime validation remains blocked by the local toolchain. The redesigned UI has no obvious first-viewport overlap in browser desktop/mobile captures, and the code paths preserve the required document, chunk, job, QA, and export state hierarchy.
+Release 08 visual validation is sufficient for the current repository phase, with the explicit limitation that native Tauri runtime validation remains blocked by the local toolchain. The redesigned UI has no obvious first-viewport overlap in browser desktop/mobile captures, browser-only persistence actions fail closed with a clear runtime state, and the code paths preserve the required document, chunk, job, QA, and export state hierarchy.

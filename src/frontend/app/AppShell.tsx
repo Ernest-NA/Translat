@@ -17,6 +17,10 @@ import { useProjectDocuments } from "../hooks/useProjectDocuments";
 import { useProjectsWorkspace } from "../hooks/useProjectsWorkspace";
 import { useRuleSetsWorkspace } from "../hooks/useRuleSetsWorkspace";
 import { useStyleProfilesWorkspace } from "../hooks/useStyleProfilesWorkspace";
+import {
+  DESKTOP_RUNTIME_UNAVAILABLE_CODE,
+  isDesktopRuntimeAvailable,
+} from "../lib/desktop";
 
 type BadgeTone = "neutral" | "info" | "success" | "warning" | "danger";
 type ShellView =
@@ -346,6 +350,23 @@ export function AppShell() {
     activeProjectDefaultStyleProfile,
     activeProjectDefaultRuleSet,
   ].filter(Boolean).length;
+  const isDesktopRuntimeUnavailable =
+    !isDesktopRuntimeAvailable() ||
+    healthcheckError?.code === DESKTOP_RUNTIME_UNAVAILABLE_CODE;
+  const runtimeContextTone: BadgeTone = isDesktopRuntimeUnavailable
+    ? "warning"
+    : healthcheck
+      ? "success"
+      : isLoadingHealthcheck
+        ? "info"
+        : "danger";
+  const runtimeContextLabel = isDesktopRuntimeUnavailable
+    ? "Web preview"
+    : healthcheck
+      ? "Desktop ready"
+      : isLoadingHealthcheck
+        ? "Checking"
+        : "Runtime issue";
   const navigationItems: NavigationItem[] = [
     {
       count: projects.length,
@@ -424,6 +445,33 @@ export function AppShell() {
             />
           </div>
 
+          <section
+            aria-label="Workspace context"
+            className="app-shell__operational-strip"
+          >
+            <div>
+              <span>Project</span>
+              <strong>{activeProject?.name ?? "No project"}</strong>
+            </div>
+            <div>
+              <span>Document</span>
+              <strong>{activeDocument?.name ?? "No document"}</strong>
+            </div>
+            <div>
+              <span>Defaults</span>
+              <strong>
+                {activeDefaultsCount}/3
+                {hasUnsavedProjectDefaults ? " unsaved" : " synced"}
+              </strong>
+            </div>
+            <div>
+              <span>Runtime</span>
+              <StatusBadge tone={runtimeContextTone} size="sm">
+                {runtimeContextLabel}
+              </StatusBadge>
+            </div>
+          </section>
+
           <div
             className="app-shell__view app-shell__view--projects"
             hidden={activeView !== "projects"}
@@ -432,6 +480,7 @@ export function AppShell() {
               <ProjectComposer
                 error={projectError}
                 isCreating={isCreating}
+                isRuntimeUnavailable={isDesktopRuntimeUnavailable}
                 onSubmit={handleSubmitProject}
               />
 
