@@ -15,6 +15,7 @@ import {
 interface UseDocumentFindingReviewOptions {
   activeDocument: DocumentSummary | null;
   activeProjectId: string | null;
+  enabled?: boolean;
   onRefreshDocument?: (documentId: string) => Promise<void> | void;
   onSelectChunk?: (chunkId: string | null) => void;
 }
@@ -78,11 +79,12 @@ function compareFindingPriority(
 export function useDocumentFindingReview({
   activeDocument,
   activeProjectId,
+  enabled = true,
   onRefreshDocument,
   onSelectChunk,
 }: UseDocumentFindingReviewOptions) {
   const currentTargetKey =
-    activeProjectId && activeDocument
+    enabled && activeProjectId && activeDocument
       ? findingTargetKey(activeProjectId, activeDocument.id)
       : null;
   const [findings, setFindings] = useState<QaFindingSummary[]>([]);
@@ -143,7 +145,7 @@ export function useDocumentFindingReview({
 
   const loadFindings = useCallback(
     async (options?: { preserveSelection?: boolean }) => {
-      if (!(activeProjectId && activeDocument)) {
+      if (!(enabled && activeProjectId && activeDocument)) {
         setIsLoadingFindings(false);
         return;
       }
@@ -207,7 +209,7 @@ export function useDocumentFindingReview({
         }
       }
     },
-    [activeDocument, activeProjectId],
+    [activeDocument, activeProjectId, enabled],
   );
 
   useEffect(() => {
@@ -219,12 +221,14 @@ export function useDocumentFindingReview({
     setInspection(null);
     setInspectionError(null);
     setIsInspectingFinding(
-      Boolean(activeProjectId && activeDocument && selectedFindingId),
+      Boolean(
+        enabled && activeProjectId && activeDocument && selectedFindingId,
+      ),
     );
-  }, [activeDocument, activeProjectId, selectedFindingId]);
+  }, [activeDocument, activeProjectId, enabled, selectedFindingId]);
 
   const loadInspection = useCallback(async () => {
-    if (!(activeProjectId && activeDocument && selectedFindingId)) {
+    if (!(enabled && activeProjectId && activeDocument && selectedFindingId)) {
       inspectRequestIdRef.current += 1;
       setInspection(null);
       setInspectionError(null);
@@ -277,7 +281,7 @@ export function useDocumentFindingReview({
         setIsInspectingFinding(false);
       }
     }
-  }, [activeDocument, activeProjectId, selectedFindingId]);
+  }, [activeDocument, activeProjectId, enabled, selectedFindingId]);
 
   useEffect(() => {
     void loadInspection();
@@ -286,7 +290,7 @@ export function useDocumentFindingReview({
   useEffect(() => {
     const resolvedChunkId = inspection?.anchor.chunkId ?? null;
 
-    if (!onSelectChunk) {
+    if (!enabled || !onSelectChunk) {
       return;
     }
 
@@ -296,7 +300,7 @@ export function useDocumentFindingReview({
 
     lastSelectedChunkIdRef.current = resolvedChunkId;
     onSelectChunk(resolvedChunkId);
-  }, [inspection?.anchor.chunkId, onSelectChunk]);
+  }, [enabled, inspection?.anchor.chunkId, onSelectChunk]);
 
   const selectFinding = useCallback(
     (findingId: string) => {
@@ -315,15 +319,23 @@ export function useDocumentFindingReview({
       setLastRetranslation(null);
 
       if (selectedFindingId === findingId) {
-        setIsInspectingFinding(Boolean(activeProjectId && activeDocument));
+        setIsInspectingFinding(
+          Boolean(enabled && activeProjectId && activeDocument),
+        );
         void loadInspection();
       }
     },
-    [activeDocument, activeProjectId, loadInspection, selectedFindingId],
+    [
+      activeDocument,
+      activeProjectId,
+      enabled,
+      loadInspection,
+      selectedFindingId,
+    ],
   );
 
   const retranslateSelectedFinding = useCallback(async () => {
-    if (!(activeProjectId && activeDocument && selectedFindingId)) {
+    if (!(enabled && activeProjectId && activeDocument && selectedFindingId)) {
       return null;
     }
 
@@ -407,6 +419,7 @@ export function useDocumentFindingReview({
   }, [
     activeDocument,
     activeProjectId,
+    enabled,
     loadFindings,
     loadInspection,
     onRefreshDocument,

@@ -614,7 +614,11 @@ export function AppShell() {
               showOperationalDebug={activeView === "diagnostics"}
               styleProfiles={styleProfiles}
               viewMode={
-                activeView === "diagnostics" ? "operational-debug" : "workspace"
+                activeView === "diagnostics"
+                  ? "operational-debug"
+                  : activeView === "translation"
+                    ? "translation-workspace"
+                    : "document-workspace"
               }
             />
           </div>
