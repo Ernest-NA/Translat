@@ -80,6 +80,7 @@ select {
 }
 
 .surface-card {
+  min-width: 0;
   border: 1px solid var(--color-border-default);
   border-radius: var(--radius-lg);
   background: var(--color-bg-elevated);
@@ -131,6 +132,7 @@ select {
   margin: 12px 0 0;
   color: var(--color-text-secondary);
   font-size: var(--font-size-body);
+  overflow-wrap: anywhere;
 }
 
 .panel-header__aside {
@@ -151,6 +153,7 @@ select {
 .surface-card__copy {
   margin: 16px 0 0;
   color: var(--color-text-secondary);
+  overflow-wrap: anywhere;
 }
 
 .surface-card--accent {
@@ -288,102 +291,43 @@ select {
   text-align: center;
 }
 
-.app-shell__runtime {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  min-width: 0;
-  padding: 14px 4px 0;
-  border-top: 1px solid var(--color-border-default);
-  color: var(--color-text-secondary);
-}
-
-.app-shell__runtime strong,
-.app-shell__runtime small {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.app-shell__runtime strong {
-  color: var(--color-text-primary);
-  font-size: 0.86rem;
-}
-
-.app-shell__runtime small {
-  color: var(--color-text-muted);
-  font-size: 0.76rem;
-}
-
-.app-shell__runtime-dot {
-  width: 9px;
-  height: 9px;
-  flex: 0 0 auto;
-  border-radius: 999px;
-  background: var(--color-danger);
-}
-
-.app-shell__runtime-dot[data-online="true"] {
-  background: var(--color-success);
-}
-
 .app-shell__main {
   min-width: 0;
 }
 
-.app-shell__topbar {
-  position: sticky;
-  top: 0;
-  z-index: 5;
+.app-shell__content {
   display: grid;
-  grid-template-columns: minmax(180px, 0.5fr) minmax(0, 1fr);
   gap: 20px;
-  align-items: center;
-  min-height: 88px;
-  padding: 14px 24px;
-  border-bottom: 1px solid var(--color-border-default);
-  background: rgba(16, 20, 24, 0.96);
-}
-
-.app-shell__route {
   min-width: 0;
+  width: min(100%, 1440px);
+  margin: 0 auto;
+  padding: 24px;
 }
 
-.app-shell__route span {
-  display: block;
-  margin: 0 0 4px;
-  color: var(--color-accent-strong);
-  font-size: 0.76rem;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+.app-shell__view-header {
+  min-width: 0;
+  padding-bottom: 2px;
 }
 
-.app-shell__context-strip {
+.app-shell__operational-strip {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.app-shell__context-item {
-  display: grid;
-  min-width: 0;
-  gap: 4px;
-  padding: 10px 12px;
+  gap: 8px;
+  padding: 8px 10px;
   border: 1px solid var(--color-border-default);
   border-radius: var(--radius-md);
-  background: var(--color-bg-panel-quiet);
+  background: rgba(255, 255, 255, 0.025);
 }
 
-.app-shell__context-item span,
-.app-shell__context-item strong {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.app-shell__operational-strip div {
+  display: flex;
+  min-width: 0;
+  gap: 8px;
+  align-items: center;
 }
 
-.app-shell__context-item > span {
+.app-shell__operational-strip span {
+  flex: 0 0 auto;
   color: var(--color-text-subtle);
   font-size: 0.72rem;
   font-weight: 800;
@@ -391,21 +335,12 @@ select {
   text-transform: uppercase;
 }
 
-.app-shell__context-item strong {
-  color: var(--color-text-primary);
-  font-size: 0.86rem;
-}
-
-.app-shell__content {
-  display: grid;
-  gap: 20px;
-  width: min(100%, 1440px);
-  margin: 0 auto;
-  padding: 24px;
-}
-
-.app-shell__view-header {
-  padding-bottom: 2px;
+.app-shell__operational-strip strong {
+  overflow: hidden;
+  color: var(--color-text-secondary);
+  font-size: 0.84rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .app-shell__view {
@@ -1633,32 +1568,35 @@ select {
 
 @media (max-width: 960px) {
   .app-shell {
+    align-items: start;
+    grid-auto-rows: max-content;
     grid-template-columns: 1fr;
   }
 
   .app-shell__nav {
     position: static;
-    min-height: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-height: 0;
+    height: auto;
+    max-height: none;
+    align-self: start;
+    width: 100%;
     border-right: 0;
     border-bottom: 1px solid var(--color-border-default);
   }
 
+  .app-shell__brand {
+    padding-bottom: 0;
+  }
+
   .app-shell__nav-list {
-    grid-template-columns: repeat(5, minmax(140px, 1fr));
+    flex: 0 0 auto;
+    align-self: start;
+    width: 100%;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
     overflow-x: auto;
-  }
-
-  .app-shell__runtime {
-    margin-top: 16px;
-  }
-
-  .app-shell__topbar {
-    position: static;
-    grid-template-columns: 1fr;
-  }
-
-  .app-shell__context-strip {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .app-shell__view--projects {
@@ -1696,22 +1634,43 @@ select {
   .app-shell__metric-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .app-shell__operational-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .app-shell__nav-list {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 640px) {
+  .app-shell,
+  .app-shell__nav,
+  .app-shell__main,
+  .app-shell__content {
+    max-width: 100vw;
+    overflow-x: hidden;
+  }
+
   .app-shell__nav {
     padding: 16px 12px;
   }
 
-  .app-shell__nav-list,
-  .app-shell__context-strip,
+  .app-shell__operational-strip,
   .app-shell__metric-grid {
     grid-template-columns: 1fr;
   }
 
-  .app-shell__topbar,
   .app-shell__content {
     padding: 16px;
+  }
+
+  .app-shell__content {
+    width: 100%;
+    margin: 0;
   }
 
   .surface-card {
@@ -1737,6 +1696,17 @@ select {
   .project-list__item-heading {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .app-shell__view-header .panel-header__copy,
+  .app-shell__view-header .panel-header__description {
+    width: 100%;
+    max-width: 100%;
+    white-space: normal;
+  }
+
+  .app-shell__operational-strip div {
+    flex-wrap: wrap;
   }
 
   .panel-header__aside,

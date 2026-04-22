@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import {
   type BuildDocumentTranslationChunksInput,
   type BuildTranslationContextInput,
@@ -87,6 +87,8 @@ export class DesktopCommandError extends Error {
   }
 }
 
+export const DESKTOP_RUNTIME_UNAVAILABLE_CODE = "DESKTOP_RUNTIME_UNAVAILABLE";
+
 function isDesktopCommandErrorPayload(
   value: unknown,
 ): value is DesktopCommandErrorPayload {
@@ -99,6 +101,14 @@ function isDesktopCommandErrorPayload(
   return (
     typeof candidate.code === "string" && typeof candidate.message === "string"
   );
+}
+
+function createDesktopRuntimeUnavailableError(command: DesktopCommandName) {
+  return new DesktopCommandError(command, {
+    code: DESKTOP_RUNTIME_UNAVAILABLE_CODE,
+    message:
+      "Desktop runtime unavailable in this browser preview. Open the Tauri desktop app to use persisted project and document commands.",
+  });
 }
 
 function normalizeDesktopCommandError(
@@ -127,6 +137,10 @@ export async function invokeDesktopCommand<TResponse>(
   command: DesktopCommandName,
   args?: Record<string, unknown>,
 ) {
+  if (!isTauri()) {
+    throw createDesktopRuntimeUnavailableError(command);
+  }
+
   try {
     return await invoke<TResponse>(command, args);
   } catch (caughtError) {

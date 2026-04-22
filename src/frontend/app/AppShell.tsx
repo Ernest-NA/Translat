@@ -8,6 +8,7 @@ import { ProjectWorkspace } from "../components/ProjectWorkspace";
 import { RuleSetsWorkspace } from "../components/RuleSetsWorkspace";
 import { StyleProfilesWorkspace } from "../components/StyleProfilesWorkspace";
 import { PanelHeader } from "../components/ui/PanelHeader";
+import { PanelMessage } from "../components/ui/PanelMessage";
 import { StatusBadge } from "../components/ui/StatusBadge";
 import { useDocumentChunks } from "../hooks/useDocumentChunks";
 import { useDocumentSegments } from "../hooks/useDocumentSegments";
@@ -17,6 +18,7 @@ import { useProjectDocuments } from "../hooks/useProjectDocuments";
 import { useProjectsWorkspace } from "../hooks/useProjectsWorkspace";
 import { useRuleSetsWorkspace } from "../hooks/useRuleSetsWorkspace";
 import { useStyleProfilesWorkspace } from "../hooks/useStyleProfilesWorkspace";
+import { DESKTOP_RUNTIME_UNAVAILABLE_CODE } from "../lib/desktop";
 
 type BadgeTone = "neutral" | "info" | "success" | "warning" | "danger";
 type ShellView =
@@ -37,6 +39,25 @@ interface NavigationItem {
   description: string;
   id: ShellView;
   label: string;
+}
+
+function BrowserPreviewRuntimePanel() {
+  return (
+    <section className="surface-card surface-card--split app-shell__runtime-preview-card">
+      <PanelHeader
+        description="This browser preview can validate layout and copy, but persisted project, document, editorial library, translation, QA, and export commands require the Tauri desktop runtime."
+        eyebrow="Browser preview"
+        title="Desktop runtime required."
+        titleLevel={2}
+      />
+
+      <PanelMessage tone="warning" title="Command controls disabled">
+        Open the desktop app to import documents, segment sources, edit
+        libraries, run translation jobs, inspect QA, or export files.
+        Diagnostics remains available here to show the runtime state.
+      </PanelMessage>
+    </section>
+  );
 }
 
 const SHELL_VIEW_COPY: Record<ShellView, ShellViewCopy> = {
@@ -326,9 +347,6 @@ export function AppShell() {
     [openDocument, processDocument, reloadProjects],
   );
 
-  const runtimeLabel = healthcheck
-    ? `${healthcheck.environment} | v${healthcheck.version}`
-    : "Desktop runtime";
   const viewCopy = SHELL_VIEW_COPY[activeView];
   const documentStateLabel = activeDocument
     ? chunks.length > 0
@@ -349,11 +367,23 @@ export function AppShell() {
     activeProjectDefaultStyleProfile,
     activeProjectDefaultRuleSet,
   ].filter(Boolean).length;
-  const runtimeTone: BadgeTone = healthcheckError
-    ? "danger"
+  const isDesktopRuntimeUnavailable =
+    healthcheckError?.code === DESKTOP_RUNTIME_UNAVAILABLE_CODE ||
+    projectError?.code === DESKTOP_RUNTIME_UNAVAILABLE_CODE;
+  const runtimeContextTone: BadgeTone = isDesktopRuntimeUnavailable
+    ? "warning"
     : healthcheck
       ? "success"
-      : "warning";
+      : isLoadingHealthcheck
+        ? "info"
+        : "danger";
+  const runtimeContextLabel = isDesktopRuntimeUnavailable
+    ? "Web preview"
+    : healthcheck
+      ? "Desktop ready"
+      : isLoadingHealthcheck
+        ? "Checking"
+        : "Runtime issue";
   const navigationItems: NavigationItem[] = [
     {
       count: projects.length,
@@ -419,71 +449,9 @@ export function AppShell() {
             </button>
           ))}
         </nav>
-
-        <div className="app-shell__runtime">
-          <span
-            className="app-shell__runtime-dot"
-            data-online={Boolean(healthcheck)}
-          />
-          <div>
-            <strong>{runtimeLabel}</strong>
-            <small>Last check {formatCheckedAt(healthcheck?.checkedAt)}</small>
-          </div>
-        </div>
       </aside>
 
       <section className="app-shell__main">
-        <header className="app-shell__topbar">
-          <div className="app-shell__route">
-            <span>{viewCopy.eyebrow}</span>
-            <h1>{viewCopy.title}</h1>
-          </div>
-
-          <section
-            className="app-shell__context-strip"
-            aria-label="Workspace context"
-          >
-            <div className="app-shell__context-item">
-              <span>Project</span>
-              <strong>{activeProject?.name ?? "No project"}</strong>
-              <StatusBadge
-                tone={activeProject ? "success" : "neutral"}
-                size="sm"
-              >
-                {activeProject ? "Open" : "Not selected"}
-              </StatusBadge>
-            </div>
-            <div className="app-shell__context-item">
-              <span>Document</span>
-              <strong>{activeDocument?.name ?? "No document"}</strong>
-              <StatusBadge tone={documentStateTone} size="sm">
-                {documentStateLabel}
-              </StatusBadge>
-            </div>
-            <div className="app-shell__context-item">
-              <span>Defaults</span>
-              <strong>{activeDefaultsCount}/3 active</strong>
-              <StatusBadge
-                tone={hasUnsavedProjectDefaults ? "warning" : "neutral"}
-                size="sm"
-              >
-                {hasUnsavedProjectDefaults ? "Unsaved" : "Synced"}
-              </StatusBadge>
-            </div>
-            <div className="app-shell__context-item">
-              <span>Runtime</span>
-              <strong>{runtimeLabel}</strong>
-              <StatusBadge tone={runtimeTone} size="sm">
-                {isLoadingHealthcheck
-                  ? "Checking"
-                  : healthcheck
-                    ? "Online"
-                    : "Offline"}
-              </StatusBadge>
-            </div>
-          </section>
-        </header>
-
         <section className="app-shell__content">
           <div className="app-shell__view-header">
             <PanelHeader
@@ -494,6 +462,33 @@ export function AppShell() {
             />
           </div>
 
+          <section
+            aria-label="Workspace context"
+            className="app-shell__operational-strip"
+          >
+            <div>
+              <span>Project</span>
+              <strong>{activeProject?.name ?? "No project"}</strong>
+            </div>
+            <div>
+              <span>Document</span>
+              <strong>{activeDocument?.name ?? "No document"}</strong>
+            </div>
+            <div>
+              <span>Defaults</span>
+              <strong>
+                {activeDefaultsCount}/3
+                {hasUnsavedProjectDefaults ? " unsaved" : " synced"}
+              </strong>
+            </div>
+            <div>
+              <span>Runtime</span>
+              <StatusBadge tone={runtimeContextTone} size="sm">
+                {runtimeContextLabel}
+              </StatusBadge>
+            </div>
+          </section>
+
           <div
             className="app-shell__view app-shell__view--projects"
             hidden={activeView !== "projects"}
@@ -502,6 +497,7 @@ export function AppShell() {
               <ProjectComposer
                 error={projectError}
                 isCreating={isCreating}
+                isRuntimeUnavailable={isDesktopRuntimeUnavailable}
                 onSubmit={handleSubmitProject}
               />
 
@@ -569,114 +565,124 @@ export function AppShell() {
               activeView !== "diagnostics"
             }
           >
-            <ProjectWorkspace
-              activeDocument={activeDocument}
-              chunkError={chunkError}
-              chunkSegments={chunkSegments}
-              chunks={chunks}
-              documents={documents}
-              importError={importError}
-              isBuildingChunks={isBuildingChunks}
-              isImportingDocuments={isImporting}
-              isLoadingDocuments={isLoadingDocuments}
-              isLoadingChunks={isLoadingChunks}
-              isLoadingSegments={isLoadingSegments}
-              isSavingEditorialDefaults={isSavingEditorialDefaults}
-              loadError={loadError}
-              glossaries={glossaries}
-              onBuildChunks={buildChunks}
-              onDirtyChange={setHasUnsavedProjectDefaults}
-              onOpenDocument={openDocument}
-              onSyncDocumentState={refreshDocument}
-              onImportDocuments={handleImportDocuments}
-              onProcessDocument={handleProcessDocument}
-              onSelectChunk={selectChunk}
-              onSaveEditorialDefaults={saveProjectEditorialDefaults}
-              onSelectSection={selectSection}
-              onSelectSegment={selectSegment}
-              processError={processError}
-              processingDocumentId={processingDocumentId}
-              project={activeProject}
-              projectError={projectError}
-              ruleSets={ruleSets}
-              segmentError={segmentError}
-              segmentLoadingDocumentId={
-                isLoadingSegments ? (activeDocument?.id ?? null) : null
-              }
-              sections={sections}
-              selectedChunk={selectedChunk}
-              selectedChunkId={selectedChunkId}
-              selectedChunkSegments={selectedChunkSegments}
-              selectedSection={selectedSection}
-              segments={segments}
-              selectedSegment={selectedSegment}
-              selectedSegmentId={selectedSegmentId}
-              showOperationalDebug={activeView === "diagnostics"}
-              styleProfiles={styleProfiles}
-              viewMode={
-                activeView === "diagnostics"
-                  ? "operational-debug"
-                  : activeView === "translation"
-                    ? "translation-workspace"
-                    : "document-workspace"
-              }
-            />
+            {isDesktopRuntimeUnavailable && activeView !== "diagnostics" ? (
+              <BrowserPreviewRuntimePanel />
+            ) : (
+              <ProjectWorkspace
+                activeDocument={activeDocument}
+                chunkError={chunkError}
+                chunkSegments={chunkSegments}
+                chunks={chunks}
+                documents={documents}
+                importError={importError}
+                isBuildingChunks={isBuildingChunks}
+                isImportingDocuments={isImporting}
+                isLoadingDocuments={isLoadingDocuments}
+                isLoadingChunks={isLoadingChunks}
+                isLoadingSegments={isLoadingSegments}
+                isSavingEditorialDefaults={isSavingEditorialDefaults}
+                loadError={loadError}
+                glossaries={glossaries}
+                onBuildChunks={buildChunks}
+                onDirtyChange={setHasUnsavedProjectDefaults}
+                onOpenDocument={openDocument}
+                onSyncDocumentState={refreshDocument}
+                onImportDocuments={handleImportDocuments}
+                onProcessDocument={handleProcessDocument}
+                onSelectChunk={selectChunk}
+                onSaveEditorialDefaults={saveProjectEditorialDefaults}
+                onSelectSection={selectSection}
+                onSelectSegment={selectSegment}
+                processError={processError}
+                processingDocumentId={processingDocumentId}
+                project={activeProject}
+                projectError={projectError}
+                ruleSets={ruleSets}
+                segmentError={segmentError}
+                segmentLoadingDocumentId={
+                  isLoadingSegments ? (activeDocument?.id ?? null) : null
+                }
+                sections={sections}
+                selectedChunk={selectedChunk}
+                selectedChunkId={selectedChunkId}
+                selectedChunkSegments={selectedChunkSegments}
+                selectedSection={selectedSection}
+                segments={segments}
+                selectedSegment={selectedSegment}
+                selectedSegmentId={selectedSegmentId}
+                showOperationalDebug={activeView === "diagnostics"}
+                styleProfiles={styleProfiles}
+                viewMode={
+                  activeView === "diagnostics"
+                    ? "operational-debug"
+                    : activeView === "translation"
+                      ? "translation-workspace"
+                      : "document-workspace"
+                }
+              />
+            )}
           </div>
 
           <div
             className="app-shell__view app-shell__view--libraries"
             hidden={activeView !== "libraries"}
           >
-            <RuleSetsWorkspace
-              activeRuleSet={activeRuleSet}
-              activeRuleSetCount={activeRuleSetCount}
-              archivedRuleSetCount={archivedRuleSetCount}
-              error={ruleSetError}
-              isCreating={isCreatingRuleSet}
-              isLoading={isLoadingRuleSets}
-              isSaving={isSavingRuleSet}
-              onOpenRuleSet={selectRuleSet}
-              onReloadRuleSets={reloadRuleSets}
-              onSubmitRuleSet={submitRuleSet}
-              onUpdateRuleSet={saveRuleSet}
-              openingRuleSetId={openingRuleSetId}
-              ruleSets={ruleSets}
-              totalRuleSetCount={totalRuleSetCount}
-            />
+            {isDesktopRuntimeUnavailable ? (
+              <BrowserPreviewRuntimePanel />
+            ) : (
+              <>
+                <RuleSetsWorkspace
+                  activeRuleSet={activeRuleSet}
+                  activeRuleSetCount={activeRuleSetCount}
+                  archivedRuleSetCount={archivedRuleSetCount}
+                  error={ruleSetError}
+                  isCreating={isCreatingRuleSet}
+                  isLoading={isLoadingRuleSets}
+                  isSaving={isSavingRuleSet}
+                  onOpenRuleSet={selectRuleSet}
+                  onReloadRuleSets={reloadRuleSets}
+                  onSubmitRuleSet={submitRuleSet}
+                  onUpdateRuleSet={saveRuleSet}
+                  openingRuleSetId={openingRuleSetId}
+                  ruleSets={ruleSets}
+                  totalRuleSetCount={totalRuleSetCount}
+                />
 
-            <StyleProfilesWorkspace
-              activeStyleProfile={activeStyleProfile}
-              activeStyleProfileCount={activeStyleProfileCount}
-              archivedStyleProfileCount={archivedStyleProfileCount}
-              error={styleProfileError}
-              isCreating={isCreatingStyleProfile}
-              isLoading={isLoadingStyleProfiles}
-              isSaving={isSavingStyleProfile}
-              onOpenStyleProfile={selectStyleProfile}
-              onSubmitStyleProfile={submitStyleProfile}
-              onUpdateStyleProfile={saveStyleProfile}
-              openingStyleProfileId={openingStyleProfileId}
-              styleProfiles={styleProfiles}
-              totalStyleProfileCount={totalStyleProfileCount}
-            />
+                <StyleProfilesWorkspace
+                  activeStyleProfile={activeStyleProfile}
+                  activeStyleProfileCount={activeStyleProfileCount}
+                  archivedStyleProfileCount={archivedStyleProfileCount}
+                  error={styleProfileError}
+                  isCreating={isCreatingStyleProfile}
+                  isLoading={isLoadingStyleProfiles}
+                  isSaving={isSavingStyleProfile}
+                  onOpenStyleProfile={selectStyleProfile}
+                  onSubmitStyleProfile={submitStyleProfile}
+                  onUpdateStyleProfile={saveStyleProfile}
+                  openingStyleProfileId={openingStyleProfileId}
+                  styleProfiles={styleProfiles}
+                  totalStyleProfileCount={totalStyleProfileCount}
+                />
 
-            <GlossaryWorkspace
-              activeGlossary={activeGlossary}
-              activeGlossaryCount={activeGlossaryCount}
-              archivedGlossaryCount={archivedGlossaryCount}
-              error={glossaryError}
-              glossaries={glossaries}
-              isCreating={isCreatingGlossary}
-              isLoading={isLoadingGlossaries}
-              isSaving={isSavingGlossary}
-              onOpenGlossary={selectGlossary}
-              onSubmitGlossary={submitGlossary}
-              onUpdateGlossary={saveGlossary}
-              openingGlossaryId={openingGlossaryId}
-              onReloadGlossaries={reloadGlossaries}
-              projects={projects}
-              totalGlossaryCount={totalGlossaryCount}
-            />
+                <GlossaryWorkspace
+                  activeGlossary={activeGlossary}
+                  activeGlossaryCount={activeGlossaryCount}
+                  archivedGlossaryCount={archivedGlossaryCount}
+                  error={glossaryError}
+                  glossaries={glossaries}
+                  isCreating={isCreatingGlossary}
+                  isLoading={isLoadingGlossaries}
+                  isSaving={isSavingGlossary}
+                  onOpenGlossary={selectGlossary}
+                  onSubmitGlossary={submitGlossary}
+                  onUpdateGlossary={saveGlossary}
+                  openingGlossaryId={openingGlossaryId}
+                  onReloadGlossaries={reloadGlossaries}
+                  projects={projects}
+                  totalGlossaryCount={totalGlossaryCount}
+                />
+              </>
+            )}
           </div>
 
           {activeView === "diagnostics" ? (

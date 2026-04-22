@@ -7,19 +7,27 @@ import { PanelMessage } from "./ui/PanelMessage";
 interface ProjectComposerProps {
   error: DesktopCommandError | null;
   isCreating: boolean;
+  isRuntimeUnavailable?: boolean;
   onSubmit: (input: { description?: string; name: string }) => Promise<boolean>;
 }
 
 export function ProjectComposer({
   error,
   isCreating,
+  isRuntimeUnavailable = false,
   onSubmit,
 }: ProjectComposerProps) {
   const [description, setDescription] = useState("");
   const [name, setName] = useState("");
+  const isSubmitDisabled = isCreating || isRuntimeUnavailable;
+  const displayedError = isRuntimeUnavailable ? null : error;
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    if (isRuntimeUnavailable) {
+      return;
+    }
 
     const wasCreated = await onSubmit({
       description,
@@ -73,23 +81,36 @@ export function ProjectComposer({
 
         <div className="project-form__footer">
           <ActionButton
-            disabled={isCreating}
+            disabled={isSubmitDisabled}
             mobileFullWidth
             size="md"
             type="submit"
             variant="primary"
           >
-            {isCreating ? "Creating project..." : "Create project"}
+            {isRuntimeUnavailable
+              ? "Desktop app required"
+              : isCreating
+                ? "Creating project..."
+                : "Create project"}
           </ActionButton>
 
           <span className="project-form__hint">
-            The new project is opened immediately after persistence.
+            {isRuntimeUnavailable
+              ? "Persistence commands run in the desktop app."
+              : "The new project is opened immediately after persistence."}
           </span>
         </div>
 
-        {error ? (
+        {isRuntimeUnavailable ? (
+          <PanelMessage tone="warning" title="Browser preview mode">
+            This preview cannot create persisted projects because the Tauri
+            desktop bridge is not available.
+          </PanelMessage>
+        ) : null}
+
+        {displayedError ? (
           <PanelMessage role="alert" tone="danger">
-            {error.message}
+            {displayedError.message}
           </PanelMessage>
         ) : null}
       </form>
