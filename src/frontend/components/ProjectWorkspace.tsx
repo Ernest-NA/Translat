@@ -15,6 +15,7 @@ import type {
   RuleSetSummary,
   SegmentSummary,
   StyleProfileSummary,
+  TranslateDocumentChunkResult,
   TranslationChunkSegmentSummary,
   TranslationChunkSummary,
   UpdateProjectEditorialDefaultsInput,
@@ -80,7 +81,13 @@ interface ProjectWorkspaceProps {
   segments: SegmentSummary[];
   selectedSegment: SegmentSummary | null;
   selectedSegmentId: string | null;
+  showOperationalDebug?: boolean;
   styleProfiles: StyleProfileSummary[];
+  viewMode?:
+    | "document-workspace"
+    | "operational-debug"
+    | "translation-workspace"
+    | "workspace";
 }
 
 function formatTimestamp(timestamp: number) {
@@ -175,6 +182,76 @@ function getOperationalCountTone(count: number) {
   return count > 0 ? "warning" : "neutral";
 }
 
+function formatBytes(value: number) {
+  if (value < 1024) {
+    return `${value} B`;
+  }
+
+  if (value < 1024 * 1024) {
+    return `${(value / 1024).toFixed(1)} KB`;
+  }
+
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function formatSourceKind(value: string) {
+  return value === "local_file" ? "Local file" : value;
+}
+
+function formatChunkRole(role: TranslationChunkSegmentSummary["role"]) {
+  if (role === "context_before") {
+    return "Context before";
+  }
+
+  if (role === "context_after") {
+    return "Context after";
+  }
+
+  return "Core";
+}
+
+function truncateText(value: string, maxLength = 120) {
+  return value.length > maxLength
+    ? `${value.slice(0, Math.max(0, maxLength - 3))}...`
+    : value;
+}
+
+function formatChunkExecutionStatus(
+  status: TranslateDocumentChunkResult["status"],
+) {
+  switch (status) {
+    case "cancelled":
+      return "Cancelled";
+    case "completed":
+      return "Completed";
+    case "failed":
+      return "Incident";
+    case "running":
+      return "Running";
+    default:
+      return "Pending";
+  }
+}
+
+function getChunkStatusTone(status: TranslateDocumentChunkResult["status"]) {
+  switch (status) {
+    case "completed":
+      return "success";
+    case "running":
+      return "info";
+    case "cancelled":
+      return "warning";
+    case "failed":
+      return "danger";
+    default:
+      return "neutral";
+  }
+}
+
+function getDocumentStatusTone(status: DocumentSummary["status"]) {
+  return status === "segmented" ? "success" : "warning";
+}
+
 export function ProjectWorkspace({
   activeDocument,
   chunkError,
@@ -215,7 +292,9 @@ export function ProjectWorkspace({
   segments,
   selectedSegment,
   selectedSegmentId,
+  showOperationalDebug = true,
   styleProfiles,
+  viewMode = "workspace",
 }: ProjectWorkspaceProps) {
   const [draftDefaultGlossaryId, setDraftDefaultGlossaryId] = useState(() =>
     normalizeSelectionValue(project?.defaultGlossaryId),
@@ -370,6 +449,8 @@ export function ProjectWorkspace({
     },
     [onSyncDocumentState],
   );
+  const isTranslationWorkspace = viewMode === "translation-workspace";
+  const isOperationalDebug = viewMode === "operational-debug";
   const {
     cancelJob,
     clearTrackedJob,
@@ -390,6 +471,41 @@ export function ProjectWorkspace({
     chunks,
     onDocumentStateSync: syncActiveDocumentState,
   });
+  const activeDocumentTrackingKey =
+    project && activeDocument ? `${project.id}:${activeDocument.id}` : null;
+  const [documentFindingTrackingKey, setDocumentFindingTrackingKey] = useState<
+    string | null
+  >(null);
+  const shouldKeepFindingReviewLive =
+    Boolean(trackedJobId) || Boolean(jobStatus);
+
+  useEffect(() => {
+    if (!activeDocumentTrackingKey) {
+      setDocumentFindingTrackingKey(null);
+      return;
+    }
+
+    if (
+      isTranslationWorkspace ||
+      isOperationalDebug ||
+      shouldKeepFindingReviewLive
+    ) {
+      setDocumentFindingTrackingKey(activeDocumentTrackingKey);
+    }
+  }, [
+    activeDocumentTrackingKey,
+    isOperationalDebug,
+    isTranslationWorkspace,
+    shouldKeepFindingReviewLive,
+  ]);
+
+  const shouldTrackDocumentFindings =
+    activeDocumentTrackingKey !== null &&
+    (documentFindingTrackingKey === activeDocumentTrackingKey ||
+      isTranslationWorkspace ||
+      isOperationalDebug ||
+      shouldKeepFindingReviewLive);
+  const shouldLoadSelectedChunkContext = isTranslationWorkspace;
   const {
     error: contextPreviewError,
     isLoading: isLoadingContextPreview,
@@ -398,6 +514,7 @@ export function ProjectWorkspace({
     activeDocument,
     activeProjectId: project?.id ?? null,
     editorialDefaultsFingerprint,
+    enabled: shouldLoadSelectedChunkContext,
     selectedChunk,
   });
   const {
@@ -418,6 +535,7 @@ export function ProjectWorkspace({
   } = useDocumentFindingReview({
     activeDocument,
     activeProjectId: project?.id ?? null,
+    enabled: shouldTrackDocumentFindings,
     onRefreshDocument: syncActiveDocumentState,
     onSelectChunk,
   });
@@ -566,6 +684,74 @@ export function ProjectWorkspace({
     isCancelling ||
     jobStatus?.status === "pending" ||
     jobStatus?.status === "running";
+  const chunkStatusLookup = useMemo(
+    () =>
+      new Map(
+        (jobStatus?.chunkStatuses ?? []).map((chunkStatus) => [
+          chunkStatus.chunkId,
+          chunkStatus,
+        ]),
+      ),
+    [jobStatus?.chunkStatuses],
+  );
+  const segmentLookup = useMemo(
+    () => new Map(segments.map((segment) => [segment.id, segment])),
+    [segments],
+  );
+  const chunkCoreSegmentCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+
+    for (const chunkSegment of chunkSegments) {
+      if (chunkSegment.role !== "core") {
+        continue;
+      }
+
+      counts.set(
+        chunkSegment.chunkId,
+        (counts.get(chunkSegment.chunkId) ?? 0) + 1,
+      );
+    }
+
+    return counts;
+  }, [chunkSegments]);
+  const selectedChunkStatus = selectedChunk
+    ? (chunkStatusLookup.get(selectedChunk.id) ?? null)
+    : null;
+  const selectedCoreSegments = selectedChunkSegments
+    .filter((chunkSegment) => chunkSegment.role === "core")
+    .map((chunkSegment) => segmentLookup.get(chunkSegment.segmentId) ?? null)
+    .filter((segment): segment is SegmentSummary => segment !== null);
+  const selectedCoreChunkSegmentCount = selectedChunk
+    ? (chunkCoreSegmentCounts.get(selectedChunk.id) ??
+      selectedCoreSegments.length)
+    : 0;
+  const orderedChunks = useMemo(() => {
+    return [...chunks].sort((left, right) => {
+      const leftStatus = chunkStatusLookup.get(left.id)?.status ?? "pending";
+      const rightStatus = chunkStatusLookup.get(right.id)?.status ?? "pending";
+      const leftHasIncident =
+        leftStatus === "failed" || leftStatus === "cancelled";
+      const rightHasIncident =
+        rightStatus === "failed" || rightStatus === "cancelled";
+
+      if (leftHasIncident !== rightHasIncident) {
+        return leftHasIncident ? -1 : 1;
+      }
+
+      return left.sequence - right.sequence;
+    });
+  }, [chunkStatusLookup, chunks]);
+  const runningJob =
+    jobStatus?.status === "pending" || jobStatus?.status === "running";
+  const translatedCoreCount = selectedCoreSegments.filter(
+    (segment) => segment.status === "translated" || segment.targetText,
+  ).length;
+  const exportReady =
+    activeDocument?.status === "segmented" &&
+    chunks.length > 0 &&
+    (jobStatus?.status === "completed" ||
+      jobStatus?.status === "completed_with_errors" ||
+      selectedCoreSegments.some((segment) => segment.targetText));
 
   async function handleSaveEditorialDefaults(
     event: React.FormEvent<HTMLFormElement>,
@@ -592,6 +778,16 @@ export function ProjectWorkspace({
     }
   }
 
+  if (viewMode === "operational-debug") {
+    return (
+      <OperationalDebugPanel
+        activeDocument={activeDocument}
+        activeProjectId={project?.id ?? null}
+        trackedJobId={trackedJobId}
+      />
+    );
+  }
+
   if (!project) {
     return (
       <section className="surface-card surface-card--accent">
@@ -607,6 +803,540 @@ export function ProjectWorkspace({
           <li>The active project selection survives app restarts.</li>
           <li>Each project can keep explicit default editorial artifacts.</li>
         </ul>
+      </section>
+    );
+  }
+
+  if (viewMode === "translation-workspace") {
+    return (
+      <section className="translation-workspace">
+        <section
+          className="workspace-panel translation-workspace-hero"
+          data-state={workspaceState.state}
+        >
+          <PanelHeader
+            actions={
+              <div className="translation-workspace-header__actions">
+                {chunks.length === 0 ? (
+                  <ActionButton
+                    disabled={
+                      activeDocument?.status !== "segmented" ||
+                      disableChunkBuildActions ||
+                      isBuildingChunks
+                    }
+                    onClick={() => void handleBuildChunks()}
+                    size="md"
+                    variant="primary"
+                  >
+                    {isBuildingChunks ? "Building chunks..." : "Build chunks"}
+                  </ActionButton>
+                ) : null}
+                {chunks.length > 0 && !runningJob && !canResumeTranslation ? (
+                  <ActionButton
+                    disabled={!canLaunchTranslation}
+                    onClick={() => void startTranslation()}
+                    size="md"
+                    variant="primary"
+                  >
+                    {isRestoringTrackedJob
+                      ? "Restoring job..."
+                      : isStarting
+                        ? "Launching..."
+                        : "Translate document"}
+                  </ActionButton>
+                ) : null}
+                {chunks.length > 0 ? (
+                  <ActionButton
+                    disabled={
+                      activeDocument?.status !== "segmented" ||
+                      disableChunkBuildActions ||
+                      isBuildingChunks
+                    }
+                    onClick={() => void handleBuildChunks()}
+                    size="md"
+                    variant="ghost"
+                  >
+                    {isBuildingChunks
+                      ? "Rebuilding chunks..."
+                      : "Rebuild chunks"}
+                  </ActionButton>
+                ) : null}
+                {runningJob ? (
+                  <ActionButton
+                    disabled={isRefreshing}
+                    onClick={() => void refreshStatus()}
+                    size="md"
+                    variant="secondary"
+                  >
+                    {isRefreshing ? "Refreshing..." : "Refresh progress"}
+                  </ActionButton>
+                ) : null}
+                {canResumeTranslation ? (
+                  <ActionButton
+                    disabled={isResuming}
+                    onClick={() => void resumeTranslation()}
+                    size="md"
+                    variant="primary"
+                  >
+                    {isResuming ? "Resuming..." : "Resume incidents"}
+                  </ActionButton>
+                ) : null}
+                <ActionButton
+                  disabled={!canExportDocument}
+                  onClick={() => void handleExportDocument()}
+                  size="md"
+                  variant={exportReady ? "secondary" : "ghost"}
+                >
+                  {isExportingDocument ? "Exporting..." : "Export markdown"}
+                </ActionButton>
+              </div>
+            }
+            eyebrow="Translation workspace"
+            meta={
+              <StatusBadge
+                emphasis="strong"
+                size="md"
+                tone={getWorkspaceStatusTone(workspaceState.state)}
+              >
+                {formatWorkspaceStatusLabel(workspaceState.state)}
+              </StatusBadge>
+            }
+            title={
+              activeDocument
+                ? activeDocument.name
+                : "Select a document to translate"
+            }
+            titleLevel={2}
+          />
+
+          <p className="surface-card__copy">{workspaceState.detail}</p>
+
+          {exportError ? (
+            <PanelMessage role="alert" tone="danger">
+              {exportError.message}
+            </PanelMessage>
+          ) : null}
+
+          {lastExport ? (
+            <PanelMessage tone="success">
+              Exported <strong>{lastExport.fileName}</strong> from the current{" "}
+              {lastExport.status} reconstructed document snapshot.
+            </PanelMessage>
+          ) : null}
+
+          <div className="translation-workspace__summary">
+            <div>
+              <span>Document</span>
+              <strong>{activeDocument?.status ?? "No document"}</strong>
+            </div>
+            <div>
+              <span>Chunks</span>
+              <strong>{chunks.length}</strong>
+            </div>
+            <div>
+              <span>Progress</span>
+              <strong>
+                {jobStatus
+                  ? `${jobStatus.completedChunks}/${jobStatus.totalChunks}`
+                  : "No job"}
+              </strong>
+            </div>
+            <div>
+              <span>Findings</span>
+              <strong>{findings.length}</strong>
+            </div>
+            <div>
+              <span>Export</span>
+              <strong>{exportReady ? "Ready" : "Not ready"}</strong>
+            </div>
+          </div>
+        </section>
+
+        <div className="translation-workspace__grid">
+          <aside className="translation-workspace__left-rail">
+            <section className="workspace-panel translation-document-rail">
+              <PanelHeader
+                eyebrow="Documents"
+                meta={
+                  <StatusBadge size="sm" tone="info">
+                    {documents.length} total
+                  </StatusBadge>
+                }
+                title="Active input"
+              />
+
+              {activeDocument && isLoadingSegments ? (
+                <PanelMessage tone="info">
+                  Loading segment trace for {activeDocument.name}...
+                </PanelMessage>
+              ) : null}
+
+              {segmentError ? (
+                <PanelMessage role="alert" tone="danger">
+                  {segmentError.message}
+                </PanelMessage>
+              ) : null}
+
+              {activeDocument &&
+              !isLoadingSegments &&
+              !segmentError &&
+              activeDocument.status === "segmented" &&
+              segments.length === 0 ? (
+                <PanelMessage tone="warning">
+                  This document is segmented, but no segment trace is currently
+                  loaded.
+                </PanelMessage>
+              ) : null}
+
+              {documents.length > 0 ? (
+                <ol className="translation-document-list">
+                  {documents.map((document) => (
+                    <li key={document.id}>
+                      <button
+                        className="translation-document-row"
+                        data-active={document.id === activeDocument?.id}
+                        data-state={document.status}
+                        disabled={document.status !== "segmented"}
+                        onClick={() => void onOpenDocument(document.id)}
+                        title={
+                          document.status === "segmented"
+                            ? `Open ${document.name}`
+                            : "Segment this document in Documents before translating it."
+                        }
+                        type="button"
+                      >
+                        <span>
+                          <strong>{document.name}</strong>
+                          <small>
+                            {document.format.toUpperCase()} |{" "}
+                            {formatSourceKind(document.sourceKind)} |{" "}
+                            {formatBytes(document.fileSizeBytes)}
+                          </small>
+                        </span>
+                        <StatusBadge
+                          tone={getDocumentStatusTone(document.status)}
+                        >
+                          {document.status}
+                        </StatusBadge>
+                      </button>
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <PanelMessage>
+                  Import a document in Documents before opening Translation.
+                </PanelMessage>
+              )}
+            </section>
+
+            <section className="workspace-panel translation-chunk-rail">
+              <PanelHeader
+                eyebrow="Chunks"
+                meta={
+                  <StatusBadge size="sm" tone="info">
+                    {chunks.length} loaded
+                  </StatusBadge>
+                }
+                title="Execution order"
+              />
+
+              {!activeDocument ? (
+                <PanelMessage>Select a document to load chunks.</PanelMessage>
+              ) : null}
+
+              {activeDocument && isLoadingChunks ? (
+                <PanelMessage tone="info">Loading chunks...</PanelMessage>
+              ) : null}
+
+              {chunkError ? (
+                <PanelMessage role="alert" tone="danger">
+                  {chunkError.message}
+                </PanelMessage>
+              ) : null}
+
+              {activeDocument && !isLoadingChunks && chunks.length === 0 ? (
+                <PanelMessage>
+                  Build chunks before launching document translation.
+                </PanelMessage>
+              ) : null}
+
+              {chunks.length > 0 ? (
+                <ol className="translation-chunk-list">
+                  {orderedChunks.map((chunk) => {
+                    const status = chunkStatusLookup.get(chunk.id);
+                    const statusName: TranslateDocumentChunkResult["status"] =
+                      status?.status ?? "pending";
+                    const coreSegmentCount =
+                      chunkCoreSegmentCounts.get(chunk.id) ??
+                      chunk.segmentCount;
+
+                    return (
+                      <li key={chunk.id}>
+                        <button
+                          className="translation-chunk-row"
+                          data-active={chunk.id === selectedChunkId}
+                          data-state={statusName}
+                          onClick={() => onSelectChunk(chunk.id)}
+                          type="button"
+                        >
+                          <span className="translation-chunk-row__index">
+                            {chunk.sequence}
+                          </span>
+                          <span>
+                            <strong>
+                              #{chunk.startSegmentSequence}-#
+                              {chunk.endSegmentSequence}
+                            </strong>
+                            <small>
+                              {status?.translatedSegmentCount ?? 0}/
+                              {coreSegmentCount} translated |{" "}
+                              {chunk.sourceWordCount} words
+                            </small>
+                            {status?.errorMessage ? (
+                              <em>{truncateText(status.errorMessage, 96)}</em>
+                            ) : null}
+                          </span>
+                          <StatusBadge tone={getChunkStatusTone(statusName)}>
+                            {formatChunkExecutionStatus(statusName)}
+                          </StatusBadge>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ol>
+              ) : null}
+            </section>
+          </aside>
+
+          <section className="workspace-panel translation-chunk-detail">
+            {selectedChunk ? (
+              <>
+                <PanelHeader
+                  eyebrow="Selected chunk"
+                  meta={
+                    <div className="chunk-detail__heading-badges">
+                      <StatusBadge
+                        tone={getChunkStatusTone(
+                          selectedChunkStatus?.status ?? "pending",
+                        )}
+                      >
+                        {formatChunkExecutionStatus(
+                          selectedChunkStatus?.status ?? "pending",
+                        )}
+                      </StatusBadge>
+                      <StatusBadge tone="info">
+                        {translatedCoreCount}/{selectedCoreChunkSegmentCount}{" "}
+                        result
+                      </StatusBadge>
+                    </div>
+                  }
+                  title={`Chunk #${selectedChunk.sequence}`}
+                />
+
+                <div className="translation-chunk-detail__meta">
+                  <span>
+                    Segments #{selectedChunk.startSegmentSequence}-#
+                    {selectedChunk.endSegmentSequence}
+                  </span>
+                  <span>{selectedChunk.sourceWordCount} words</span>
+                  <span>{selectedChunk.strategy}</span>
+                </div>
+
+                {selectedChunkStatus?.errorMessage ? (
+                  <PanelMessage role="alert" tone="danger" title="Incident">
+                    {selectedChunkStatus.errorMessage}
+                  </PanelMessage>
+                ) : null}
+
+                <div className="translation-chunk-detail__sections">
+                  <section>
+                    <p className="surface-card__eyebrow">Source</p>
+                    <div className="segment-detail__text">
+                      {selectedChunk.sourceText}
+                    </div>
+                  </section>
+
+                  <section>
+                    <p className="surface-card__eyebrow">Context</p>
+                    <div className="translation-context-stack">
+                      <div className="segment-detail__text segment-detail__text--muted">
+                        <strong>Before</strong>
+                        <p>
+                          {selectedChunk.contextBeforeText ??
+                            "No prior overlap segment."}
+                        </p>
+                      </div>
+                      <div className="segment-detail__text segment-detail__text--muted">
+                        <strong>After</strong>
+                        <p>
+                          {selectedChunk.contextAfterText ??
+                            "No trailing overlap segment."}
+                        </p>
+                      </div>
+                    </div>
+
+                    {isLoadingContextPreview ? (
+                      <PanelMessage tone="info">
+                        Loading context...
+                      </PanelMessage>
+                    ) : null}
+
+                    {contextPreviewError ? (
+                      <PanelMessage role="alert" tone="danger">
+                        {contextPreviewError.message}
+                      </PanelMessage>
+                    ) : null}
+
+                    {contextPreview ? (
+                      <dl className="detail-list detail-list--single">
+                        <div>
+                          <dt>Section</dt>
+                          <dd>
+                            {contextPreview.chunkContext.section?.title ??
+                              "No matched section"}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>Glossary layers</dt>
+                          <dd>{contextPreview.glossaryLayers.length}</dd>
+                        </div>
+                        <div>
+                          <dt>Rules</dt>
+                          <dd>{contextPreview.rules.length}</dd>
+                        </div>
+                        <div>
+                          <dt>Style</dt>
+                          <dd>
+                            {contextPreview.styleProfile?.styleProfile.name ??
+                              "No style profile"}
+                          </dd>
+                        </div>
+                      </dl>
+                    ) : null}
+                  </section>
+
+                  <section>
+                    <p className="surface-card__eyebrow">Result</p>
+                    {selectedCoreSegments.length > 0 ? (
+                      <ol className="chunk-result-list">
+                        {selectedCoreSegments.map((segment) => (
+                          <li
+                            className="chunk-result-list__item"
+                            key={segment.id}
+                          >
+                            <div className="chunk-link-list__heading">
+                              <strong>Segment #{segment.sequence}</strong>
+                              <StatusBadge
+                                tone={
+                                  segment.status === "translated"
+                                    ? "success"
+                                    : "warning"
+                                }
+                              >
+                                {segment.status}
+                              </StatusBadge>
+                            </div>
+                            <div className="chunk-result-list__texts">
+                              <div>
+                                <p className="surface-card__eyebrow">Source</p>
+                                <div className="segment-detail__text">
+                                  {segment.sourceText}
+                                </div>
+                              </div>
+                              <div>
+                                <p className="surface-card__eyebrow">Target</p>
+                                <div className="segment-detail__text segment-detail__text--muted">
+                                  {segment.targetText ??
+                                    "No translated target text persisted yet."}
+                                </div>
+                              </div>
+                            </div>
+                          </li>
+                        ))}
+                      </ol>
+                    ) : (
+                      <PanelMessage>
+                        No core segment trace is loaded for this chunk yet.
+                      </PanelMessage>
+                    )}
+                  </section>
+
+                  <section>
+                    <p className="surface-card__eyebrow">Segment trace</p>
+                    <ol className="chunk-link-list">
+                      {selectedChunkSegments.map((chunkSegment) => {
+                        const segment =
+                          segmentLookup.get(chunkSegment.segmentId) ?? null;
+
+                        return (
+                          <li
+                            className="chunk-link-list__item"
+                            key={`${chunkSegment.chunkId}:${chunkSegment.segmentId}:${chunkSegment.role}`}
+                          >
+                            <div className="chunk-link-list__heading">
+                              <strong>
+                                #{chunkSegment.segmentSequence}{" "}
+                                {formatChunkRole(chunkSegment.role)}
+                              </strong>
+                              <StatusBadge tone="info">
+                                pos {chunkSegment.position}
+                              </StatusBadge>
+                            </div>
+                            <p>
+                              {segment
+                                ? truncateText(segment.sourceText, 180)
+                                : chunkSegment.segmentId}
+                            </p>
+                          </li>
+                        );
+                      })}
+                    </ol>
+                  </section>
+                </div>
+              </>
+            ) : (
+              <PanelMessage>
+                Select a chunk to inspect source, context, result, and incident
+                state.
+              </PanelMessage>
+            )}
+          </section>
+
+          <aside className="translation-workspace__right-rail">
+            <TranslationJobMonitor
+              activeDocument={activeDocument}
+              error={translateJobError}
+              isCancelling={isCancelling}
+              isRefreshing={isRefreshing}
+              isRestoringTrackedJob={isRestoringTrackedJob}
+              isResuming={isResuming}
+              jobStatus={jobStatus}
+              onCancelJob={cancelJob}
+              onClearTrackedJob={clearTrackedJob}
+              onRefreshStatus={() => refreshStatus()}
+              onResumeTranslation={resumeTranslation}
+              trackedJobId={trackedJobId}
+            />
+
+            <FindingReviewPanel
+              actionError={findingActionError}
+              activeDocument={activeDocument}
+              findings={findings}
+              inspection={findingInspection}
+              inspectionError={findingInspectionError}
+              isInspectingFinding={isInspectingFinding}
+              isLoadingFindings={isLoadingFindings}
+              isRetranslating={isRetranslating}
+              lastRetranslation={lastRetranslation}
+              loadError={findingLoadError}
+              refreshWarning={refreshWarning}
+              onRetranslateSelectedFinding={retranslateSelectedFinding}
+              onSelectFinding={selectFinding}
+              selectedFinding={selectedFinding}
+              selectedFindingId={selectedFindingId}
+            />
+          </aside>
+        </div>
       </section>
     );
   }
@@ -787,226 +1517,236 @@ export function ProjectWorkspace({
         />
       </div>
 
-      <section
-        className="workspace-panel translation-workspace-header"
-        data-state={workspaceState.state}
-      >
-        <PanelHeader
-          actions={
-            <div className="translation-workspace-header__actions">
+      {viewMode === "workspace" ? (
+        <>
+          <section
+            className="workspace-panel translation-workspace-header"
+            data-state={workspaceState.state}
+          >
+            <PanelHeader
+              actions={
+                <div className="translation-workspace-header__actions">
+                  <StatusBadge
+                    emphasis="strong"
+                    size="md"
+                    tone={getWorkspaceStatusTone(workspaceState.state)}
+                  >
+                    {formatWorkspaceStatusLabel(workspaceState.state)}
+                  </StatusBadge>
+                  <ActionButton
+                    disabled={!canLaunchTranslation}
+                    onClick={() => void startTranslation()}
+                    variant="primary"
+                  >
+                    {isRestoringTrackedJob
+                      ? "Restoring job..."
+                      : isStarting
+                        ? "Launching..."
+                        : "Translate document"}
+                  </ActionButton>
+                  <ActionButton
+                    disabled={
+                      activeDocument?.status !== "segmented" ||
+                      disableChunkBuildActions ||
+                      isBuildingChunks
+                    }
+                    onClick={() => void handleBuildChunks()}
+                    variant="ghost"
+                  >
+                    {isBuildingChunks ? "Building..." : "Build chunks"}
+                  </ActionButton>
+                  <ActionButton
+                    disabled={!canResumeTranslation}
+                    onClick={() => void resumeTranslation()}
+                    variant="secondary"
+                  >
+                    {isResuming ? "Resuming..." : "Resume translation"}
+                  </ActionButton>
+                  <ActionButton
+                    disabled={!canExportDocument}
+                    onClick={() => void handleExportDocument()}
+                    variant="ghost"
+                  >
+                    {isExportingDocument ? "Exporting..." : "Export markdown"}
+                  </ActionButton>
+                </div>
+              }
+              eyebrow="Translation workspace"
+              title={
+                activeDocument
+                  ? activeDocument.name
+                  : "Select a document to start"
+              }
+            />
+
+            <p className="surface-card__copy">{workspaceState.detail}</p>
+
+            {exportError ? (
+              <PanelMessage role="alert" tone="danger">
+                {exportError.message}
+              </PanelMessage>
+            ) : null}
+
+            {lastExport ? (
+              <PanelMessage tone="success">
+                Exported <strong>{lastExport.fileName}</strong> from the current{" "}
+                {lastExport.status} reconstructed document snapshot.
+              </PanelMessage>
+            ) : null}
+
+            <div className="translation-workspace-header__badges">
               <StatusBadge
-                emphasis="strong"
-                size="md"
-                tone={getWorkspaceStatusTone(workspaceState.state)}
-              >
-                {formatWorkspaceStatusLabel(workspaceState.state)}
-              </StatusBadge>
-              <ActionButton
-                disabled={!canLaunchTranslation}
-                onClick={() => void startTranslation()}
-                variant="primary"
-              >
-                {isRestoringTrackedJob
-                  ? "Restoring job..."
-                  : isStarting
-                    ? "Launching..."
-                    : "Translate document"}
-              </ActionButton>
-              <ActionButton
-                disabled={
-                  activeDocument?.status !== "segmented" ||
-                  disableChunkBuildActions ||
-                  isBuildingChunks
+                tone={
+                  activeDocument?.status === "segmented" ? "success" : "warning"
                 }
-                onClick={() => void handleBuildChunks()}
-                variant="ghost"
               >
-                {isBuildingChunks ? "Building..." : "Build chunks"}
-              </ActionButton>
-              <ActionButton
-                disabled={!canResumeTranslation}
-                onClick={() => void resumeTranslation()}
-                variant="secondary"
+                {activeDocument ? activeDocument.status : "No active document"}
+              </StatusBadge>
+              <StatusBadge tone="info">
+                {activeDocument
+                  ? `${chunks.length} chunks loaded`
+                  : "Chunk list idle"}
+              </StatusBadge>
+              <StatusBadge tone="info">
+                {jobStatus
+                  ? `${jobStatus.completedChunks}/${jobStatus.totalChunks} completed`
+                  : "No job progress yet"}
+              </StatusBadge>
+              <StatusBadge
+                tone={getOperationalCountTone(jobStatus?.failedChunks ?? 0)}
               >
-                {isResuming ? "Resuming..." : "Resume translation"}
-              </ActionButton>
-              <ActionButton
-                disabled={!canExportDocument}
-                onClick={() => void handleExportDocument()}
-                variant="ghost"
-              >
-                {isExportingDocument ? "Exporting..." : "Export markdown"}
-              </ActionButton>
+                {jobStatus?.failedChunks
+                  ? `${jobStatus.failedChunks} failed chunks`
+                  : "No failed chunks"}
+              </StatusBadge>
+              <StatusBadge tone={trackedJobId ? "info" : "neutral"}>
+                {trackedJobId
+                  ? `Tracked job ${trackedJobId}`
+                  : "No tracked job"}
+              </StatusBadge>
+              <StatusBadge tone={getOperationalCountTone(findings.length)}>
+                {activeDocument
+                  ? `${findings.length} QA findings`
+                  : "QA findings idle"}
+              </StatusBadge>
+              <StatusBadge tone={lastExport ? "success" : "neutral"}>
+                {lastExport
+                  ? `Last export ${lastExport.fileName}`
+                  : "No export yet"}
+              </StatusBadge>
+              <StatusBadge tone={isRestoringTrackedJob ? "warning" : "neutral"}>
+                {isRestoringTrackedJob
+                  ? "Restoring tracked job"
+                  : "Job restore idle"}
+              </StatusBadge>
             </div>
-          }
-          eyebrow="Translation workspace"
-          title={
-            activeDocument ? activeDocument.name : "Select a document to start"
-          }
-        />
 
-        <p className="surface-card__copy">{workspaceState.detail}</p>
+            {activeDocument ? (
+              <dl className="detail-list">
+                <div>
+                  <dt>Document id</dt>
+                  <dd>{activeDocument.id}</dd>
+                </div>
+                <div>
+                  <dt>Segments</dt>
+                  <dd>{segments.length}</dd>
+                </div>
+                <div>
+                  <dt>Chunks ready</dt>
+                  <dd>{chunks.length}</dd>
+                </div>
+                <div>
+                  <dt>Current chunk</dt>
+                  <dd>
+                    {jobStatus?.currentChunkSequence
+                      ? `Chunk #${jobStatus.currentChunkSequence}`
+                      : selectedChunk
+                        ? `Chunk #${selectedChunk.sequence}`
+                        : "None"}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Last completed chunk</dt>
+                  <dd>
+                    {jobStatus?.lastCompletedChunkSequence
+                      ? `Chunk #${jobStatus.lastCompletedChunkSequence}`
+                      : "None"}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Last job state</dt>
+                  <dd>{jobStatus?.status ?? "No persisted job loaded"}</dd>
+                </div>
+              </dl>
+            ) : null}
+          </section>
 
-        {exportError ? (
-          <PanelMessage role="alert" tone="danger">
-            {exportError.message}
-          </PanelMessage>
-        ) : null}
+          <div className="translation-workspace-layout">
+            <ChunkBrowser
+              activeDocument={activeDocument}
+              chunkSegments={chunkSegments}
+              chunkStatuses={jobStatus?.chunkStatuses}
+              contextError={contextPreviewError}
+              contextPreview={contextPreview}
+              disableBuild={disableChunkBuildActions}
+              chunks={chunks}
+              error={chunkError}
+              isBuilding={isBuildingChunks}
+              isLoading={isLoadingChunks}
+              isLoadingContext={isLoadingContextPreview}
+              onBuildChunks={handleBuildChunks}
+              onSelectChunk={onSelectChunk}
+              segments={segments}
+              selectedChunk={selectedChunk}
+              selectedChunkId={selectedChunkId}
+              selectedChunkSegments={selectedChunkSegments}
+            />
 
-        {lastExport ? (
-          <PanelMessage tone="success">
-            Exported <strong>{lastExport.fileName}</strong> from the current{" "}
-            {lastExport.status} reconstructed document snapshot.
-          </PanelMessage>
-        ) : null}
+            <div className="translation-workspace-sidebar">
+              <FindingReviewPanel
+                actionError={findingActionError}
+                activeDocument={activeDocument}
+                findings={findings}
+                inspection={findingInspection}
+                inspectionError={findingInspectionError}
+                isInspectingFinding={isInspectingFinding}
+                isLoadingFindings={isLoadingFindings}
+                isRetranslating={isRetranslating}
+                lastRetranslation={lastRetranslation}
+                loadError={findingLoadError}
+                refreshWarning={refreshWarning}
+                onRetranslateSelectedFinding={retranslateSelectedFinding}
+                onSelectFinding={selectFinding}
+                selectedFinding={selectedFinding}
+                selectedFindingId={selectedFindingId}
+              />
 
-        <div className="translation-workspace-header__badges">
-          <StatusBadge
-            tone={
-              activeDocument?.status === "segmented" ? "success" : "warning"
-            }
-          >
-            {activeDocument ? activeDocument.status : "No active document"}
-          </StatusBadge>
-          <StatusBadge tone="info">
-            {activeDocument
-              ? `${chunks.length} chunks loaded`
-              : "Chunk list idle"}
-          </StatusBadge>
-          <StatusBadge tone="info">
-            {jobStatus
-              ? `${jobStatus.completedChunks}/${jobStatus.totalChunks} completed`
-              : "No job progress yet"}
-          </StatusBadge>
-          <StatusBadge
-            tone={getOperationalCountTone(jobStatus?.failedChunks ?? 0)}
-          >
-            {jobStatus?.failedChunks
-              ? `${jobStatus.failedChunks} failed chunks`
-              : "No failed chunks"}
-          </StatusBadge>
-          <StatusBadge tone={trackedJobId ? "info" : "neutral"}>
-            {trackedJobId ? `Tracked job ${trackedJobId}` : "No tracked job"}
-          </StatusBadge>
-          <StatusBadge tone={getOperationalCountTone(findings.length)}>
-            {activeDocument
-              ? `${findings.length} QA findings`
-              : "QA findings idle"}
-          </StatusBadge>
-          <StatusBadge tone={lastExport ? "success" : "neutral"}>
-            {lastExport
-              ? `Last export ${lastExport.fileName}`
-              : "No export yet"}
-          </StatusBadge>
-          <StatusBadge tone={isRestoringTrackedJob ? "warning" : "neutral"}>
-            {isRestoringTrackedJob
-              ? "Restoring tracked job"
-              : "Job restore idle"}
-          </StatusBadge>
-        </div>
-
-        {activeDocument ? (
-          <dl className="detail-list">
-            <div>
-              <dt>Document id</dt>
-              <dd>{activeDocument.id}</dd>
+              <TranslationJobMonitor
+                activeDocument={activeDocument}
+                error={translateJobError}
+                isCancelling={isCancelling}
+                isRefreshing={isRefreshing}
+                isRestoringTrackedJob={isRestoringTrackedJob}
+                isResuming={isResuming}
+                jobStatus={jobStatus}
+                onCancelJob={cancelJob}
+                onClearTrackedJob={clearTrackedJob}
+                onRefreshStatus={() => refreshStatus()}
+                onResumeTranslation={resumeTranslation}
+                trackedJobId={trackedJobId}
+              />
             </div>
-            <div>
-              <dt>Segments</dt>
-              <dd>{segments.length}</dd>
-            </div>
-            <div>
-              <dt>Chunks ready</dt>
-              <dd>{chunks.length}</dd>
-            </div>
-            <div>
-              <dt>Current chunk</dt>
-              <dd>
-                {jobStatus?.currentChunkSequence
-                  ? `Chunk #${jobStatus.currentChunkSequence}`
-                  : selectedChunk
-                    ? `Chunk #${selectedChunk.sequence}`
-                    : "None"}
-              </dd>
-            </div>
-            <div>
-              <dt>Last completed chunk</dt>
-              <dd>
-                {jobStatus?.lastCompletedChunkSequence
-                  ? `Chunk #${jobStatus.lastCompletedChunkSequence}`
-                  : "None"}
-              </dd>
-            </div>
-            <div>
-              <dt>Last job state</dt>
-              <dd>{jobStatus?.status ?? "No persisted job loaded"}</dd>
-            </div>
-          </dl>
-        ) : null}
-      </section>
+          </div>
 
-      <div className="translation-workspace-layout">
-        <ChunkBrowser
-          activeDocument={activeDocument}
-          chunkSegments={chunkSegments}
-          chunkStatuses={jobStatus?.chunkStatuses}
-          contextError={contextPreviewError}
-          contextPreview={contextPreview}
-          disableBuild={disableChunkBuildActions}
-          chunks={chunks}
-          error={chunkError}
-          isBuilding={isBuildingChunks}
-          isLoading={isLoadingChunks}
-          isLoadingContext={isLoadingContextPreview}
-          onBuildChunks={handleBuildChunks}
-          onSelectChunk={onSelectChunk}
-          segments={segments}
-          selectedChunk={selectedChunk}
-          selectedChunkId={selectedChunkId}
-          selectedChunkSegments={selectedChunkSegments}
-        />
-
-        <div className="translation-workspace-sidebar">
-          <FindingReviewPanel
-            actionError={findingActionError}
-            activeDocument={activeDocument}
-            findings={findings}
-            inspection={findingInspection}
-            inspectionError={findingInspectionError}
-            isInspectingFinding={isInspectingFinding}
-            isLoadingFindings={isLoadingFindings}
-            isRetranslating={isRetranslating}
-            lastRetranslation={lastRetranslation}
-            loadError={findingLoadError}
-            refreshWarning={refreshWarning}
-            onRetranslateSelectedFinding={retranslateSelectedFinding}
-            onSelectFinding={selectFinding}
-            selectedFinding={selectedFinding}
-            selectedFindingId={selectedFindingId}
-          />
-
-          <TranslationJobMonitor
-            activeDocument={activeDocument}
-            error={translateJobError}
-            isCancelling={isCancelling}
-            isRefreshing={isRefreshing}
-            isRestoringTrackedJob={isRestoringTrackedJob}
-            isResuming={isResuming}
-            jobStatus={jobStatus}
-            onCancelJob={cancelJob}
-            onClearTrackedJob={clearTrackedJob}
-            onRefreshStatus={() => refreshStatus()}
-            onResumeTranslation={resumeTranslation}
-            trackedJobId={trackedJobId}
-          />
-        </div>
-      </div>
-
-      <OperationalDebugPanel
-        activeDocument={activeDocument}
-        activeProjectId={project?.id ?? null}
-        trackedJobId={trackedJobId}
-      />
+          {showOperationalDebug ? (
+            <OperationalDebugPanel
+              activeDocument={activeDocument}
+              activeProjectId={project?.id ?? null}
+              trackedJobId={trackedJobId}
+            />
+          ) : null}
+        </>
+      ) : null}
 
       <SegmentBrowser
         activeDocument={activeDocument}
@@ -1022,31 +1762,35 @@ export function ProjectWorkspace({
         selectedSegmentId={selectedSegmentId}
       />
 
-      <section className="workspace-readiness">
-        <PanelHeader
-          eyebrow="Workspace behavior"
-          title="Document, job, and chunk stay aligned in one workspace"
-        />
-        <ul className="readiness-list">
-          <li>Imported documents are linked explicitly to this project id.</li>
-          <li>
-            The active document remains the primary operating object in the
-            workspace header.
-          </li>
-          <li>
-            The tracked `job_id` acts as the visible execution envelope for
-            translate_document.
-          </li>
-          <li>
-            Chunk navigation stays persistent while the selected chunk becomes
-            the main inspection surface.
-          </li>
-          <li>
-            Segment-level target text remains available as the atomic review
-            trace after chunk execution.
-          </li>
-        </ul>
-      </section>
+      {viewMode === "workspace" ? (
+        <section className="workspace-readiness">
+          <PanelHeader
+            eyebrow="Workspace behavior"
+            title="Document, job, and chunk stay aligned in one workspace"
+          />
+          <ul className="readiness-list">
+            <li>
+              Imported documents are linked explicitly to this project id.
+            </li>
+            <li>
+              The active document remains the primary operating object in the
+              workspace header.
+            </li>
+            <li>
+              The tracked `job_id` acts as the visible execution envelope for
+              translate_document.
+            </li>
+            <li>
+              Chunk navigation stays persistent while the selected chunk becomes
+              the main inspection surface.
+            </li>
+            <li>
+              Segment-level target text remains available as the atomic review
+              trace after chunk execution.
+            </li>
+          </ul>
+        </section>
+      ) : null}
     </section>
   );
 }

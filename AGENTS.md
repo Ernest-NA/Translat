@@ -360,6 +360,8 @@ Every UI-related task should explicitly state one of:
 
 When Figma is not required, include a short justification.
 
+For frontend UI/UX planning, visual audits, Figma-guided redesign, or implementation review, use `.agents/skills/frontend-ui-ux/SKILL.md` and `docs/product/frontend-ui-ux-redesign-guidelines.md` as repo-local guidance.
+
 ---
 
 ## 12. Current priority

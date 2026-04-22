@@ -86,3 +86,12 @@ TR-24 does not attempt:
 - Storybook or a separate design system package
 - richer animation or interaction polish
 - TR-27 performance or rendering optimization work
+
+## Release 08 visual direction
+TR-31 adjusts this foundation for the full Release 08 redesign:
+
+- `docs/product/TR-31-applied-visual-system.md`
+- [TR-31 Translat Applied Visual System](figjam/TR-31-applied-visual-system.mmd)
+- [TR-31 Translat Screen State Visual Coverage](figjam/TR-31-screen-state-visual-coverage.mmd)
+
+TR-24 remains the baseline for reusable primitives and semantic state language. TR-31 supersedes the current visual treatment where it calls for lower radius, less decorative gradient usage, denser rows/lists, clearer shell navigation, and diagnostics outside the primary UX.

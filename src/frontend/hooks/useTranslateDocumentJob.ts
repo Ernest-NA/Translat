@@ -23,6 +23,7 @@ interface UseTranslateDocumentJobOptions {
   activeDocument: DocumentSummary | null;
   activeProjectId: string | null;
   chunks: TranslationChunkSummary[];
+  enabled?: boolean;
   onDocumentStateSync?: (documentId: string) => Promise<void> | void;
 }
 
@@ -232,6 +233,7 @@ export function useTranslateDocumentJob({
   activeDocument,
   activeProjectId,
   chunks,
+  enabled = true,
   onDocumentStateSync,
 }: UseTranslateDocumentJobOptions) {
   const [error, setError] = useState<DesktopCommandError | null>(null);
@@ -278,7 +280,7 @@ export function useTranslateDocumentJob({
       nextJobId?: string | null,
       options?: RefreshStatusOptions,
     ): Promise<RefreshStatusResult> => {
-      if (!activeProjectId || !activeDocument) {
+      if (!enabled || !activeProjectId || !activeDocument) {
         setJobStatus(null);
         return {
           missingJobConfirmed: false,
@@ -421,7 +423,7 @@ export function useTranslateDocumentJob({
         }
       }
     },
-    [activeDocument, activeProjectId, syncDocumentState, trackedJobId],
+    [activeDocument, activeProjectId, enabled, syncDocumentState, trackedJobId],
   );
 
   const refreshStatus = useCallback(
@@ -440,7 +442,12 @@ export function useTranslateDocumentJob({
       jobId: string,
       command: "resume_translate_document_job" | "translate_document",
     ) => {
-      if (!activeProjectId || !activeDocument || commandInFlightRef.current) {
+      if (
+        !enabled ||
+        !activeProjectId ||
+        !activeDocument ||
+        commandInFlightRef.current
+      ) {
         return;
       }
 
@@ -559,6 +566,7 @@ export function useTranslateDocumentJob({
       activeDocument,
       activeProjectId,
       chunks,
+      enabled,
       refreshStatus,
       refreshStatusWithOutcome,
     ],
@@ -576,7 +584,7 @@ export function useTranslateDocumentJob({
     setIsResuming(false);
     setIsStarting(false);
 
-    if (!activeProjectId || !activeDocument) {
+    if (!enabled || !activeProjectId || !activeDocument) {
       latestDocumentKeyRef.current = null;
       latestSyncFingerprintRef.current = null;
       setError(null);
@@ -598,7 +606,7 @@ export function useTranslateDocumentJob({
 
     setTrackedJobId(restoredTrackedJobId);
     setIsRestoringTrackedJob(restoredTrackedJobId !== null);
-  }, [activeDocument, activeProjectId]);
+  }, [activeDocument, activeProjectId, enabled]);
 
   useEffect(() => {
     if (typeof document === "undefined") {
@@ -617,7 +625,7 @@ export function useTranslateDocumentJob({
   }, []);
 
   useEffect(() => {
-    if (!trackedJobId) {
+    if (!enabled || !trackedJobId) {
       setIsRestoringTrackedJob(false);
       setJobStatus(null);
       return;
@@ -629,11 +637,12 @@ export function useTranslateDocumentJob({
         !commandInFlightRef.current,
       silent: true,
     });
-  }, [refreshStatus, trackedJobId]);
+  }, [enabled, refreshStatus, trackedJobId]);
 
   useEffect(() => {
     if (
       !isVisible ||
+      !enabled ||
       !trackedJobId ||
       !(
         jobStatus?.status === "pending" ||
@@ -654,6 +663,7 @@ export function useTranslateDocumentJob({
   }, [
     isResuming,
     isStarting,
+    enabled,
     isVisible,
     jobStatus?.status,
     refreshStatus,
@@ -663,6 +673,7 @@ export function useTranslateDocumentJob({
   useEffect(() => {
     if (
       !(
+        enabled &&
         trackedJobId &&
         (jobStatus?.status === "pending" ||
           jobStatus?.status === "running" ||
@@ -693,6 +704,7 @@ export function useTranslateDocumentJob({
   }, [
     isResuming,
     isStarting,
+    enabled,
     isVisible,
     jobStatus?.status,
     refreshStatus,
@@ -703,6 +715,7 @@ export function useTranslateDocumentJob({
     if (
       !activeProjectId ||
       !activeDocument ||
+      !enabled ||
       chunks.length === 0 ||
       commandInFlightRef.current ||
       cancelInFlightRef.current
@@ -714,12 +727,19 @@ export function useTranslateDocumentJob({
     void runDocumentCommand(jobId, "translate_document");
 
     return jobId;
-  }, [activeDocument, activeProjectId, chunks.length, runDocumentCommand]);
+  }, [
+    activeDocument,
+    activeProjectId,
+    chunks.length,
+    enabled,
+    runDocumentCommand,
+  ]);
 
   const resumeTranslation = useCallback(async () => {
     if (
       !activeProjectId ||
       !activeDocument ||
+      !enabled ||
       !trackedJobId ||
       commandInFlightRef.current ||
       cancelInFlightRef.current
@@ -730,12 +750,19 @@ export function useTranslateDocumentJob({
     void runDocumentCommand(trackedJobId, "resume_translate_document_job");
 
     return trackedJobId;
-  }, [activeDocument, activeProjectId, runDocumentCommand, trackedJobId]);
+  }, [
+    activeDocument,
+    activeProjectId,
+    enabled,
+    runDocumentCommand,
+    trackedJobId,
+  ]);
 
   const cancelJob = useCallback(async () => {
     if (
       !activeProjectId ||
       !activeDocument ||
+      !enabled ||
       !trackedJobId ||
       cancelInFlightRef.current ||
       commandInFlightRef.current
@@ -794,10 +821,16 @@ export function useTranslateDocumentJob({
         setIsCancelling(false);
       }
     }
-  }, [activeDocument, activeProjectId, syncDocumentState, trackedJobId]);
+  }, [
+    activeDocument,
+    activeProjectId,
+    enabled,
+    syncDocumentState,
+    trackedJobId,
+  ]);
 
   const clearTrackedJob = useCallback(() => {
-    if (!(activeProjectId && activeDocument)) {
+    if (!(enabled && activeProjectId && activeDocument)) {
       return;
     }
 
@@ -818,7 +851,7 @@ export function useTranslateDocumentJob({
     setIsRestoringTrackedJob(false);
     setIsResuming(false);
     setIsStarting(false);
-  }, [activeDocument, activeProjectId]);
+  }, [activeDocument, activeProjectId, enabled]);
 
   return {
     cancelJob,

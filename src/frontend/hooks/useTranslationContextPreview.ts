@@ -10,6 +10,7 @@ interface UseTranslationContextPreviewOptions {
   activeDocument: DocumentSummary | null;
   activeProjectId: string | null;
   editorialDefaultsFingerprint?: string;
+  enabled?: boolean;
   selectedChunk: TranslationChunkSummary | null;
 }
 
@@ -17,6 +18,7 @@ export function useTranslationContextPreview({
   activeDocument,
   activeProjectId,
   editorialDefaultsFingerprint,
+  enabled = true,
   selectedChunk,
 }: UseTranslationContextPreviewOptions) {
   const [error, setError] = useState<DesktopCommandError | null>(null);
@@ -27,7 +29,7 @@ export function useTranslationContextPreview({
   const requestIdRef = useRef(0);
 
   useEffect(() => {
-    if (!(activeProjectId && activeDocument && selectedChunk)) {
+    if (!(enabled && activeProjectId && activeDocument && selectedChunk)) {
       requestIdRef.current += 1;
       setError(null);
       setIsLoading(false);
@@ -89,6 +91,7 @@ export function useTranslationContextPreview({
     activeDocument,
     activeProjectId,
     editorialDefaultsFingerprint,
+    enabled,
     selectedChunk,
   ]);
 
